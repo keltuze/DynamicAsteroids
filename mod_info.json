@@ -1,12 +1,12 @@
 {
-	"id": "dynamic_asteroids",
-	"name": "Dynamic Asteroids: Extreme Edition 2.0 (Cyclone)",
-	"author": "keltuze",
-	"utility": "false",
-	"version": "2.0.2",
-	"description": "Extreme Edition 2.0.2: Living asteroid belts (100–1000 rocks, 60s lifespan) with endless planetary ring avalanche, omnidirectional 360 cyclones & anticyclones, multi-angle converging swarms, and 5% targeted sniper torrents against ships! Features zero lag (120 FPS), sparkling kinetic trails, and live hotkeys [/] and [Shift +/-] in simulation.",
-	"gameVersion": "0.98a-RC8",
-	"jars": [
-		"jars/DynamicAsteroids.jar"
-	]
+  "id": "dynamic_asteroids",
+  "name": "Dynamic Asteroids: Extreme Edition 2.0 (Циклон)",
+  "author": "keltuze",
+  "utility": "false",
+  "version": "2.0.3",
+  "description": "Экстремальная версия 2.0.3: Живой пояс астероидов (поток от 100 до 1000 камней, время жизни 60 сек) с непрерывной лавиной, циклоны и антициклоны 360, сходящиеся рои и 5% снайперские залпы по кораблям! 120 FPS, искрящиеся шлейфы и хоткеи [/] и [Shift +/-] в симуляции.",
+  "gameVersion": "0.98a-RC8",
+  "jars": [
+    "jars/DynamicAsteroids.jar"
+  ]
 }

@@ -1,10 +1,10 @@
 {
 	"id": "dynamic_asteroids",
-	"name": "Dynamic Asteroids: Extreme Edition",
+	"name": "Dynamic Asteroids: Extreme Edition 2.0 (Cyclone)",
 	"author": "keltuze",
 	"utility": "false",
-	"version": "1.0.0",
-	"description": "Экстремальный гиперзвуковой шторм астероидов. Корабли сносит сокрушительным кинетическим импульсом!",
+	"version": "2.0.0",
+	"description": "Extreme Edition 2.0: Living asteroid belts with endless planetary ring avalanche, omnidirectional 360 cyclones & anticyclones, multi-angle converging swarms, and 5% targeted sniper torrents against ships! Features zero lag at 300+ asteroids (120 FPS), sparkling kinetic trails, and live hotkeys [/] to toggle and [Shift +/-] to adjust density in simulation.",
 	"gameVersion": "0.98a-RC8",
 	"jars": [
 		"jars/DynamicAsteroids.jar"

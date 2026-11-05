@@ -1,0 +1,12 @@
+{
+	"id": "dynamic_asteroids",
+	"name": "Dynamic Asteroids: Extreme Edition",
+	"author": "keltuze",
+	"utility": "false",
+	"version": "1.0.0",
+	"description": "Экстремальный гиперзвуковой шторм астероидов. Корабли сносит сокрушительным кинетическим импульсом!",
+	"gameVersion": "0.98a-RC8",
+	"jars": [
+		"jars/DynamicAsteroids.jar"
+	]
+}

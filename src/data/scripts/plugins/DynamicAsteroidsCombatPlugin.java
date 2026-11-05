@@ -1,7 +1,9 @@
 package data.scripts.plugins;
 
 import java.awt.Color;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -27,7 +29,7 @@ import com.fs.starfarer.api.input.InputEventAPI;
 public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
     // Configurable compilation flags
-    private static final boolean IS_RUSSIAN = false;
+    private static final boolean IS_RUSSIAN = true;
     private static final float DEFAULT_STREAM_SPEED = 3000.0f;
 
     public enum StreamDirection {
@@ -173,7 +175,10 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
             isTitleScreen = true;
         }
 
-        // 1. Clear static vanilla asteroids
+        // 1. Disable vanilla background asteroid belt generators
+        disableVanillaAsteroidFields();
+
+        // 2. Clear static vanilla asteroids
         clearAllAsteroids(false);
 
         // 2. Strict campaign terrain check
@@ -406,6 +411,57 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
         }
     }
 
+    // Track vanilla field disabling
+    private boolean vanillaFieldsDisabled = false;
+
+    private void disableVanillaAsteroidFields() {
+        if (engine == null) return;
+        try {
+            Method getMapMethod = null;
+            try {
+                getMapMethod = engine.getClass().getMethod("getCombatMap");
+            } catch (Throwable t) {
+                for (Method m : engine.getClass().getDeclaredMethods()) {
+                    if (m.getParameterTypes().length == 0 && m.getReturnType().getName().endsWith(".combat.A.B")) {
+                        getMapMethod = m;
+                        break;
+                    }
+                }
+            }
+
+            Object combatMap = null;
+            if (getMapMethod != null) {
+                getMapMethod.setAccessible(true);
+                combatMap = getMapMethod.invoke(engine);
+            } else {
+                for (Field f : engine.getClass().getDeclaredFields()) {
+                    if (f.getType().getName().endsWith(".combat.A.B")) {
+                        f.setAccessible(true);
+                        combatMap = f.get(engine);
+                        break;
+                    }
+                }
+            }
+
+            if (combatMap != null) {
+                for (Field f : combatMap.getClass().getDeclaredFields()) {
+                    if (List.class.isAssignableFrom(f.getType())) {
+                        f.setAccessible(true);
+                        Type gt = f.getGenericType();
+                        if (gt != null && gt.toString().contains(".combat.A.E")) {
+                            List<?> list = (List<?>) f.get(combatMap);
+                            if (list != null) {
+                                list.clear();
+                                vanillaFieldsDisabled = true;
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Throwable t) {
+        }
+    }
+
     private void clearAllAsteroids(boolean withSmoke) {
         if (engine == null) return;
         List<CombatEntityAPI> existing = engine.getAsteroids();
@@ -454,13 +510,15 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                         }
                     } else if (shiftHeld && (key == Keyboard.KEY_EQUALS || key == Keyboard.KEY_ADD)) {
                         event.consume();
-                        battleTargetCount = Math.min(1000, battleTargetCount + 50);
-                        maxBackgroundRocks = Math.min(300, battleTargetCount / 2);
+                        battleTargetCount = Math.min(10000, battleTargetCount + 50);
+                        maxBackgroundRocks = battleTargetCount / 2;
+                        backgroundSpawnInterval = Math.max(0.005f, 0.055f * (300f / Math.max(300, battleTargetCount)));
                         showLimitFeedback(IS_RUSSIAN ? "Лимит астероидов УВЕЛИЧЕН: " + battleTargetCount + " шт." : "Asteroid Limit INCREASED: " + battleTargetCount + " rocks", Color.GREEN);
                     } else if (shiftHeld && (key == Keyboard.KEY_MINUS || key == Keyboard.KEY_SUBTRACT)) {
                         event.consume();
                         battleTargetCount = Math.max(25, battleTargetCount - 50);
-                        maxBackgroundRocks = Math.min(150, battleTargetCount / 2);
+                        maxBackgroundRocks = Math.max(12, battleTargetCount / 2);
+                        backgroundSpawnInterval = Math.max(0.005f, 0.055f * (300f / Math.max(300, battleTargetCount)));
                         showLimitFeedback(IS_RUSSIAN ? "Лимит астероидов УМЕНЬШЕН: " + battleTargetCount + " шт." : "Asteroid Limit DECREASED: " + battleTargetCount + " rocks", Color.YELLOW);
                     }
                 }
@@ -559,8 +617,14 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
             }
         }
 
+        // Ensure vanilla background generators remain permanently disabled
+        if (!vanillaFieldsDisabled || totalCombatTime < 2.0f) {
+            disableVanillaAsteroidFields();
+        }
+
         // Simulation disabled check
         if (engine.isSimulation() && !simulationEnabled) {
+            clearAllAsteroids(false);
             return;
         }
 

@@ -10,7 +10,7 @@
 	"minFieldRocks": 100,
 	"maxFieldRocks": 1000,
 	"fieldSurgeSpeed": 3000.0,
-	"asteroidLifespan": 30.0,
+	"asteroidLifespan": 60.0,
 
 	# Sparkling Trails & Visual Effects
 	"enableParticleTrails": true,

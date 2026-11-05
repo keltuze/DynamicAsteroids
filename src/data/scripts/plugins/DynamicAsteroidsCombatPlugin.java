@@ -97,7 +97,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
     private int minFieldRocks = 100;
     private int maxFieldRocks = 1000;
     private float streamSpeed = DEFAULT_STREAM_SPEED;
-    private float asteroidLifespan = 30.0f;    // 30 seconds lifespan
+    private float asteroidLifespan = 60.0f;    // 30 seconds lifespan
     private float beamWidth = 650.0f;          // Corridor width for beams
     private float targetedSnipeChance = 0.05f; // 5% chance to aim directly at random ship
     private float figureEventInterval = 28.0f; // Paced wave timing (25-35s)
@@ -315,7 +315,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
         if (maxFieldRocks < minFieldRocks) maxFieldRocks = minFieldRocks + 100;
         if (maxFieldRocks > 2500) maxFieldRocks = 2500;
         if (streamSpeed > 5000f) streamSpeed = 5000f;
-        if (asteroidLifespan <= 0f) asteroidLifespan = 30.0f;
+        if (asteroidLifespan <= 0f) asteroidLifespan = 60.0f;
         if (beamWidth < 300f) beamWidth = 650f;
         if (targetedSnipeChance < 0f) targetedSnipeChance = 0f;
         if (targetedSnipeChance > 1f) targetedSnipeChance = 1f;

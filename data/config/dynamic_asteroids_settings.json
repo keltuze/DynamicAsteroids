@@ -1,29 +1,18 @@
 {
-	# Language setting: "auto", "en", "ru"
-	"language": "auto",
-
-	# Simulation settings & hotkeys
-	"enableInSimulation": true,
-	"simulationToggleKey": "SLASH",
-
-	# Asteroid Stream Settings (100 to 1000 Rocks Configurable)
-	"minFieldRocks": 100,
-	"maxFieldRocks": 1000,
-	"fieldSurgeSpeed": 3000.0,
-	"asteroidLifespan": 60.0,
-
-	# Sparkling Trails & Visual Effects
-	"enableParticleTrails": true,
-	"particleTrailChance": 0.20,
-
-	# Formation profiles, cyclones & targeted snipe settings
-	"targetedSnipeChance": 0.05,
-	"beamWidth": 650.0,
-	"figureEventInterval": 28.0,
-
-	# Open space settings (outside asteroid belts)
-	"openSpaceMinRocks": 4,
-	"openSpaceMaxRocks": 10,
-	"openSpaceMinDelay": 2.0,
-	"openSpaceMaxDelay": 5.5
+  "language": "ru",
+  "enableInSimulation": true,
+  "simulationToggleKey": "SLASH",
+  "minFieldRocks": 100,
+  "maxFieldRocks": 1000,
+  "fieldSurgeSpeed": 3000.0,
+  "asteroidLifespan": 60.0,
+  "enableParticleTrails": true,
+  "particleTrailChance": 0.2,
+  "targetedSnipeChance": 0.05,
+  "beamWidth": 650.0,
+  "figureEventInterval": 28.0,
+  "openSpaceMinRocks": 4,
+  "openSpaceMaxRocks": 10,
+  "openSpaceMinDelay": 2.0,
+  "openSpaceMaxDelay": 5.5
 }

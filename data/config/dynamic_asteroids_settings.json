@@ -1,34 +1,29 @@
 {
-	# =========================================================================
-	# ЯЗЫК МЕНЮ / LANGUAGE
-	# =========================================================================
-	"language": "ru",
+	# Language setting: "auto", "en", "ru"
+	"language": "auto",
 
-	# =========================================================================
-	# ПОТОК В АСТЕРОИДНЫХ ПОЛЯХ / ASTEROID FIELD STREAM
-	# =========================================================================
-	# Минимальное количество астероидов при расчете плотности поля на бой (по умолчанию 70)
-	"minFieldRocks": 70,
+	# Simulation settings & hotkeys
+	"enableInSimulation": true,
+	"simulationToggleKey": "SLASH",
 
-	# Максимальное количество астероидов при расчете плотности поля на бой (по умолчанию 160)
-	# Точное количество выбирается случайно в этом диапазоне 1 раз на весь бой
-	"maxFieldRocks": 160,
-
-	# Скорость потока астероидов (ГИПЕРЗВУКОВОЙ ТЕСТ: 3000 ед/сек!)
+	# Asteroid Stream Settings (300 Asteroids Zero Lag)
+	"minFieldRocks": 200,
+	"maxFieldRocks": 300,
 	"fieldSurgeSpeed": 3000.0,
-
-	# Максимальное время жизни астероида (в секундах). Ровно 30 секунд!
 	"asteroidLifespan": 30.0,
 
-	# =========================================================================
-	# ОТКРЫТЫЙ КОСМОС (ВНЕ ПОЛЕЙ АСТЕРОИДОВ) / OPEN SPACE
-	# =========================================================================
-	# Количество редких метеоров в открытом космосе (мин и макс)
+	# Sparkling Trails & Visual Effects
+	"enableParticleTrails": true,
+	"particleTrailChance": 0.20,
+
+	# Formation profiles, cyclones & targeted snipe settings
+	"targetedSnipeChance": 0.05,
+	"beamWidth": 650.0,
+	"figureEventInterval": 28.0,
+
+	# Open space settings (outside asteroid belts)
 	"openSpaceMinRocks": 4,
 	"openSpaceMaxRocks": 10,
-
-	# Минимальная и максимальная задержка между спавном в открытом космосе (в секундах)
-	# Случайный интервал предотвращает полет камней сплошной стеной
-	"openSpaceMinDelay": 1.5,
-	"openSpaceMaxDelay": 5.0
+	"openSpaceMinDelay": 2.0,
+	"openSpaceMaxDelay": 5.5
 }

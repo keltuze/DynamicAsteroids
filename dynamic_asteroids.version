@@ -5,7 +5,7 @@
     "modVersion": {
         "major": 2,
         "minor": 0,
-        "patch": 0
+        "patch": 1
     },
-    "directDownloadURL": "https://github.com/keltuze/DynamicAsteroids/releases/latest/download/DynamicAsteroids_Extreme_v2.0.0.zip"
+    "directDownloadURL": "https://github.com/keltuze/DynamicAsteroids/releases/latest/download/DynamicAsteroids_Extreme_v2.0.1.zip"
 }

@@ -1,0 +1,11 @@
+modID,fieldID,fieldName,fieldType,defaultValue,secondaryValue,fieldDescription,minValue,maxValue,tab
+dynamic_asteroids,da_header_field,Поток астероидов (4 стороны света),Header,Настройки,,,,,Поток астероидов
+dynamic_asteroids,da_minFieldRocks,Мин. астероидов в поле,Integer,70,,Минимальный порог плотности поля в бою,30,120,Поток астероидов
+dynamic_asteroids,da_maxFieldRocks,Макс. астероидов в поле,Integer,160,,Максимальный порог плотности поля в бою,70,220,Поток астероидов
+dynamic_asteroids,da_fieldSurgeSpeed,Скорость потока астероидов,Double,3000.0,,Скорость несущихся камней (3000 ед/сек),300.0,5000.0,Поток астероидов
+dynamic_asteroids,da_asteroidLifespan,Время жизни булыжников (сек),Double,30.0,,Булыжники существуют ровно указанное время (30 секунд),10.0,90.0,Поток астероидов
+dynamic_asteroids,da_header_space,Открытый космос (вне поясов),Header,Настройки,,,,,Поток астероидов
+dynamic_asteroids,da_openSpaceMinRocks,Мин. метеоров в космосе,Integer,4,,Минимум редких метеоров вне астероидных полей,1,15,Поток астероидов
+dynamic_asteroids,da_openSpaceMaxRocks,Макс. метеоров в космосе,Integer,10,,Максимум редких метеоров вне астероидных полей,2,30,Поток астероидов
+dynamic_asteroids,da_openSpaceMinDelay,Мин. интервал спавна в космосе (сек),Double,1.5,,Минимальная задержка между камнями в открытом космосе,0.5,10.0,Поток астероидов
+dynamic_asteroids,da_openSpaceMaxDelay,Макс. интервал спавна в космосе (сек),Double,5.0,,Максимальная задержка между камнями в открытом космосе,1.0,20.0,Поток астероидов

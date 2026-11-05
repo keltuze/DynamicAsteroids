@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import org.json.JSONObject;
+import org.lwjgl.input.Keyboard;
 import org.lwjgl.util.vector.Vector2f;
 
 import com.fs.starfarer.api.GameState;
@@ -21,17 +22,66 @@ import com.fs.starfarer.api.combat.ViewportAPI;
 import com.fs.starfarer.api.input.InputEventAPI;
 
 /**
- * Dynamic Asteroids V2 (Русская версия) - Extreme Edition
- * Непрерывный гиперзвуковой поток астероидов в полях (3000 ед/сек)
- * и редкие нерегулярные метеоры в открытом космосе.
+ * Dynamic Asteroids 2.0 (Cyclone Edition)
  */
 public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
+    // Configurable compilation flags
+    private static final boolean IS_RUSSIAN = false;
+    private static final float DEFAULT_STREAM_SPEED = 3000.0f;
+
     public enum StreamDirection {
-        RIGHT_TO_LEFT,  // Влево (<-)
-        LEFT_TO_RIGHT,  // Вправо (->)
-        BOTTOM_TO_TOP,  // Вверх (^)
-        TOP_TO_BOTTOM   // Вниз (v)
+        RIGHT_TO_LEFT,  // West (<-)
+        LEFT_TO_RIGHT,  // East (->)
+        BOTTOM_TO_TOP,  // North (^)
+        TOP_TO_BOTTOM   // South (v)
+    }
+
+    public enum FigureType {
+        LANCE_BEAM(
+            IS_RUSSIAN ? "Метеоритный луч" : "Meteor Lance",
+            IS_RUSSIAN ? "Плотный гиперзвуковой луч прорезает сектор" : "Dense hypervelocity beam cutting through the sector"
+        ),
+        COMET_SWARM(
+            IS_RUSSIAN ? "Кометный рой" : "Comet Swarm",
+            IS_RUSSIAN ? "Огромное плотное скопление астероидов" : "Massive dense cloud of tumbling asteroids"
+        ),
+        DUAL_RAILS(
+            IS_RUSSIAN ? "Двойные рельсы" : "Dual Rails",
+            IS_RUSSIAN ? "Два параллельных луча зажимают сектор" : "Twin parallel streams squeezing the combat zone"
+        ),
+        EXPANDING_FAN(
+            IS_RUSSIAN ? "Веерный залп" : "Expanding Fan",
+            IS_RUSSIAN ? "Конический веерный шквал астероидов" : "Spreading conical salvo of asteroids"
+        ),
+        HEAVY_MEGALITHS(
+            IS_RUSSIAN ? "Пакет мегалитов" : "Megalith Pack",
+            IS_RUSSIAN ? "Залп колоссальных мегалитов тяжелого класса" : "Salvo of colossal behemoth-class asteroids"
+        );
+
+        private final String displayName;
+        private final String description;
+
+        FigureType(String displayName, String description) {
+            this.displayName = displayName;
+            this.description = description;
+        }
+
+        public String getDisplayName() { return displayName; }
+        public String getDescription() { return description; }
+    }
+
+    public static class ActiveFigureStream {
+        public Vector2f origin = new Vector2f();
+        public Vector2f velocity = new Vector2f();
+        public Vector2f perp = new Vector2f();
+        public FigureType type = FigureType.LANCE_BEAM;
+        public int rocksRemaining = 0;
+        public float burstTimer = 0f;
+        public float burstInterval = 0.018f;
+        public boolean isTargeted = false;
+        public ShipAPI targetShip = null;
+        public float beamSpread = 650f;
     }
 
     private CombatEngineAPI engine;
@@ -40,24 +90,50 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
     private boolean isInAsteroidField = false;
     private Random random = new Random();
 
-    // Настройки плотного потока (Астероидное поле)
-    private int minFieldRocks = 70;
-    private int maxFieldRocks = 160;
-    private float streamSpeed = 3000.0f;       // Гиперзвуковая скорость (3000 ед/сек)
-    private float asteroidLifespan = 30.0f;    // 30 секунд жизни
-    private float fieldSpawnInterval = 0.025f; // Быстрый спавн сплошного потока
+    // Constant background avalanche direction for the whole battle
+    private StreamDirection avalancheDirection = StreamDirection.RIGHT_TO_LEFT;
 
-    // Настройки открытого космоса (Вне астероидных полей)
+    // Stream settings (Default 200 - 300)
+    private int minFieldRocks = 200;
+    private int maxFieldRocks = 300;
+    private float streamSpeed = DEFAULT_STREAM_SPEED;
+    private float asteroidLifespan = 30.0f;    // 30 seconds lifespan
+    private float beamWidth = 650.0f;          // Corridor width for beams
+    private float targetedSnipeChance = 0.05f; // 5% chance to aim directly at random ship
+    private float figureEventInterval = 28.0f; // Paced wave timing (25-35s)
+    private boolean enableInSimulation = true;
+
+    // Sparkling Kinetic Trails (Optimized: zero lag at 120 FPS)
+    private boolean enableParticleTrails = true;
+    private float particleTrailChance = 0.20f;
+    private float trailTickTimer = 0f;
+
+    // Simulation toggle state (persistent across encounters in same session)
+    private static boolean simulationEnabled = true;
+    private boolean simulationHintShown = false;
+
+    // Active figure streams list (supports 1, 2, or 3 concurrent angles!)
+    private List<ActiveFigureStream> activeStreams = new ArrayList<ActiveFigureStream>();
+
+    // Dynamic Battle Capacity (Tuned on the fly via Shift + Plus / Minus)
+    private int battleTargetCount = 300;
+    private int maxBackgroundRocks = 130;
+    private float backgroundSpawnTimer = 0f;
+    private float backgroundSpawnInterval = 0.055f;
+
+    // Dynamic Figure Wave timer
+    private float figureEventTimer = 0f;
+
+    // Open Space settings (Quiet, rare solitary stray meteors)
     private int openSpaceMinRocks = 4;
     private int openSpaceMaxRocks = 10;
-    private float openSpaceMinDelay = 1.5f;
-    private float openSpaceMaxDelay = 5.0f;
+    private float openSpaceMinDelay = 2.0f;
+    private float openSpaceMaxDelay = 5.5f;
+    private int openSpaceTargetCount = 7;
+    private float openSpaceTimer = 0f;
+    private float openSpaceCurrentDelay = 2.5f;
 
-    // Состояние текущего боя
-    private int battleTargetCount = 110;
-    private StreamDirection streamDirection = StreamDirection.RIGHT_TO_LEFT;
-    private float currentSpawnDelay = 0.025f;
-    private float spawnTimer = 0f;
+    // Combat tracking
     private float totalCombatTime = 0f;
     private boolean notifiedPlayer = false;
     private float notifyTimer = 0f;
@@ -66,19 +142,26 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
     private static final String MOD_ID = "dynamic_asteroids";
     private static final String TRACKED_KEY = "da_v2_rock";
     private static final String SPAWN_TIME_KEY = "da_v2_birth";
+    private static final String BASE_VX_KEY = "da_v2_bvx";
+    private static final String BASE_VY_KEY = "da_v2_bvy";
+    private static final String TRAIL_TYPE_KEY = "da_v2_trail";
 
     @Override
     public void init(CombatEngineAPI engine) {
         this.engine = engine;
         this.active = false;
-        this.spawnTimer = 0f;
         this.totalCombatTime = 0f;
+        this.backgroundSpawnTimer = 0f;
+        this.figureEventTimer = 7.0f; // First figure appears after 7 seconds
+        this.activeStreams.clear();
         this.notifiedPlayer = false;
         this.notifyTimer = 0f;
+        this.simulationHintShown = false;
+        this.trailTickTimer = 0f;
 
         if (engine == null) return;
 
-        // Проверка главного меню / титульного экрана
+        // Detect title screen
         isTitleScreen = false;
         try {
             if (Global.getCurrentState() == GameState.TITLE) {
@@ -90,17 +173,10 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
             isTitleScreen = true;
         }
 
-        // 1. Очищаем любые неподвижные ванильные астероиды со старта боя
-        List<CombatEntityAPI> existing = engine.getAsteroids();
-        if (existing != null && !existing.isEmpty()) {
-            for (CombatEntityAPI ast : existing) {
-                if (ast != null) {
-                    engine.removeEntity(ast);
-                }
-            }
-        }
+        // 1. Clear static vanilla asteroids
+        clearAllAsteroids(false);
 
-        // 2. Строгая проверка террейна на глобальной карте кампании
+        // 2. Strict campaign terrain check
         boolean campaignTerrainHasAsteroids = false;
         try {
             if (engine.isInCampaign() && Global.getSector() != null && Global.getSector().getPlayerFleet() != null) {
@@ -143,48 +219,50 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
         } catch (Throwable t) {
         }
 
-        // 3. Определяем, является ли данный бой боем в астероидном поле.
-        // Опираемся СТРОГО на глобальную карту мира (не верим случайным спавнам ваниллы в космосе).
+        // 3. Location classification
         if (isTitleScreen) {
             isInAsteroidField = true;
         } else if (engine.isSimulation()) {
-            isInAsteroidField = true; // Симулятор подгонки кораблей всегда моделирует поле
+            isInAsteroidField = true;
         } else if (engine.isInCampaign()) {
-            isInAsteroidField = campaignTerrainHasAsteroids; // Строго террейн пояса/кольца на карте!
+            isInAsteroidField = campaignTerrainHasAsteroids;
         } else {
-            isInAsteroidField = false; // Открытый космос
+            isInAsteroidField = false;
         }
 
         loadSettings();
 
-        // 4. Случайное направление на весь бой (25% каждое)
-        int dirChoice = random.nextInt(4);
-        switch (dirChoice) {
-            case 0: streamDirection = StreamDirection.RIGHT_TO_LEFT; break; // Влево
-            case 1: streamDirection = StreamDirection.LEFT_TO_RIGHT; break; // Вправо
-            case 2: streamDirection = StreamDirection.BOTTOM_TO_TOP; break; // Вверх
-            case 3: streamDirection = StreamDirection.TOP_TO_BOTTOM; break; // Вниз
+        // If simulation is active and disabled in settings
+        if (engine.isSimulation() && !enableInSimulation) {
+            simulationEnabled = false;
         }
 
-        // 5. Расчет количества камней и стартового интервала спавна
+        // 4. RULE 1: Baseline avalanche flows in ONE CONSTANT DIRECTION throughout the whole battle
+        int dirChoice = random.nextInt(4);
+        switch (dirChoice) {
+            case 0: avalancheDirection = StreamDirection.RIGHT_TO_LEFT; break;
+            case 1: avalancheDirection = StreamDirection.LEFT_TO_RIGHT; break;
+            case 2: avalancheDirection = StreamDirection.BOTTOM_TO_TOP; break;
+            case 3: avalancheDirection = StreamDirection.TOP_TO_BOTTOM; break;
+        }
+
+        // 5. Total asteroid capacity rolled between minFieldRocks (200) and maxFieldRocks (300)
         if (isInAsteroidField) {
             int minR = Math.min(minFieldRocks, maxFieldRocks);
             int maxR = Math.max(minFieldRocks, maxFieldRocks);
             battleTargetCount = minR + random.nextInt(Math.max(1, maxR - minR + 1));
-            currentSpawnDelay = fieldSpawnInterval;
+            maxBackgroundRocks = Math.min(140, battleTargetCount / 2);
         } else {
             int minR = Math.min(openSpaceMinRocks, openSpaceMaxRocks);
             int maxR = Math.max(openSpaceMinRocks, openSpaceMaxRocks);
-            battleTargetCount = minR + random.nextInt(Math.max(1, maxR - minR + 1));
-            // В открытом космосе: первая задержка случайна, чтобы камни не летели со старта волной
-            currentSpawnDelay = openSpaceMinDelay + random.nextFloat() * (openSpaceMaxDelay - openSpaceMinDelay);
+            openSpaceTargetCount = minR + random.nextInt(Math.max(1, maxR - minR + 1));
+            openSpaceCurrentDelay = openSpaceMinDelay + random.nextFloat() * (openSpaceMaxDelay - openSpaceMinDelay);
         }
 
         this.active = true;
     }
 
     private void loadSettings() {
-        // 1. JSON конфиг
         try {
             JSONObject config = Global.getSettings().loadJSON(SETTINGS_PATH);
             if (config != null) {
@@ -192,6 +270,13 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                 maxFieldRocks = config.optInt("maxFieldRocks", maxFieldRocks);
                 streamSpeed = (float) config.optDouble("fieldSurgeSpeed", streamSpeed);
                 asteroidLifespan = (float) config.optDouble("asteroidLifespan", asteroidLifespan);
+                beamWidth = (float) config.optDouble("beamWidth", beamWidth);
+                targetedSnipeChance = (float) config.optDouble("targetedSnipeChance", targetedSnipeChance);
+                figureEventInterval = (float) config.optDouble("figureEventInterval", figureEventInterval);
+                enableInSimulation = config.optBoolean("enableInSimulation", enableInSimulation);
+                enableParticleTrails = config.optBoolean("enableParticleTrails", enableParticleTrails);
+                particleTrailChance = (float) config.optDouble("particleTrailChance", particleTrailChance);
+
                 openSpaceMinRocks = config.optInt("openSpaceMinRocks", openSpaceMinRocks);
                 openSpaceMaxRocks = config.optInt("openSpaceMaxRocks", openSpaceMaxRocks);
                 openSpaceMinDelay = (float) config.optDouble("openSpaceMinDelay", openSpaceMinDelay);
@@ -200,95 +285,140 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
         } catch (Throwable t) {
         }
 
-        // 2. Переопределения LunaLib (F2)
+        // LunaLib F2 overrides
         try {
             if (Global.getSettings().getModManager().isModEnabled("lunalib")) {
-                Class<?> clazz = Class.forName("lunalib.lunaSettings.LunaSettings");
-                Method method = null;
-                try {
-                    method = clazz.getMethod("getFloat", String.class, String.class);
-                } catch (NoSuchMethodException e) {
-                    try {
-                        method = clazz.getMethod("getDouble", String.class, String.class);
-                    } catch (NoSuchMethodException e2) {
-                    }
-                }
-                if (method != null) {
-                    Object spdVal = method.invoke(null, MOD_ID, "da_fieldSurgeSpeed");
-                    if (spdVal instanceof Number) {
-                        streamSpeed = ((Number) spdVal).floatValue();
-                    }
-                    Object val = method.invoke(null, MOD_ID, "da_asteroidLifespan");
-                    if (val instanceof Number) {
-                        asteroidLifespan = ((Number) val).floatValue();
-                    }
-                    Object minVal = method.invoke(null, MOD_ID, "da_minFieldRocks");
-                    if (minVal instanceof Number) {
-                        minFieldRocks = ((Number) minVal).intValue();
-                    }
-                    Object maxVal = method.invoke(null, MOD_ID, "da_maxFieldRocks");
-                    if (maxVal instanceof Number) {
-                        maxFieldRocks = ((Number) maxVal).intValue();
-                    }
-                    Object osMinVal = method.invoke(null, MOD_ID, "da_openSpaceMinRocks");
-                    if (osMinVal instanceof Number) {
-                        openSpaceMinRocks = ((Number) osMinVal).intValue();
-                    }
-                    Object osMaxVal = method.invoke(null, MOD_ID, "da_openSpaceMaxRocks");
-                    if (osMaxVal instanceof Number) {
-                        openSpaceMaxRocks = ((Number) osMaxVal).intValue();
-                    }
-                    Object osMinDVal = method.invoke(null, MOD_ID, "da_openSpaceMinDelay");
-                    if (osMinDVal instanceof Number) {
-                        openSpaceMinDelay = ((Number) osMinDVal).floatValue();
-                    }
-                    Object osMaxDVal = method.invoke(null, MOD_ID, "da_openSpaceMaxDelay");
-                    if (osMaxDVal instanceof Number) {
-                        openSpaceMaxDelay = ((Number) osMaxDVal).floatValue();
-                    }
-                }
+                loadLunaSettingNumber("da_minFieldRocks", minFieldRocks);
+                loadLunaSettingNumber("da_maxFieldRocks", maxFieldRocks);
+                loadLunaSettingNumber("da_fieldSurgeSpeed", streamSpeed);
+                loadLunaSettingNumber("da_asteroidLifespan", asteroidLifespan);
+                loadLunaSettingNumber("da_beamWidth", beamWidth);
+                loadLunaSettingNumber("da_targetedSnipeChance", targetedSnipeChance);
+                loadLunaSettingNumber("da_particleTrailChance", particleTrailChance);
+                loadLunaSettingNumber("da_openSpaceMinRocks", openSpaceMinRocks);
+                loadLunaSettingNumber("da_openSpaceMaxRocks", openSpaceMaxRocks);
+                loadLunaSettingNumber("da_openSpaceMinDelay", openSpaceMinDelay);
+                loadLunaSettingNumber("da_openSpaceMaxDelay", openSpaceMaxDelay);
+
+                Boolean simVal = getLunaBoolean("da_enableInSimulation");
+                if (simVal != null) enableInSimulation = simVal.booleanValue();
+
+                Boolean ptVal = getLunaBoolean("da_enableParticleTrails");
+                if (ptVal != null) enableParticleTrails = ptVal.booleanValue();
             }
         } catch (Throwable t) {
         }
 
+        // Clamping (Defaults 200 to 300)
+        if (minFieldRocks < 50) minFieldRocks = 200;
+        if (maxFieldRocks < minFieldRocks) maxFieldRocks = minFieldRocks + 100;
         if (streamSpeed > 5000f) streamSpeed = 5000f;
-        if (minFieldRocks < 10) minFieldRocks = 70;
-        if (maxFieldRocks < minFieldRocks) maxFieldRocks = minFieldRocks + 30;
         if (asteroidLifespan <= 0f) asteroidLifespan = 30.0f;
+        if (beamWidth < 300f) beamWidth = 650f;
+        if (targetedSnipeChance < 0f) targetedSnipeChance = 0f;
+        if (targetedSnipeChance > 1f) targetedSnipeChance = 1f;
+        if (particleTrailChance < 0f) particleTrailChance = 0f;
+        if (particleTrailChance > 1f) particleTrailChance = 1f;
+        if (figureEventInterval < 10.0f) figureEventInterval = 28.0f;
         if (openSpaceMinRocks < 1) openSpaceMinRocks = 4;
         if (openSpaceMaxRocks < openSpaceMinRocks) openSpaceMaxRocks = openSpaceMinRocks + 5;
-        if (openSpaceMinDelay <= 0f) openSpaceMinDelay = 1.5f;
+        if (openSpaceMinDelay <= 0f) openSpaceMinDelay = 2.0f;
         if (openSpaceMaxDelay < openSpaceMinDelay) openSpaceMaxDelay = openSpaceMinDelay + 3.0f;
     }
 
-    private ShipAPI getPlayerShipSafely() {
+    private void loadLunaSettingNumber(String fieldId, float currentVal) {
+        Number num = getLunaNumber(fieldId);
+        if (num == null) return;
+        if (fieldId.equals("da_minFieldRocks")) minFieldRocks = num.intValue();
+        else if (fieldId.equals("da_maxFieldRocks")) maxFieldRocks = num.intValue();
+        else if (fieldId.equals("da_fieldSurgeSpeed")) streamSpeed = num.floatValue();
+        else if (fieldId.equals("da_asteroidLifespan")) asteroidLifespan = num.floatValue();
+        else if (fieldId.equals("da_beamWidth")) beamWidth = num.floatValue();
+        else if (fieldId.equals("da_targetedSnipeChance")) targetedSnipeChance = num.floatValue();
+        else if (fieldId.equals("da_particleTrailChance")) particleTrailChance = num.floatValue();
+        else if (fieldId.equals("da_openSpaceMinRocks")) openSpaceMinRocks = num.intValue();
+        else if (fieldId.equals("da_openSpaceMaxRocks")) openSpaceMaxRocks = num.intValue();
+        else if (fieldId.equals("da_openSpaceMinDelay")) openSpaceMinDelay = num.floatValue();
+        else if (fieldId.equals("da_openSpaceMaxDelay")) openSpaceMaxDelay = num.floatValue();
+    }
+
+    private Number getLunaNumber(String fieldId) {
         try {
-            if (engine != null) {
-                return engine.getPlayerShip();
+            Class<?> clazz = Class.forName("lunalib.lunaSettings.LunaSettings");
+            Method method = null;
+            try {
+                method = clazz.getMethod("getFloat", String.class, String.class);
+            } catch (NoSuchMethodException e) {
+                try {
+                    method = clazz.getMethod("getDouble", String.class, String.class);
+                } catch (NoSuchMethodException e2) {
+                }
+            }
+            if (method != null) {
+                Object val = method.invoke(null, MOD_ID, fieldId);
+                if (val instanceof Number) return (Number) val;
             }
         } catch (Throwable t) {
         }
         return null;
     }
 
-    private String getDirectionLabelEn() {
-        switch (streamDirection) {
-            case RIGHT_TO_LEFT: return "Right -> Left (West)";
-            case LEFT_TO_RIGHT: return "Left -> Right (East)";
-            case BOTTOM_TO_TOP: return "Bottom -> Top (North)";
-            case TOP_TO_BOTTOM: return "Top -> Bottom (South)";
+    private Boolean getLunaBoolean(String fieldId) {
+        try {
+            Class<?> clazz = Class.forName("lunalib.lunaSettings.LunaSettings");
+            Method method = clazz.getMethod("getBoolean", String.class, String.class);
+            if (method != null) {
+                Object val = method.invoke(null, MOD_ID, fieldId);
+                if (val instanceof Boolean) return (Boolean) val;
+            }
+        } catch (Throwable t) {
         }
-        return "Right -> Left";
+        return null;
     }
 
-    private String getDirectionLabelRu() {
-        switch (streamDirection) {
-            case RIGHT_TO_LEFT: return "Справа налево (Запад)";
-            case LEFT_TO_RIGHT: return "Слева направо (Восток)";
-            case BOTTOM_TO_TOP: return "Снизу вверх (Север)";
-            case TOP_TO_BOTTOM: return "Сверху вниз (Юг)";
+    private ShipAPI getPlayerShipSafely() {
+        try {
+            if (engine != null) return engine.getPlayerShip();
+        } catch (Throwable t) {
         }
-        return "Справа налево";
+        return null;
+    }
+
+    private String getAvalancheDirectionLabel() {
+        if (IS_RUSSIAN) {
+            switch (avalancheDirection) {
+                case RIGHT_TO_LEFT: return "Справа налево (Запад)";
+                case LEFT_TO_RIGHT: return "Слева направо (Восток)";
+                case BOTTOM_TO_TOP: return "Снизу вверх (Север)";
+                case TOP_TO_BOTTOM: return "Сверху вниз (Юг)";
+            }
+            return "Запад";
+        } else {
+            switch (avalancheDirection) {
+                case RIGHT_TO_LEFT: return "Right -> Left (West)";
+                case LEFT_TO_RIGHT: return "Left -> Right (East)";
+                case BOTTOM_TO_TOP: return "Bottom -> Top (North)";
+                case TOP_TO_BOTTOM: return "Top -> Bottom (South)";
+            }
+            return "West";
+        }
+    }
+
+    private void clearAllAsteroids(boolean withSmoke) {
+        if (engine == null) return;
+        List<CombatEntityAPI> existing = engine.getAsteroids();
+        if (existing != null && !existing.isEmpty()) {
+            Color dustColor = new Color(130, 115, 100, 110);
+            for (CombatEntityAPI ast : existing) {
+                if (ast != null && !ast.isExpired()) {
+                    if (withSmoke && ast.getLocation() != null && !isTitleScreen) {
+                        float radius = Math.max(25f, ast.getCollisionRadius());
+                        engine.addSmokeParticle(ast.getLocation(), new Vector2f(0f, 0f), radius * 0.8f, 0.4f, 0.6f, dustColor);
+                    }
+                    engine.removeEntity(ast);
+                }
+            }
+        }
     }
 
     @Override
@@ -297,36 +427,107 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
         totalCombatTime += amount;
 
-        // 1. Однократное оповещение на старте боя
+        // Process Simulation Hotkeys:
+        // ONLY ACTIVE IN SIMULATION! In regular campaign battles, does nothing.
+        if (engine.isSimulation() && events != null) {
+            boolean shiftHeld = Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) || Keyboard.isKeyDown(Keyboard.KEY_RSHIFT);
+
+            for (InputEventAPI event : events) {
+                if (!event.isConsumed() && event.isKeyDownEvent()) {
+                    int key = event.getEventValue();
+
+                    if (key == Keyboard.KEY_SLASH) {
+                        event.consume();
+                        simulationEnabled = !simulationEnabled;
+                        if (!simulationEnabled) {
+                            activeStreams.clear();
+                            clearAllAsteroids(true);
+                            if (engine.getCombatUI() != null) {
+                                engine.getCombatUI().addMessage(1, IS_RUSSIAN ? "Dynamic Asteroids: Поток ОТКЛЮЧЕН (Нажмите [/] для включения)" : "Dynamic Asteroids: Stream DISABLED (Press [/] to enable)", Color.YELLOW);
+                            }
+                        } else {
+                            if (engine.getCombatUI() != null) {
+                                engine.getCombatUI().addMessage(1, IS_RUSSIAN ? "Dynamic Asteroids: Поток ВКЛЮЧЕН (Нажмите [/] для отключения)" : "Dynamic Asteroids: Stream ENABLED (Press [/] to disable)", Color.GREEN);
+                            }
+                        }
+                    } else if (shiftHeld && (key == Keyboard.KEY_EQUALS || key == Keyboard.KEY_ADD)) {
+                        event.consume();
+                        battleTargetCount = Math.min(1000, battleTargetCount + 50);
+                        maxBackgroundRocks = Math.min(300, battleTargetCount / 2);
+                        showLimitFeedback(IS_RUSSIAN ? "Лимит астероидов УВЕЛИЧЕН: " + battleTargetCount + " шт." : "Asteroid Limit INCREASED: " + battleTargetCount + " rocks", Color.GREEN);
+                    } else if (shiftHeld && (key == Keyboard.KEY_MINUS || key == Keyboard.KEY_SUBTRACT)) {
+                        event.consume();
+                        battleTargetCount = Math.max(25, battleTargetCount - 50);
+                        maxBackgroundRocks = Math.min(150, battleTargetCount / 2);
+                        showLimitFeedback(IS_RUSSIAN ? "Лимит астероидов УМЕНЬШЕН: " + battleTargetCount + " шт." : "Asteroid Limit DECREASED: " + battleTargetCount + " rocks", Color.YELLOW);
+                    }
+                }
+            }
+        }
+
+        // Show simulation one-time hint
+        if (engine.isSimulation() && !simulationHintShown) {
+            simulationHintShown = true;
+            if (engine.getCombatUI() != null) {
+                engine.getCombatUI().addMessage(1, IS_RUSSIAN ? "[Dynamic Asteroids 2.0] [/] Вкл/Выкл | [Shift + / -] Лимит (+-50)" : "[Dynamic Asteroids 2.0] [/] Toggle ON/OFF | [Shift + / -] Adjust limit (+-50)", Color.CYAN);
+            }
+        }
+
+        // Single combat notification
         if (!isTitleScreen && !notifiedPlayer) {
             ShipAPI player = getPlayerShipSafely();
             if (player != null) {
                 notifyTimer += amount;
                 if (notifyTimer >= 0.4f) {
                     notifiedPlayer = true;
-                    showNotification(player);
+                    showInitialNotification(player);
                 }
             }
         }
 
-        // 2. Постоянный статус в нижнем левом углу на панели флагмана (HUD)
+        // HUD status in bottom-left
         if (!isTitleScreen && getPlayerShipSafely() != null) {
             try {
                 String icon = Global.getSettings().getSpriteName("ui", "icon_fleet_danger");
-                if (isInAsteroidField) {
+                if (engine.isSimulation()) {
+                    if (!simulationEnabled) {
+                        engine.maintainStatusForPlayerShip(
+                            "DYNAMIC_ASTEROIDS_STATUS",
+                            icon,
+                            IS_RUSSIAN ? "СИМУЛЯЦИЯ (ОТКЛЮЧЕНА)" : "SIMULATION (DISABLED)",
+                            IS_RUSSIAN ? "Астероиды: ВЫКЛ | [/] Включить" : "Asteroids: OFF | Press [/] to enable",
+                            false
+                        );
+                    } else {
+                        String streamInfo = activeStreams.isEmpty() ? (IS_RUSSIAN ? "Лавина: " : "Avalanche: ") + getAvalancheDirectionLabel() : (IS_RUSSIAN ? "АКТИВНО ПОТОКОВ: " : "STREAMS ACTIVE: ") + activeStreams.size();
+                        engine.maintainStatusForPlayerShip(
+                            "DYNAMIC_ASTEROIDS_STATUS",
+                            icon,
+                            (IS_RUSSIAN ? "СИМУЛЯЦИЯ: ПОЯС (" : "SIMULATION: ASTEROID BELT (") + battleTargetCount + (IS_RUSSIAN ? " макс)" : " max)"),
+                            streamInfo + (IS_RUSSIAN ? " | [Shift +/-] Лимит" : " | [Shift +/-] Limit"),
+                            true
+                        );
+                    }
+                } else if (isInAsteroidField) {
+                    String sub = (IS_RUSSIAN ? "Лавина: " : "Avalanche: ") + getAvalancheDirectionLabel();
+                    if (!activeStreams.isEmpty()) {
+                        sub += IS_RUSSIAN ? (" | Формаций: " + activeStreams.size()) : (" | Formations: " + activeStreams.size() + " active");
+                    } else {
+                        sub += IS_RUSSIAN ? (" | Вместимость: " + battleTargetCount) : (" | Capacity: " + battleTargetCount + " rocks");
+                    }
                     engine.maintainStatusForPlayerShip(
                         "DYNAMIC_ASTEROIDS_STATUS",
                         icon,
-                        "ОПАСНОСТЬ: АСТЕРОИДНЫЙ ШТОРМ",
-                        "Поток: " + getDirectionLabelRu() + " | В поле: " + battleTargetCount + " камней",
+                        IS_RUSSIAN ? "ОПАСНОСТЬ: АСТЕРОИДНЫЙ ПОЯС" : "HAZARD: ASTEROID BELT",
+                        sub,
                         true
                     );
                 } else {
                     engine.maintainStatusForPlayerShip(
                         "DYNAMIC_ASTEROIDS_STATUS",
                         icon,
-                        "ОТКРЫТЫЙ КОСМОС",
-                        "Дрейф: " + getDirectionLabelRu() + " | Редкие метеоры: " + battleTargetCount + " шт.",
+                        IS_RUSSIAN ? "ОТКРЫТЫЙ КОСМОС" : "OPEN SPACE",
+                        (IS_RUSSIAN ? "Дрейф: " : "Drift: ") + getAvalancheDirectionLabel() + (IS_RUSSIAN ? " | Редкие метеоры: " : " | Stray Meteors: ") + openSpaceTargetCount,
                         false
                     );
                 }
@@ -334,12 +535,12 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
             }
         }
 
-        // Пауза во время боя
+        // Pause check
         if (!isTitleScreen && engine.isPaused()) {
             return;
         }
 
-        // Главное меню: фоновое перемещение
+        // Title screen movement
         if (isTitleScreen) {
             List<CombatEntityAPI> list = engine.getAsteroids();
             if (list != null) {
@@ -356,7 +557,12 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
             }
         }
 
-        // 3. Вычисление точных границ видимой зоны (учитывает смещение камеры в меню!)
+        // Simulation disabled check
+        if (engine.isSimulation() && !simulationEnabled) {
+            return;
+        }
+
+        // Visible boundaries and strict despawn margins
         float focalCX = 0f;
         float focalCY = 0f;
         float halfW = engine.getMapWidth() * 0.5f;
@@ -374,13 +580,13 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
             halfH = vh * 0.5f;
         }
 
-        float boundMargin = isTitleScreen ? 400f : 1200f;
-        float minX = focalCX - halfW - boundMargin;
-        float maxX = focalCX + halfW + boundMargin;
-        float minY = focalCY - halfH - boundMargin;
-        float maxY = focalCY + halfH + boundMargin;
+        float despawnMargin = isTitleScreen ? 400f : 350f;
+        float minX = focalCX - halfW - despawnMargin;
+        float maxX = focalCX + halfW + despawnMargin;
+        float minY = focalCY - halfH - despawnMargin;
+        float maxY = focalCY + halfH + despawnMargin;
 
-        // 4. Обновление существующих астероидов
+        // Advance existing asteroids
         List<CombatEntityAPI> asteroids = engine.getAsteroids();
         int activeCount = 0;
 
@@ -395,42 +601,22 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                 Vector2f loc = ast.getLocation();
                 if (loc == null) continue;
 
-                // Удаляем случайные ванильные камни без нашей метки
+                // Untracked vanilla rock removal
                 if (ast.getCustomData().get(TRACKED_KEY) == null) {
                     if (toRemove == null) toRemove = new ArrayList<CombatEntityAPI>();
                     toRemove.add(ast);
                     continue;
                 }
 
-                // Проверка вылета за границу экрана/карты по текущему вектору потока
-                boolean outOfBounds = false;
-                switch (streamDirection) {
-                    case RIGHT_TO_LEFT:
-                        if (loc.x < minX) outOfBounds = true;
-                        break;
-                    case LEFT_TO_RIGHT:
-                        if (loc.x > maxX) outOfBounds = true;
-                        break;
-                    case BOTTOM_TO_TOP:
-                        if (loc.y > maxY) outOfBounds = true;
-                        break;
-                    case TOP_TO_BOTTOM:
-                        if (loc.y < minY) outOfBounds = true;
-                        break;
-                }
-
-                // Боковой улет слишком далеко
-                if (loc.x < minX - 2000f || loc.x > maxX + 2000f || loc.y < minY - 2000f || loc.y > maxY + 2000f) {
-                    outOfBounds = true;
-                }
-
+                // Strict out of bounds check
+                boolean outOfBounds = (loc.x < minX || loc.x > maxX || loc.y < minY || loc.y > maxY);
                 if (outOfBounds) {
                     if (toRemove == null) toRemove = new ArrayList<CombatEntityAPI>();
                     toRemove.add(ast);
                     continue;
                 }
 
-                // Время жизни: ровно указанное время (30 секунд)
+                // Lifespan expiration
                 Object birthObj = ast.getCustomData().get(SPAWN_TIME_KEY);
                 if (birthObj instanceof Float) {
                     float age = totalCombatTime - ((Float) birthObj).floatValue();
@@ -441,53 +627,25 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                     }
                 }
 
-                // КРУИЗ-КОНТРОЛЬ СКОРОСТИ (Анти-торможение):
-                Vector2f vel = ast.getVelocity();
-                if (vel != null) {
-                    float brakeThreshold = streamSpeed * 0.85f;
-                    switch (streamDirection) {
-                        case RIGHT_TO_LEFT:
-                            if (vel.x > -brakeThreshold) vel.x = -streamSpeed;
-                            if (Math.abs(vel.y) > 120.0f) vel.y = Math.signum(vel.y) * 50.0f;
-                            break;
-                        case LEFT_TO_RIGHT:
-                            if (vel.x < brakeThreshold) vel.x = streamSpeed;
-                            if (Math.abs(vel.y) > 120.0f) vel.y = Math.signum(vel.y) * 50.0f;
-                            break;
-                        case BOTTOM_TO_TOP:
-                            if (vel.y < brakeThreshold) vel.y = streamSpeed;
-                            if (Math.abs(vel.x) > 120.0f) vel.x = Math.signum(vel.x) * 50.0f;
-                            break;
-                        case TOP_TO_BOTTOM:
-                            if (vel.y > -brakeThreshold) vel.y = -streamSpeed;
-                            if (Math.abs(vel.x) > 120.0f) vel.x = Math.signum(vel.x) * 50.0f;
-                            break;
-                    }
-                }
+                // Kinetic Cruise Control
+                maintainVelocity(ast);
 
                 activeCount++;
             }
 
-            // Мягкое растворение в пыль по истечении времени жизни
+            // Dissolve into smoke puff on expiration
             if (toPoof != null) {
                 Color dustColor = new Color(130, 115, 100, 110);
                 for (CombatEntityAPI dead : toPoof) {
                     if (dead != null && dead.getLocation() != null && !isTitleScreen) {
                         float radius = Math.max(25f, dead.getCollisionRadius());
-                        Vector2f puffVel = new Vector2f(0f, 0f);
-                        switch (streamDirection) {
-                            case RIGHT_TO_LEFT: puffVel.x = -streamSpeed * 0.15f; break;
-                            case LEFT_TO_RIGHT:  puffVel.x = streamSpeed * 0.15f; break;
-                            case BOTTOM_TO_TOP: puffVel.y = streamSpeed * 0.15f; break;
-                            case TOP_TO_BOTTOM: puffVel.y = -streamSpeed * 0.15f; break;
-                        }
-                        engine.addSmokeParticle(dead.getLocation(), puffVel, radius * 0.8f, 0.4f, 0.7f, dustColor);
+                        engine.addSmokeParticle(dead.getLocation(), new Vector2f(0f, 0f), radius * 0.8f, 0.4f, 0.6f, dustColor);
                     }
                     engine.removeEntity(dead);
                 }
             }
 
-            // Бесследное удаление улетевших за границы
+            // Silent removal for out of bounds
             if (toRemove != null) {
                 for (CombatEntityAPI dead : toRemove) {
                     engine.removeEntity(dead);
@@ -495,110 +653,570 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
             }
         }
 
-        // 5. Поочерёдный спавн с учетом типа локации
-        int targetLimit = isTitleScreen ? 25 : battleTargetCount;
-        spawnTimer += amount;
-        if (spawnTimer >= currentSpawnDelay) {
-            spawnTimer = 0f;
+        // =========================================================================
+        // SPARKLING KINETIC PARTICLE TRAILS (ZERO LAG AT 120 FPS)
+        // =========================================================================
+        if (enableParticleTrails && !isTitleScreen && asteroids != null && !asteroids.isEmpty()) {
+            trailTickTimer += amount;
+            if (trailTickTimer >= 0.038f) { // ~26 ticks per sec
+                trailTickTimer = 0f;
 
-            if (activeCount < targetLimit) {
-                spawnOneAsteroid(focalCX, focalCY, halfW, halfH);
+                Color goldSpark = new Color(255, 205, 115, 220);
+                Color goldDust = new Color(175, 150, 120, 90);
+
+                Color cyanSpark = new Color(120, 220, 255, 220);
+                Color cyanDust = new Color(110, 160, 210, 90);
+
+                Color redSpark = new Color(255, 65, 35, 240);
+                Color redDust = new Color(200, 50, 30, 110);
+
+                for (int i = 0; i < asteroids.size(); i++) {
+                    CombatEntityAPI ast = asteroids.get(i);
+                    if (ast == null || ast.isExpired()) continue;
+                    Object trailObj = ast.getCustomData().get(TRAIL_TYPE_KEY);
+                    if (trailObj instanceof Integer) {
+                        Vector2f loc = ast.getLocation();
+                        Vector2f vel = ast.getVelocity();
+                        if (loc == null || vel == null) continue;
+
+                        int tt = ((Integer) trailObj).intValue();
+                        Color sparkCol = goldSpark;
+                        Color dustCol = goldDust;
+                        if (tt == 2) {
+                            sparkCol = redSpark;
+                            dustCol = redDust;
+                        } else if (tt == 3) {
+                            sparkCol = cyanSpark;
+                            dustCol = cyanDust;
+                        }
+
+                        Vector2f pVel = new Vector2f(-vel.x * 0.04f, -vel.y * 0.04f);
+                        float radius = Math.max(14f, ast.getCollisionRadius());
+
+                        // Sparkling glint
+                        engine.addHitParticle(loc, pVel, radius * 0.55f, 0.85f, 0.28f, sparkCol);
+                        // Subtle soft trailing vapor
+                        engine.addSmoothParticle(loc, pVel, radius * 0.75f, 0.40f, 0.35f, dustCol);
+                    }
+                }
+            }
+        }
+
+        // =========================================================================
+        // OPEN SPACE SPAWN LOGIC (Quiet, rare solitary stray meteors)
+        // =========================================================================
+        if (!isInAsteroidField && !isTitleScreen) {
+            openSpaceTimer += amount;
+            if (openSpaceTimer >= openSpaceCurrentDelay) {
+                openSpaceTimer = 0f;
+                openSpaceCurrentDelay = openSpaceMinDelay + random.nextFloat() * (openSpaceMaxDelay - openSpaceMinDelay);
+                if (activeCount < openSpaceTargetCount) {
+                    spawnOpenSpaceMeteor(focalCX, focalCY, halfW, halfH);
+                }
+            }
+            return;
+        }
+
+        // =========================================================================
+        // ASTEROID FIELD SPAWN LOGIC (300 ROCKS CAPACITY):
+        // 1. Constant Baseline Avalanche (Steady flow in constant direction)
+        // 2. Paced Formation Waves (Every 25-35s: Massive dense shapes, 1-3 angles, 5% Snipe)
+        // =========================================================================
+
+        // 1. Baseline Avalanche Spawner (stays strictly in avalancheDirection across the map)
+        backgroundSpawnTimer += amount;
+        if (backgroundSpawnTimer >= backgroundSpawnInterval) {
+            backgroundSpawnTimer = 0f;
+            if (activeCount < maxBackgroundRocks) {
+                spawnBackgroundAsteroid(focalCX, focalCY, halfW, halfH);
+                activeCount++;
+            }
+        }
+
+        // 2. Dynamic Formation Event Spawner (Paced: every 25-35s)
+        figureEventTimer += amount;
+        if (figureEventTimer >= figureEventInterval && activeStreams.isEmpty()) {
+            figureEventTimer = 0f;
+            figureEventInterval = 25.0f + random.nextFloat() * 10.0f;
+            triggerMultiAngleFormationWave(focalCX, focalCY, halfW, halfH);
+        }
+
+        // 3. Process Active Formation Streams (Dense heavy bursts across 1, 2, or 3 concurrent angles)
+        if (!activeStreams.isEmpty()) {
+            List<ActiveFigureStream> finishedStreams = null;
+
+            for (int i = 0; i < activeStreams.size(); i++) {
+                ActiveFigureStream stream = activeStreams.get(i);
+                if (stream == null || stream.rocksRemaining <= 0) {
+                    if (finishedStreams == null) finishedStreams = new ArrayList<ActiveFigureStream>();
+                    finishedStreams.add(stream);
+                    continue;
+                }
+
+                stream.burstTimer += amount;
+                if (stream.burstTimer >= stream.burstInterval) {
+                    stream.burstTimer = 0f;
+                    if (activeCount < battleTargetCount) {
+                        spawnStreamAsteroid(stream);
+                        activeCount++;
+                    }
+                    stream.rocksRemaining--;
+                }
             }
 
-            // Следующая пауза спавна:
-            if (isTitleScreen || isInAsteroidField) {
-                currentSpawnDelay = fieldSpawnInterval;
-            } else {
-                // В открытом космосе: сильно разный диапазон времени спавна (чтобы не шли волной)
-                currentSpawnDelay = openSpaceMinDelay + random.nextFloat() * (openSpaceMaxDelay - openSpaceMinDelay);
+            if (finishedStreams != null) {
+                activeStreams.removeAll(finishedStreams);
+            }
+        }
+    }
+
+    private void maintainVelocity(CombatEntityAPI ast) {
+        Vector2f vel = ast.getVelocity();
+        if (vel == null) return;
+
+        Object bvxObj = ast.getCustomData().get(BASE_VX_KEY);
+        Object bvyObj = ast.getCustomData().get(BASE_VY_KEY);
+        if (bvxObj instanceof Float && bvyObj instanceof Float) {
+            float bvx = ((Float) bvxObj).floatValue();
+            float bvy = ((Float) bvyObj).floatValue();
+
+            float currentSpeedSq = vel.x * vel.x + vel.y * vel.y;
+            float targetSpeedSq = bvx * bvx + bvy * bvy;
+            if (currentSpeedSq < targetSpeedSq * 0.7f) {
+                vel.x = bvx;
+                vel.y = bvy;
             }
         }
     }
 
     /**
-     * Спавнит ровно 1 астероид вдоль границы со скоростью 3000 ед/сек.
+     * OPEN SPACE: Spawns a gentle solitary stray meteor.
      */
-    private void spawnOneAsteroid(float focalCX, float focalCY, float halfW, float halfH) {
+    private void spawnOpenSpaceMeteor(float focalCX, float focalCY, float halfW, float halfH) {
+        float speed = Math.min(streamSpeed, 400.0f) * (0.8f + random.nextFloat() * 0.4f);
+        float off = 120f;
         float spawnX = 0f;
         float spawnY = 0f;
         float vx = 0f;
         float vy = 0f;
 
-        float offset = isTitleScreen ? 150f : 500f;
-        float jitter = isTitleScreen ? 250f : 1000f;
-
-        switch (streamDirection) {
+        switch (avalancheDirection) {
             case RIGHT_TO_LEFT:
-                spawnX = focalCX + halfW + offset + random.nextFloat() * jitter;
-                spawnY = focalCY + (random.nextFloat() - 0.5f) * (halfH * 2.1f);
-                vx = -streamSpeed;
-                vy = (random.nextFloat() - 0.5f) * 50.0f;
+                spawnX = focalCX + halfW + off;
+                spawnY = focalCY + (random.nextFloat() - 0.5f) * (halfH * 2.0f);
+                vx = -speed;
+                vy = (random.nextFloat() - 0.5f) * 40.0f;
                 break;
-
             case LEFT_TO_RIGHT:
-                spawnX = focalCX - halfW - offset - random.nextFloat() * jitter;
-                spawnY = focalCY + (random.nextFloat() - 0.5f) * (halfH * 2.1f);
-                vx = streamSpeed;
-                vy = (random.nextFloat() - 0.5f) * 50.0f;
+                spawnX = focalCX - halfW - off;
+                spawnY = focalCY + (random.nextFloat() - 0.5f) * (halfH * 2.0f);
+                vx = speed;
+                vy = (random.nextFloat() - 0.5f) * 40.0f;
                 break;
-
             case BOTTOM_TO_TOP:
-                spawnX = focalCX + (random.nextFloat() - 0.5f) * (halfW * 2.1f);
-                spawnY = focalCY - halfH - offset - random.nextFloat() * jitter;
-                vx = (random.nextFloat() - 0.5f) * 50.0f;
+                spawnX = focalCX + (random.nextFloat() - 0.5f) * (halfW * 2.0f);
+                spawnY = focalCY - halfH - off;
+                vx = (random.nextFloat() - 0.5f) * 40.0f;
+                vy = speed;
+                break;
+            case TOP_TO_BOTTOM:
+                spawnX = focalCX + (random.nextFloat() - 0.5f) * (halfW * 2.0f);
+                spawnY = focalCY + halfH + off;
+                vx = (random.nextFloat() - 0.5f) * 40.0f;
+                vy = -speed;
+                break;
+        }
+
+        int type = rollAsteroidType(false);
+        spawnSingleAsteroidEntity(type, spawnX, spawnY, vx, vy, 0);
+    }
+
+    /**
+     * RULE 1: Spawns ambient background avalanche rocks in the CONSTANT battle direction.
+     * Places spawn coordinates directly along the border rectangle (120 units offscreen).
+     */
+    private void spawnBackgroundAsteroid(float focalCX, float focalCY, float halfW, float halfH) {
+        float spawnX = 0f;
+        float spawnY = 0f;
+        float vx = 0f;
+        float vy = 0f;
+
+        float off = 120f;
+
+        switch (avalancheDirection) {
+            case RIGHT_TO_LEFT:
+                spawnX = focalCX + halfW + off;
+                spawnY = focalCY + (random.nextFloat() - 0.5f) * (halfH * 2.0f);
+                vx = -streamSpeed;
+                vy = (random.nextFloat() - 0.5f) * 40.0f;
+                break;
+            case LEFT_TO_RIGHT:
+                spawnX = focalCX - halfW - off;
+                spawnY = focalCY + (random.nextFloat() - 0.5f) * (halfH * 2.0f);
+                vx = streamSpeed;
+                vy = (random.nextFloat() - 0.5f) * 40.0f;
+                break;
+            case BOTTOM_TO_TOP:
+                spawnX = focalCX + (random.nextFloat() - 0.5f) * (halfW * 2.0f);
+                spawnY = focalCY - halfH - off;
+                vx = (random.nextFloat() - 0.5f) * 40.0f;
                 vy = streamSpeed;
                 break;
-
             case TOP_TO_BOTTOM:
-                spawnX = focalCX + (random.nextFloat() - 0.5f) * (halfW * 2.1f);
-                spawnY = focalCY + halfH + offset + random.nextFloat() * jitter;
-                vx = (random.nextFloat() - 0.5f) * 50.0f;
+                spawnX = focalCX + (random.nextFloat() - 0.5f) * (halfW * 2.0f);
+                spawnY = focalCY + halfH + off;
+                vx = (random.nextFloat() - 0.5f) * 40.0f;
                 vy = -streamSpeed;
                 break;
         }
 
-        float r = random.nextFloat();
-        int type = 0;
-        if (r < 0.45f) type = 0;
-        else if (r < 0.75f) type = 1;
-        else if (r < 0.93f) type = 2;
-        else type = 3;
+        int type = rollAsteroidType(false);
+        spawnSingleAsteroidEntity(type, spawnX, spawnY, vx, vy, 0);
+    }
 
-        CombatEntityAPI ast = engine.spawnAsteroid(type, spawnX, spawnY, vx, vy);
-        if (ast != null) {
-            ast.getVelocity().set(vx, vy);
-            ast.setFacing(random.nextFloat() * 360f);
-            ast.setAngularVelocity((random.nextFloat() - 0.5f) * 50f);
+    /**
+     * Solves exact ray intersection with the map bounding rectangle:
+     * Guarantees spawn point lies PRECISELY along the outer map edge (150 units offscreen)
+     * for ANY arbitrary angle (0 to 360 degrees).
+     */
+    private Vector2f getRectangleBoundaryPoint(float focalCX, float focalCY, float halfW, float halfH, float angle) {
+        float W = halfW + 150f;
+        float H = halfH + 150f;
+        float cosA = (float) Math.cos(angle);
+        float sinA = (float) Math.sin(angle);
 
-            ast.setCustomData(TRACKED_KEY, Boolean.TRUE);
-            ast.setCustomData(SPAWN_TIME_KEY, Float.valueOf(totalCombatTime));
+        float absCos = Math.abs(cosA) > 1e-4f ? Math.abs(cosA) : 1e-4f;
+        float absSin = Math.abs(sinA) > 1e-4f ? Math.abs(sinA) : 1e-4f;
+
+        float tX = W / absCos;
+        float tY = H / absSin;
+        float t = Math.min(tX, tY);
+
+        return new Vector2f(focalCX + t * cosA, focalCY + t * sinA);
+    }
+
+    /**
+     * RULES 2, 3:
+     * - Omnidirectional 360 lines across the map rectangle.
+     * - Multi-Angle Duplication: 1, 2, or 3 simultaneous streams.
+     * - Heavy rock allocations (60 to 90 rocks per wave) for dense, dramatic formations!
+     * - 5% Targeted Snipe towards any random alive ship.
+     */
+    private void triggerMultiAngleFormationWave(float focalCX, float focalCY, float halfW, float halfH) {
+        // Roll number of concurrent streams/angles:
+        int streamCount = 1;
+        float roll = random.nextFloat();
+        if (roll < 0.45f) {
+            streamCount = 1;
+        } else if (roll < 0.85f) {
+            streamCount = 2; // Dual stream from 2 angles
+        } else {
+            streamCount = 3; // Triple cross from 3 angles
+        }
+
+        // Heavy rock budget for 300-capacity battles:
+        // 1 stream  -> 70 rocks (massive continuous torrent / cloud)
+        // 2 streams -> 40 rocks each (total 80)
+        // 3 streams -> 28 rocks each (total 84)
+        int rocksPerStream = 70;
+        if (streamCount == 2) rocksPerStream = 40;
+        else if (streamCount == 3) rocksPerStream = 28;
+
+        float baseEntryAngle = random.nextFloat() * (float) (Math.PI * 2.0);
+
+        // Pick base figure type for this wave
+        FigureType[] allFigures = FigureType.values();
+        FigureType waveFigureType = allFigures[random.nextInt(allFigures.length)];
+
+        // Query eligible alive ships for 5% targeted snipe roll
+        List<ShipAPI> eligibleShips = new ArrayList<ShipAPI>();
+        List<ShipAPI> allShips = engine.getShips();
+        if (allShips != null) {
+            for (ShipAPI ship : allShips) {
+                if (ship != null && ship.isAlive() && !ship.isHulk() && !ship.isShuttlePod()) {
+                    eligibleShips.add(ship);
+                }
+            }
+        }
+
+        boolean anyTargeted = false;
+
+        for (int i = 0; i < streamCount; i++) {
+            ActiveFigureStream stream = new ActiveFigureStream();
+            stream.type = waveFigureType;
+            stream.rocksRemaining = rocksPerStream;
+            stream.burstInterval = (waveFigureType == FigureType.COMET_SWARM) ? 0.008f : 0.016f;
+            stream.beamSpread = beamWidth;
+
+            // Distinct angles across the boundary
+            float entryAngle = baseEntryAngle + i * (float) (Math.PI * 2.0 / streamCount) + (random.nextFloat() - 0.5f) * 0.35f;
+
+            // Precise boundary point along map rectangle (no out-of-bounds stalling!)
+            Vector2f startPt = getRectangleBoundaryPoint(focalCX, focalCY, halfW, halfH, entryAngle);
+            stream.origin.set(startPt.x, startPt.y);
+
+            // 5% Chance: lock vector directly towards ANY random alive ship!
+            boolean isThisStreamTargeted = (random.nextFloat() < targetedSnipeChance) && !eligibleShips.isEmpty();
+
+            if (isThisStreamTargeted) {
+                ShipAPI target = eligibleShips.get(random.nextInt(eligibleShips.size()));
+                stream.isTargeted = true;
+                stream.targetShip = target;
+                stream.type = FigureType.LANCE_BEAM;
+                anyTargeted = true;
+
+                float tx = target.getLocation().x;
+                float ty = target.getLocation().y;
+                float dx = tx - startPt.x;
+                float dy = ty - startPt.y;
+                float dist = (float) Math.sqrt(dx * dx + dy * dy);
+                if (dist > 0.001f) {
+                    stream.velocity.set((dx / dist) * streamSpeed, (dy / dist) * streamSpeed);
+                } else {
+                    stream.velocity.set(-streamSpeed, 0f);
+                }
+
+                showTargetedAlert(target);
+            } else {
+                // Arbitrary line across the battlefield towards opposite/interior area
+                float targetX = focalCX + (random.nextFloat() - 0.5f) * (halfW * 1.2f);
+                float targetY = focalCY + (random.nextFloat() - 0.5f) * (halfH * 1.2f);
+
+                float dx = targetX - startPt.x;
+                float dy = targetY - startPt.y;
+                float dist = (float) Math.sqrt(dx * dx + dy * dy);
+                if (dist > 0.001f) {
+                    stream.velocity.set((dx / dist) * streamSpeed, (dy / dist) * streamSpeed);
+                } else {
+                    stream.velocity.set(-streamSpeed, 0f);
+                }
+            }
+
+            // Perpendicular unit vector for width
+            float vx = stream.velocity.x;
+            float vy = stream.velocity.y;
+            float norm = (float) Math.sqrt(vx * vx + vy * vy);
+            if (norm > 0.001f) {
+                stream.perp.set(-vy / norm, vx / norm);
+            } else {
+                stream.perp.set(0f, 1f);
+            }
+
+            activeStreams.add(stream);
+        }
+
+        // Paced non-spammy combat announcements
+        if (!anyTargeted) {
+            if (IS_RUSSIAN) {
+                if (streamCount == 1) {
+                    notifyWaveIncoming("ВНИМАНИЕ: " + waveFigureType.getDisplayName().toUpperCase() + " прорезает сектор!");
+                } else if (streamCount == 2) {
+                    notifyWaveIncoming("ДВОЙНОЙ ЗАЛП: 2 волны " + waveFigureType.getDisplayName() + " с разных углов!");
+                } else {
+                    notifyWaveIncoming("ТРОЙНОЙ ШКВАЛ: 3 волны " + waveFigureType.getDisplayName() + " пересекают сектор!");
+                }
+            } else {
+                if (streamCount == 1) {
+                    notifyWaveIncoming(waveFigureType.getDisplayName().toUpperCase() + " incoming across sector!");
+                } else if (streamCount == 2) {
+                    notifyWaveIncoming("DUAL CONVERGENCE: 2 " + waveFigureType.getDisplayName() + " waves converging!");
+                } else {
+                    notifyWaveIncoming("TRIPLE CROSS-BARRAGE: 3 " + waveFigureType.getDisplayName() + " waves intersecting!");
+                }
+            }
         }
     }
 
-    private void showNotification(ShipAPI player) {
-        try {
-            System.out.println(">>> DynamicAsteroids: IN_FIELD=" + isInAsteroidField + ", DIRECTION=" + streamDirection + ", TARGET_COUNT=" + battleTargetCount + " <<<");
+    private void spawnStreamAsteroid(ActiveFigureStream stream) {
+        float spawnX = 0f;
+        float spawnY = 0f;
+        float vx = stream.velocity.x;
+        float vy = stream.velocity.y;
+        int type = rollAsteroidType(stream.type == FigureType.HEAVY_MEGALITHS);
 
+        // Visual Trail type:
+        // 2: Crimson plasma trail for targeted snipe!
+        // 3: Glowing cyan comet trail for Comet Swarm!
+        // 1: Golden cosmic spark trail for Lance Beam!
+        int trailType = 0;
+        if (stream.isTargeted) {
+            trailType = 2;
+        } else if (stream.type == FigureType.COMET_SWARM) {
+            trailType = 3;
+        } else if (stream.type == FigureType.LANCE_BEAM) {
+            trailType = 1;
+        }
+
+        switch (stream.type) {
+            case LANCE_BEAM:
+                // Thick concentrated beam with both lateral spread and longitudinal depth
+                float lateral = (random.nextFloat() - 0.5f) * stream.beamSpread;
+                float longitudinal = (random.nextFloat() - 0.5f) * 200f;
+                float norm = (float) Math.sqrt(vx * vx + vy * vy);
+                float normVx = (norm > 0.001f) ? (vx / norm) : 0f;
+                float normVy = (norm > 0.001f) ? (vy / norm) : 0f;
+
+                spawnX = stream.origin.x + stream.perp.x * lateral + normVx * longitudinal;
+                spawnY = stream.origin.y + stream.perp.y * lateral + normVy * longitudinal;
+                break;
+
+            case COMET_SWARM:
+                // Massive dense cloud cluster of radius ~850u
+                float ang = random.nextFloat() * (float) (Math.PI * 2.0);
+                float r = (float) Math.sqrt(random.nextFloat()) * 850.0f; // Uniform circle distribution
+                spawnX = stream.origin.x + (float) Math.cos(ang) * r;
+                spawnY = stream.origin.y + (float) Math.sin(ang) * r;
+                vx += (random.nextFloat() - 0.5f) * 45.0f;
+                vy += (random.nextFloat() - 0.5f) * 45.0f;
+                break;
+
+            case DUAL_RAILS:
+                // Parallel rails spaced 1600 units apart
+                float railOffset = random.nextBoolean() ? -800f : 800f;
+                float railJitter = (random.nextFloat() - 0.5f) * 350f;
+                spawnX = stream.origin.x + stream.perp.x * (railOffset + railJitter);
+                spawnY = stream.origin.y + stream.perp.y * (railOffset + railJitter);
+                break;
+
+            case EXPANDING_FAN:
+                // Conical fan spreading at +-22 degrees
+                float spreadAngle = (random.nextFloat() - 0.5f) * 0.40f;
+                float baseAngle = (float) Math.atan2(stream.velocity.y, stream.velocity.x) + spreadAngle;
+                vx = streamSpeed * (float) Math.cos(baseAngle);
+                vy = streamSpeed * (float) Math.sin(baseAngle);
+                float fanJitter = (random.nextFloat() - 0.5f) * 350f;
+                spawnX = stream.origin.x + stream.perp.x * fanJitter;
+                spawnY = stream.origin.y + stream.perp.y * fanJitter;
+                break;
+
+            case HEAVY_MEGALITHS:
+                type = (random.nextFloat() < 0.55f) ? 2 : 3;
+                float megaJitter = (random.nextFloat() - 0.5f) * stream.beamSpread;
+                spawnX = stream.origin.x + stream.perp.x * megaJitter;
+                spawnY = stream.origin.y + stream.perp.y * megaJitter;
+                break;
+        }
+
+        spawnSingleAsteroidEntity(type, spawnX, spawnY, vx, vy, trailType);
+    }
+
+    private void spawnSingleAsteroidEntity(int type, float x, float y, float vx, float vy, int trailType) {
+        CombatEntityAPI ast = engine.spawnAsteroid(type, x, y, vx, vy);
+        if (ast != null) {
+            ast.getVelocity().set(vx, vy);
+            ast.setFacing(random.nextFloat() * 360f);
+            ast.setAngularVelocity((random.nextFloat() - 0.5f) * 55f);
+
+            ast.setCustomData(TRACKED_KEY, Boolean.TRUE);
+            ast.setCustomData(SPAWN_TIME_KEY, Float.valueOf(totalCombatTime));
+            ast.setCustomData(BASE_VX_KEY, Float.valueOf(vx));
+            ast.setCustomData(BASE_VY_KEY, Float.valueOf(vy));
+
+            if (enableParticleTrails) {
+                if (trailType > 0) {
+                    ast.setCustomData(TRAIL_TYPE_KEY, Integer.valueOf(trailType));
+                } else if (random.nextFloat() < particleTrailChance) {
+                    ast.setCustomData(TRAIL_TYPE_KEY, Integer.valueOf(1)); // Normal golden spark
+                }
+            }
+        }
+    }
+
+    private int rollAsteroidType(boolean forceHeavy) {
+        if (forceHeavy) return (random.nextFloat() < 0.55f) ? 2 : 3;
+        float r = random.nextFloat();
+        if (r < 0.45f) return 0;
+        if (r < 0.75f) return 1;
+        if (r < 0.93f) return 2;
+        return 3;
+    }
+
+    private void showInitialNotification(ShipAPI player) {
+        try {
             if (isInAsteroidField) {
-                // Всплывающий текст над флагманом игрока (тревожный красный)
                 engine.addFloatingText(
                     player.getLocation(),
-                    "ОПАСНОСТЬ: АСТЕРОИДНЫЙ ШТОРМ (" + getDirectionLabelRu() + ", " + battleTargetCount + " шт.)!",
-                    26f,
-                    new Color(255, 65, 65),
+                    (IS_RUSSIAN ? "ОПАСНОСТЬ: АСТЕРОИДНЫЙ ПОЯС (" : "HAZARD: ASTEROID BELT (") + getAvalancheDirectionLabel() + ")",
+                    24f,
+                    new Color(255, 120, 60),
                     player,
                     0.35f,
                     3.5f
                 );
-
-                // Журнал сообщений боя (вверху слева) - латиница
                 if (engine.getCombatUI() != null) {
-                    engine.getCombatUI().addMessage(1, "HAZARD: Asteroid Stream! Flow: " + getDirectionLabelEn() + " | Field: " + battleTargetCount + " rocks");
+                    engine.getCombatUI().addMessage(1, (IS_RUSSIAN ? "ОПАСНОСТЬ: Астероидный пояс (" : "HAZARD: Asteroid Belt active (") + battleTargetCount + (IS_RUSSIAN ? " макс). Поток: " : " max). Baseline flow: ") + getAvalancheDirectionLabel());
                 }
             } else {
-                // В открытом космосе: без тревожной сирены, аккуратная запись в журнал боя
                 if (engine.getCombatUI() != null) {
-                    engine.getCombatUI().addMessage(1, "Dynamic Asteroids: Deep space - stray meteors (" + battleTargetCount + " rocks)");
+                    engine.getCombatUI().addMessage(1, IS_RUSSIAN ? "Dynamic Asteroids: Открытый космос - редкие метеоры" : "Dynamic Asteroids: Deep space - sporadic stray meteors");
+                }
+            }
+        } catch (Throwable t) {
+        }
+    }
+
+    private void notifyWaveIncoming(String text) {
+        try {
+            if (engine.getCombatUI() != null && !isTitleScreen) {
+                engine.getCombatUI().addMessage(1, (IS_RUSSIAN ? "ВНИМАНИЕ: " : "WARNING: ") + text, new Color(255, 175, 50));
+            }
+        } catch (Throwable t) {
+        }
+    }
+
+    private void showLimitFeedback(String text, Color color) {
+        try {
+            ShipAPI player = getPlayerShipSafely();
+            if (player != null && !isTitleScreen) {
+                engine.addFloatingText(
+                    player.getLocation(),
+                    text,
+                    22f,
+                    color,
+                    player,
+                    0.25f,
+                    2.5f
+                );
+            }
+            if (engine.getCombatUI() != null && !isTitleScreen) {
+                engine.getCombatUI().addMessage(1, text, color);
+            }
+        } catch (Throwable t) {
+        }
+    }
+
+    private void showTargetedAlert(ShipAPI ship) {
+        try {
+            if (ship == null || isTitleScreen) return;
+
+            boolean isPlayer = (engine != null && ship == engine.getPlayerShip());
+            if (isPlayer) {
+                engine.addFloatingText(
+                    ship.getLocation(),
+                    IS_RUSSIAN ? "КРИТИЧЕСКАЯ ТРЕВОГА: ПРИЦЕЛЬНЫЙ ШКВАЛ ПО ВАШЕЙ ПОЗИЦИИ!" : "CRITICAL ALERT: METEOR TORRENT TARGETED ON YOUR POSITION!",
+                    26f,
+                    new Color(255, 30, 30),
+                    ship,
+                    0.35f,
+                    4.0f
+                );
+                if (engine.getCombatUI() != null) {
+                    engine.getCombatUI().addMessage(1, IS_RUSSIAN ? "КРИТИЧЕСКАЯ ОПАСНОСТЬ: 5% Прицельный захват! Шквал астероидов по флагману!" : "CRITICAL HAZARD: 5% Torrent Lock! Hypersonic barrage targeted on flagship!", new Color(255, 50, 50));
+                }
+            } else {
+                String shipName = ship.getName();
+                String hullName = (ship.getHullSpec() != null) ? ship.getHullSpec().getHullName() : (IS_RUSSIAN ? "Корабль" : "Ship");
+                engine.addFloatingText(
+                    ship.getLocation(),
+                    IS_RUSSIAN ? "ПРИЦЕЛЬНЫЙ ШКВАЛ АСТЕРОИДОВ!" : "METEOR TORRENT TARGETED!",
+                    20f,
+                    new Color(255, 80, 50),
+                    ship,
+                    0.35f,
+                    3.0f
+                );
+                if (engine.getCombatUI() != null) {
+                    engine.getCombatUI().addMessage(1, (IS_RUSSIAN ? "ОПАСНОСТЬ: 5% Захват цели на " : "HAZARD: 5% Torrent Lock on ") + shipName + " (" + hullName + ")!", new Color(255, 120, 50));
                 }
             }
         } catch (Throwable t) {

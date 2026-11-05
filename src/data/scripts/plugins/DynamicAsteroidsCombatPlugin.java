@@ -94,8 +94,8 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
     private StreamDirection avalancheDirection = StreamDirection.RIGHT_TO_LEFT;
 
     // Stream settings (Default 200 - 300)
-    private int minFieldRocks = 200;
-    private int maxFieldRocks = 300;
+    private int minFieldRocks = 100;
+    private int maxFieldRocks = 1000;
     private float streamSpeed = DEFAULT_STREAM_SPEED;
     private float asteroidLifespan = 30.0f;    // 30 seconds lifespan
     private float beamWidth = 650.0f;          // Corridor width for beams
@@ -251,7 +251,8 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
             int minR = Math.min(minFieldRocks, maxFieldRocks);
             int maxR = Math.max(minFieldRocks, maxFieldRocks);
             battleTargetCount = minR + random.nextInt(Math.max(1, maxR - minR + 1));
-            maxBackgroundRocks = Math.min(140, battleTargetCount / 2);
+            maxBackgroundRocks = Math.min(450, battleTargetCount / 2);
+            backgroundSpawnInterval = Math.max(0.015f, 0.055f * (300f / Math.max(300, battleTargetCount)));
         } else {
             int minR = Math.min(openSpaceMinRocks, openSpaceMaxRocks);
             int maxR = Math.max(openSpaceMinRocks, openSpaceMaxRocks);
@@ -310,8 +311,9 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
         }
 
         // Clamping (Defaults 200 to 300)
-        if (minFieldRocks < 50) minFieldRocks = 200;
+        if (minFieldRocks < 20) minFieldRocks = 100;
         if (maxFieldRocks < minFieldRocks) maxFieldRocks = minFieldRocks + 100;
+        if (maxFieldRocks > 2500) maxFieldRocks = 2500;
         if (streamSpeed > 5000f) streamSpeed = 5000f;
         if (asteroidLifespan <= 0f) asteroidLifespan = 30.0f;
         if (beamWidth < 300f) beamWidth = 650f;
@@ -918,9 +920,10 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
         // 1 stream  -> 70 rocks (massive continuous torrent / cloud)
         // 2 streams -> 40 rocks each (total 80)
         // 3 streams -> 28 rocks each (total 84)
-        int rocksPerStream = 70;
-        if (streamCount == 2) rocksPerStream = 40;
-        else if (streamCount == 3) rocksPerStream = 28;
+        float capScale = Math.max(1.0f, battleTargetCount / 300.0f);
+        int rocksPerStream = Math.round(70 * capScale);
+        if (streamCount == 2) rocksPerStream = Math.round(40 * capScale);
+        else if (streamCount == 3) rocksPerStream = Math.round(28 * capScale);
 
         float baseEntryAngle = random.nextFloat() * (float) (Math.PI * 2.0);
 

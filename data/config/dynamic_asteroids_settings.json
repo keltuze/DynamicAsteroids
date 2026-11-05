@@ -6,9 +6,9 @@
 	"enableInSimulation": true,
 	"simulationToggleKey": "SLASH",
 
-	# Asteroid Stream Settings (300 Asteroids Zero Lag)
-	"minFieldRocks": 200,
-	"maxFieldRocks": 300,
+	# Asteroid Stream Settings (100 to 1000 Rocks Configurable)
+	"minFieldRocks": 100,
+	"maxFieldRocks": 1000,
 	"fieldSurgeSpeed": 3000.0,
 	"asteroidLifespan": 30.0,
 

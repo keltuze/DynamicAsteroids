@@ -1,0 +1,11 @@
+{
+    "masterVersionFile": "https://raw.githubusercontent.com/keltuze/DynamicAsteroids/main/dynamic_asteroids.version",
+    "modName": "Dynamic Asteroids",
+    "modThreadId": 0,
+    "modVersion": {
+        "major": 1,
+        "minor": 0,
+        "patch": 0
+    },
+    "directDownloadURL": "https://github.com/keltuze/DynamicAsteroids/releases/latest/download/DynamicAsteroids_v1.0.0.zip"
+}

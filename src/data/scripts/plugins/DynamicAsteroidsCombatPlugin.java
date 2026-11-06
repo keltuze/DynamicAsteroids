@@ -359,6 +359,10 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                 try {
                     method = clazz.getMethod("getDouble", String.class, String.class);
                 } catch (NoSuchMethodException e2) {
+                    try {
+                        method = clazz.getMethod("getInt", String.class, String.class);
+                    } catch (NoSuchMethodException e3) {
+                    }
                 }
             }
             if (method != null) {

@@ -3,42 +3,50 @@
 [![Game Version](https://img.shields.io/badge/Starsector-0.98a--RC8%20%7C%200.97a-blue.svg)](https://fractalsoftworks.com/)
 [![Java Compatibility](https://img.shields.io/badge/Java-8%20(Bytecode%2052.0)-green.svg)]()
 [![LunaLib](https://img.shields.io/badge/LunaLib-Compatible-orange.svg)]()
-[![Version](https://img.shields.io/badge/Version-2.0.2%20(Cyclone%20Edition)-red.svg)](https://github.com/keltuze/DynamicAsteroids/releases/latest)
+[![Version](https://img.shields.io/badge/Version-2.0.3%20(Cyclone%20Edition)-red.svg)](https://github.com/keltuze/DynamicAsteroids/releases/latest)
 
 > **Breathes life into static asteroid belts!**  
 > In vanilla Starsector, asteroids just hang motionless in space. **Dynamic Asteroids** turns them into active, rushing rivers of space debris during combat.
 
 ---
 
-## 📦 Downloads (v2.0.2 Releases)
+## 📦 Downloads (v2.0.3 Releases)
 
 All 4 versions are available in the **[Releases](https://github.com/keltuze/DynamicAsteroids/releases/latest)** tab:
 
-| Edition | Language | Velocity / Mechanics | Download |
+| Edition | Language | Velocity / Mechanics | Download (Latest v2.0.3) |
 | :--- | :---: | :--- | :--- |
-| **Extreme Edition 2.0 (Cyclone)** | English | **3000 u/s** — High-velocity kinetic storm, 100–1000 rocks stream, 60s lifespan, 360° cyclones, 5% sniper barrages, English UI | [Download ZIP](https://github.com/keltuze/DynamicAsteroids/releases/latest/download/DynamicAsteroids_Extreme_v2.0.2.zip) |
-| **Extreme Edition 2.0 (Циклон)** | Русский | **3000 u/s** — Сокрушительный кинетический импульс, поток 100–1000 камней, время жизни 60 сек, циклоны 360°, русский интерфейс | [Скачать ZIP](https://github.com/keltuze/DynamicAsteroids/releases/latest/download/DynamicAsteroids_Extreme_RU_v2.0.2.zip) |
-| **Standard Edition 2.0 (Cyclone)** | English | **600 u/s** — Safe balanced velocity cap, 100–1000 rocks stream, 60s lifespan, 360° cyclones, 5% sniper barrages, English UI | [Download ZIP](https://github.com/keltuze/DynamicAsteroids/releases/latest/download/DynamicAsteroids_v2.0.2.zip) |
-| **Standard Edition 2.0 (Циклон)** | Русский | **600 u/s** — Безопасная скорость столкновений, поток 100–1000 камней, время жизни 60 сек, циклоны 360°, русский интерфейс | [Скачать ZIP](https://github.com/keltuze/DynamicAsteroids/releases/latest/download/DynamicAsteroids_RU_v2.0.2.zip) |
+| **Extreme Edition v2.0.3 (Cyclone)** | English | **3000 u/s** — High-velocity kinetic storm, 100–1000 rocks stream, 60s lifespan, 360° cyclones, 5% sniper barrages, English UI | [Download Extreme EN (v2.0.3)](https://github.com/keltuze/DynamicAsteroids/releases/latest/download/DynamicAsteroids_Extreme_v2.0.3.zip) |
+| **Extreme Edition v2.0.3 (Циклон)** | Русский | **3000 u/s** — Сокрушительный кинетический импульс, поток 100–1000 камней, время жизни 60 сек, циклоны 360°, русский интерфейс | [Скачать Extreme RU (v2.0.3)](https://github.com/keltuze/DynamicAsteroids/releases/latest/download/DynamicAsteroids_Extreme_RU_v2.0.3.zip) |
+| **Standard Edition v2.0.3 (Cyclone)** | English | **600 u/s** — Safe balanced velocity cap, 100–1000 rocks stream, 60s lifespan, 360° cyclones, 5% sniper barrages, English UI | [Download Standard EN (v2.0.3)](https://github.com/keltuze/DynamicAsteroids/releases/latest/download/DynamicAsteroids_v2.0.3.zip) |
+| **Standard Edition v2.0.3 (Циклон)** | Русский | **600 u/s** — Безопасная скорость столкновений, поток 100–1000 камней, время жизни 60 сек, циклоны 360°, русский интерфейс | [Скачать Standard RU (v2.0.3)](https://github.com/keltuze/DynamicAsteroids/releases/latest/download/DynamicAsteroids_RU_v2.0.3.zip) |
 
 ---
 
-## 🌟 What's New in v2.0.2 (Cyclone Edition)
+## 🌟 What's New in v2.0.3 (Engine Polish & Clean Simulation)
 
-* **Extended 60-Second Asteroid Lifespan:** Extensive combat testing revealed that extending rock lifespan from 30s to **60 seconds** has virtually zero performance impact (rock-solid 120 FPS preserved). This drastically improves immersion, allowing debris streams and tactical clouds to persist across larger battle sectors!
-* **Expanded 100–1000 Asteroids Field Stream Range:** Battles in asteroid fields dynamically roll asteroid capacity between **100 and 1000 asteroids** (configurable via settings and LunaLib). Formation wave budgets scale dynamically with field density.
-* **Living Planetary Ring Avalanche:** Continuous baseline avalanche steadily flows across the sector in one constant cardinal direction throughout the entire fight, defining the real orbital macro-drift of the planetary ring.
+* **Vanilla Asteroid Spawning Suppression:** The combat engine's vanilla background asteroid generators are now fully suppressed. In combat and simulator battles, asteroid physics and visuals are handled exclusively by Dynamic Asteroids — eliminating belt overlapping, creeping vanilla rocks from the left edge, and boundary point glitches.
+* **Clean Simulator Toggle (`[/]`):** Pressing `[/]` in the simulator cleanly dissolves all active asteroids into soft smoke. Vanilla background asteroids no longer creep in, leaving the sector completely clear until toggled back on.
+* **Expanded Simulator Capacity Controls (`[Shift +]`):** The live density limit in simulation can now be scaled smoothly on the fly far beyond the previous 1000-rock cap (up to 10,000) for performance stress-testing, with dynamic background budgets and rapid spawn pacing.
+* **Russian Translation Encoding Fix:** Restored full UTF-8 encoding across bytecode string constants for all Russian edition HUD alerts and battle logs.
+
+<details>
+<summary><b>Previous Version Highlights (v2.0.2 & v2.0.0 Cyclone Edition)</b></summary>
+
+* **Extended 60-Second Asteroid Lifespan (v2.0.2):** Rock lifespan extended from 30s to 60 seconds with zero performance penalty (rock-solid 120 FPS). Debris streams and tactical formations persist across larger sectors.
 * **360° Omnidirectional Cyclones & Tactical Formations:** Every 25–35 seconds, complex high-density formations slice across the sector from arbitrary 360° angles (Meteor Lances, Comet Swarms, Dual Rails, Expanding Fans, and Megalith Packs). They can duplicate and converge from 1, 2, or 3 simultaneous angles!
 * **5% Targeted Sniper Torrents:** Any formation stream has a 5% chance to lock its vector directly across the position of an alive ship (player flagship, enemy cruiser, or ally) with high-priority visual warnings and combat log alerts!
 * **Sparkling Kinetic Trails:** Optimized particle glints and vapor tails (golden sparks, cyan comet dust, crimson plasma for sniper locks) with zero FPS drop.
-* **Rock-Solid 120 FPS at up to 1000 Asteroids:** Immediate off-grid despawning, strict ray-rectangle boundary intersection, and zero border clutter.
-* **Refit Simulator Live Controls:** Press `[/]` to toggle streams ON/OFF; press `[Shift +]` / `[Shift -]` to adjust rock capacity on the fly (+-50 rocks) for stress testing.
+* **Rock-Solid 120 FPS:** Immediate off-grid despawning, strict ray-rectangle boundary intersection, and zero border clutter.
+
+</details>
 
 ---
 
 <a id="how-it-works"></a>
 ## ⚙️ How It Works
 
+* **Pure Mod Physics & Vanilla Generator Suppression:** Completely silences Starsector's internal combat asteroid generators to avoid conflicting physics or visual glitches.
 * **Strict Terrain Detection:** Uses the campaign world map to strictly check if your fleet is inside an asteroid belt, field, or planetary ring (`ASTEROID_BELT`, `ASTEROID_FIELD`, `RING`).
 * **Asteroid Fields & Planetary Rings (100–1000 Rocks Configurable):**
   * **Continuous Avalanche:** Steady ambient river flows across the battlefield in one constant cardinal direction (West, East, North, South).
@@ -60,9 +68,9 @@ All 4 versions are available in the **[Releases](https://github.com/keltuze/Dyna
 
 | Hotkey | Action | Description |
 | :--- | :--- | :--- |
-| `[/]` (Slash) | **Toggle Stream** | Instantly turns asteroid streams ON or OFF in simulator battles. |
-| `[Shift +]` | **Increase Limit (+50)** | Increases active battle asteroid limit (+50 rocks) for stress-testing. |
-| `[Shift -]` | **Decrease Limit (-50)** | Decreases active battle asteroid limit (-50 rocks). |
+| `[/]` (Slash) | **Toggle Stream** | Instantly turns asteroid streams ON or OFF in simulator battles. Cleanly despawns all rocks. |
+| `[Shift +]` | **Increase Limit (+50)** | Increases active battle asteroid limit (+50 rocks per press) for stress-testing (up to 10,000). |
+| `[Shift -]` | **Decrease Limit (-50)** | Decreases active battle asteroid limit (-50 rocks per press). |
 
 > [!NOTE]
 > Simulator controls are strictly blocked during campaign battles to prevent exploits.
@@ -79,7 +87,7 @@ All parameters can be tuned in real-time in-game via **LunaLib (F2)** or configu
 | `minFieldRocks` | `100` | Minimum asteroid density rolled at battle start. |
 | `maxFieldRocks` | `1000` | Maximum concurrent asteroids in asteroid belts (up to 2000 in LunaLib). |
 | `fieldSurgeSpeed` | `3000.0` / `600.0` | Flight velocity of asteroids (3000 for Extreme, 600 for Standard). |
-| `asteroidLifespan` | `60.0` | Seconds before an asteroid dissolves into smoke (now 60s for enhanced persistence). |
+| `asteroidLifespan` | `60.0` | Seconds before an asteroid dissolves into smoke (60s for enhanced persistence). |
 | `enableParticleTrails`| `true` | Enables sparkling kinetic tails behind flying asteroids. |
 | `particleTrailChance` | `0.20` | Fraction of rocks that emit sparkling particle tails (20%). |
 | `targetedSnipeChance` | `0.05` | Chance for incoming streams to lock course directly through a ship (5%). |
@@ -101,19 +109,20 @@ All parameters can be tuned in real-time in-game via **LunaLib (F2)** or configu
 <details>
 <summary><b>🇷🇺 Русское описание / Russian Overview (Нажмите, чтобы развернуть)</b></summary>
 
-### Dynamic Asteroids: Extreme Edition 2.0 (Cyclone Edition)
+### Dynamic Asteroids v2.0.3 (Cyclone Edition)
 
 Серьезное обновление боевой динамики астероидных полей:
 
-* **Живой пояс астероидов:** Диапазон потока в бою настраивается от 100 до 1000 астероидов, а время жизни увеличено до 60 секунд! Непрерывная фоновая лавина течёт строго в одном генеральном направлении на протяжении всего боя, задавая реальный макро-дрейф планетного кольца.
+* **Подавление ванильного генератора:** В боях и симуляции игра больше не накладывает стандартные медленные камни Starsector. Вся генерация и физика контролируются исключительно модом — никаких артефактов на границе и ползущих камней слева.
+* **Живой пояс астероидов:** Диапазон потока в бою настраивается от 100 до 1000 астероидов, а время жизни камней составляет 60 секунд. Непрерывная фоновая лавина течёт строго в одном генеральном направлении на протяжении всего боя, задавая реальный макро-дрейф планетного кольца.
 * **Циклоны, антициклоны и 360° траектории:** Каждые 25–35 секунд в сектор врываются крупные тактические формации (сверхплотные метеоритные лучи, гигантские кометные рои, двойные рельсы, веера и мегалиты). Они могут пролетать под любыми произвольными углами и дублироваться сразу с 2 или 3 направлений!
 * **Снайперский захват цели (шанс 5%):** Любой вылетающий поток с вероятностью 5% может взять вектор строго сквозь координаты любого случайного живого корабля на карте (флагмана игрока, вражеского крейсера или союзника) с тревожным предупреждением на экране!
 * **Искрящиеся кинетические шлейфы:** Часть камней оставляет сверкающие хвосты искр (золотые искры, бирюзовый кометный след, багровая плазма для прицельных залпов).
 * **Честные 100–1000 астероидов при 120 FPS:** Полная оптимизация, мгновенный деспавн за пределами сетки и нулевая просадка кадров.
 
 **Горячие клавиши в симуляторе:**
-* `[/]` (Слэш) — моментальное отключение/включение астероидов.
-* `[Shift +]` / `[Shift -]` — изменение лимита астероидов (+-50) прямо на лету для стресс-теста нагрузки! *(Работает только в симуляторе)*
+* `[/]` (Слэш) — моментальное отключение/включение астероидов (с полным растворением камней в пыль).
+* `[Shift +]` / `[Shift -]` — изменение лимита астероидов (+-50) прямо на лету для стресс-теста нагрузки (с возможностью масштабирования до 10 000 камней)! *(Работает только в симуляторе)*
 
 </details>
 

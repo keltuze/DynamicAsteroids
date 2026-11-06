@@ -3,29 +3,30 @@
 [![Game Version](https://img.shields.io/badge/Starsector-0.98a--RC8%20%7C%200.97a-blue.svg)](https://fractalsoftworks.com/)
 [![Java Compatibility](https://img.shields.io/badge/Java-8%20(Bytecode%2052.0)-green.svg)]()
 [![LunaLib](https://img.shields.io/badge/LunaLib-Compatible-orange.svg)]()
-[![Version](https://img.shields.io/badge/Version-2.0.3%20(Cyclone%20Edition)-red.svg)](https://github.com/keltuze/DynamicAsteroids/releases/latest)
+[![Version](https://img.shields.io/badge/Version-2.0.4%20(Cyclone%20Edition)-red.svg)](https://github.com/keltuze/DynamicAsteroids/releases/latest)
 
 > **Breathes life into static asteroid belts!**  
 > In vanilla Starsector, asteroids just hang motionless in space. **Dynamic Asteroids** turns them into active, rushing rivers of space debris during combat.
 
 ---
 
-## 📦 Downloads (v2.0.3 Releases)
+## 📦 Downloads (v2.0.4 Releases)
 
 All 4 versions are available in the **[Releases](https://github.com/keltuze/DynamicAsteroids/releases/latest)** tab:
 
-| Edition | Language | Velocity / Mechanics | Download (Latest v2.0.3) |
+| Edition | Language | Velocity / Mechanics | Download (Latest v2.0.4) |
 | :--- | :---: | :--- | :--- |
-| **Extreme Edition v2.0.3 (Cyclone)** | English | **3000 u/s** — High-velocity kinetic storm, 100–1000 rocks stream, 60s lifespan, 360° cyclones, 5% sniper barrages, English UI | [Download Extreme EN (v2.0.3)](https://github.com/keltuze/DynamicAsteroids/releases/latest/download/DynamicAsteroids_Extreme_v2.0.3.zip) |
-| **Extreme Edition v2.0.3 (Циклон)** | Русский | **3000 u/s** — Сокрушительный кинетический импульс, поток 100–1000 камней, время жизни 60 сек, циклоны 360°, русский интерфейс | [Скачать Extreme RU (v2.0.3)](https://github.com/keltuze/DynamicAsteroids/releases/latest/download/DynamicAsteroids_Extreme_RU_v2.0.3.zip) |
-| **Standard Edition v2.0.3 (Cyclone)** | English | **600 u/s** — Safe balanced velocity cap, 100–1000 rocks stream, 60s lifespan, 360° cyclones, 5% sniper barrages, English UI | [Download Standard EN (v2.0.3)](https://github.com/keltuze/DynamicAsteroids/releases/latest/download/DynamicAsteroids_v2.0.3.zip) |
-| **Standard Edition v2.0.3 (Циклон)** | Русский | **600 u/s** — Безопасная скорость столкновений, поток 100–1000 камней, время жизни 60 сек, циклоны 360°, русский интерфейс | [Скачать Standard RU (v2.0.3)](https://github.com/keltuze/DynamicAsteroids/releases/latest/download/DynamicAsteroids_RU_v2.0.3.zip) |
+| **Extreme Edition v2.0.4 (Cyclone)** | English | **3000 u/s** — High-velocity kinetic storm, 100–1000 rocks stream, 60s lifespan, 360° cyclones, 5% sniper barrages, English UI | [Download Extreme EN (v2.0.4)](https://github.com/keltuze/DynamicAsteroids/releases/latest/download/DynamicAsteroids_Extreme_v2.0.4.zip) |
+| **Extreme Edition v2.0.4 (Циклон)** | Русский | **3000 u/s** — Сокрушительный кинетический импульс, поток 100–1000 камней, время жизни 60 сек, циклоны 360°, русский интерфейс | [Скачать Extreme RU (v2.0.4)](https://github.com/keltuze/DynamicAsteroids/releases/latest/download/DynamicAsteroids_Extreme_RU_v2.0.4.zip) |
+| **Standard Edition v2.0.4 (Cyclone)** | English | **600 u/s** — Safe balanced velocity cap, 100–1000 rocks stream, 60s lifespan, 360° cyclones, 5% sniper barrages, English UI | [Download Standard EN (v2.0.4)](https://github.com/keltuze/DynamicAsteroids/releases/latest/download/DynamicAsteroids_v2.0.4.zip) |
+| **Standard Edition v2.0.4 (Циклон)** | Русский | **600 u/s** — Безопасная скорость столкновений, поток 100–1000 камней, время жизни 60 сек, циклоны 360°, русский интерфейс | [Скачать Standard RU (v2.0.4)](https://github.com/keltuze/DynamicAsteroids/releases/latest/download/DynamicAsteroids_RU_v2.0.4.zip) |
 
 ---
 
-## 🌟 What's New in v2.0.3 (Engine Polish & Clean Simulation)
+## 🌟 What's New in v2.0.4 (Hotfix & Polish)
 
-* **Vanilla Asteroid Spawning Suppression:** The combat engine's vanilla background asteroid generators are now fully suppressed. In combat and simulator battles, asteroid physics and visuals are handled exclusively by Dynamic Asteroids — eliminating belt overlapping, creeping vanilla rocks from the left edge, and boundary point glitches.
+* **LunaLib Settings Crash Fix:** Fixed a fatal crash (`UnknownFormatConversionException: Conversion = ')'`) occurring when opening LunaLib in-game settings panel (`F2`). Format characters in parameter tooltips were rewritten with safe phrasing.
+* **Vanilla Asteroid Spawning Suppression:** The combat engine's vanilla background asteroid generators are fully suppressed. In combat and simulator battles, asteroid physics and visuals are handled exclusively by Dynamic Asteroids — eliminating belt overlapping, creeping vanilla rocks from the left edge, and boundary point glitches.
 * **Clean Simulator Toggle (`[/]`):** Pressing `[/]` in the simulator cleanly dissolves all active asteroids into soft smoke. Vanilla background asteroids no longer creep in, leaving the sector completely clear until toggled back on.
 * **Expanded Simulator Capacity Controls (`[Shift +]`):** The live density limit in simulation can now be scaled smoothly on the fly far beyond the previous 1000-rock cap (up to 10,000) for performance stress-testing, with dynamic background budgets and rapid spawn pacing.
 * **Russian Translation Encoding Fix:** Restored full UTF-8 encoding across bytecode string constants for all Russian edition HUD alerts and battle logs.
@@ -89,8 +90,8 @@ All parameters can be tuned in real-time in-game via **LunaLib (F2)** or configu
 | `fieldSurgeSpeed` | `3000.0` / `600.0` | Flight velocity of asteroids (3000 for Extreme, 600 for Standard). |
 | `asteroidLifespan` | `60.0` | Seconds before an asteroid dissolves into smoke (60s for enhanced persistence). |
 | `enableParticleTrails`| `true` | Enables sparkling kinetic tails behind flying asteroids. |
-| `particleTrailChance` | `0.20` | Fraction of rocks that emit sparkling particle tails (20%). |
-| `targetedSnipeChance` | `0.05` | Chance for incoming streams to lock course directly through a ship (5%). |
+| `particleTrailChance` | `0.20` | Fraction of rocks that emit sparkling particle tails (20 percent). |
+| `targetedSnipeChance` | `0.05` | Chance for incoming streams to lock course directly through a ship (5 percent). |
 | `beamWidth` | `650.0` | Corridor width (units) for concentrated meteor lances. |
 | `figureEventInterval`| `28.0` | Pacing interval (25–35s) between dynamic formation waves. |
 | `openSpaceMinRocks` | `4` | Minimum stray meteors in calm deep space. |
@@ -109,10 +110,11 @@ All parameters can be tuned in real-time in-game via **LunaLib (F2)** or configu
 <details>
 <summary><b>🇷🇺 Русское описание / Russian Overview (Нажмите, чтобы развернуть)</b></summary>
 
-### Dynamic Asteroids v2.0.3 (Cyclone Edition)
+### Dynamic Asteroids v2.0.4 (Cyclone Edition)
 
 Серьезное обновление боевой динамики астероидных полей:
 
+* **Хотфикс меню LunaLib:** Устранён критический вылет игры при открытии меню настроек мода в LunaLib (F2).
 * **Подавление ванильного генератора:** В боях и симуляции игра больше не накладывает стандартные медленные камни Starsector. Вся генерация и физика контролируются исключительно модом — никаких артефактов на границе и ползущих камней слева.
 * **Живой пояс астероидов:** Диапазон потока в бою настраивается от 100 до 1000 астероидов, а время жизни камней составляет 60 секунд. Непрерывная фоновая лавина течёт строго в одном генеральном направлении на протяжении всего боя, задавая реальный макро-дрейф планетного кольца.
 * **Циклоны, антициклоны и 360° траектории:** Каждые 25–35 секунд в сектор врываются крупные тактические формации (сверхплотные метеоритные лучи, гигантские кометные рои, двойные рельсы, веера и мегалиты). Они могут пролетать под любыми произвольными углами и дублироваться сразу с 2 или 3 направлений!

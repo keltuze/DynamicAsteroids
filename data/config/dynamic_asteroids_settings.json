@@ -1,10 +1,10 @@
 {
-  "activePreset": 1,
+  "activePreset": 2,
   "language": "en",
   "enableInSimulation": true,
   "simulationToggleKey": "SLASH",
-  "minFieldRocks": 100,
-  "maxFieldRocks": 1000,
+  "minFieldRocks": 200,
+  "maxFieldRocks": 800,
   "fieldSurgeSpeed": 600.0,
   "asteroidLifespan": 60.0,
   "enableParticleTrails": true,

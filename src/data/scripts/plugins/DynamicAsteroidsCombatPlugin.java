@@ -118,11 +118,11 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
     private StreamDirection avalancheDirection = StreamDirection.RIGHT_TO_LEFT;
 
     // Active Preset Profile (0=Custom, 1=Balanced, 2=Cinematic, 3=Storm, 4=Chaos)
-    private int activePreset = 1;
+    private int activePreset = 2;
 
     // Stream settings (Default 200 - 300)
-    private int minFieldRocks = 100;
-    private int maxFieldRocks = 1000;
+    private int minFieldRocks = 200;
+    private int maxFieldRocks = 800;
     private float streamSpeed = DEFAULT_STREAM_SPEED;
     private float asteroidLifespan = 60.0f;    // 30 seconds lifespan
     private float beamWidth = 650.0f;          // Corridor width for beams
@@ -143,7 +143,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
     private List<ActiveFigureStream> activeStreams = new ArrayList<ActiveFigureStream>();
 
     // Dynamic Battle Capacity (Tuned on the fly via Shift + Plus / Minus)
-    private int battleTargetCount = 300;
+    private int battleTargetCount = 500;
     private int maxBackgroundRocks = 130;
     private float backgroundSpawnTimer = 0f;
     private float backgroundSpawnInterval = 0.055f;
@@ -355,26 +355,10 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
     public void applyPresetSettings(int preset) {
         float oldSpeed = streamSpeed;
         switch (preset) {
-            case 1: // Balanced
-                streamSpeed = 600.0f;
-                minFieldRocks = 200;
-                maxFieldRocks = 300;
-                battleTargetCount = 250;
-                asteroidLifespan = 60.0f;
-                targetedSnipeChance = 0.05f;
-                figureEventInterval = 28.0f;
-                enableMicroDodge = true;
-                enableShieldReaction = true;
-                enablePDTargeting = true;
-                pdCriticalThreatsOnly = true;
-                asteroidHealthMult = 0.60f;
-                pdAsteroidDamageMult = 6.0f;
-                break;
-            case 2: // Cinematic Soft
+            case 1: // Cinematic Soft (100–400 rocks, 400 speed)
                 streamSpeed = 400.0f;
-                minFieldRocks = 120;
-                maxFieldRocks = 200;
-                battleTargetCount = 160;
+                minFieldRocks = 100;
+                maxFieldRocks = 400;
                 asteroidLifespan = 75.0f;
                 targetedSnipeChance = 0.02f;
                 figureEventInterval = 38.0f;
@@ -385,11 +369,24 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                 asteroidHealthMult = 0.50f;
                 pdAsteroidDamageMult = 7.0f;
                 break;
-            case 3: // Asteroid Storm
-                streamSpeed = 1000.0f;
-                minFieldRocks = 400;
-                maxFieldRocks = 700;
-                battleTargetCount = 500;
+            case 2: // Balanced Standard (200–800 rocks, 600 speed)
+                streamSpeed = 600.0f;
+                minFieldRocks = 200;
+                maxFieldRocks = 800;
+                asteroidLifespan = 60.0f;
+                targetedSnipeChance = 0.05f;
+                figureEventInterval = 28.0f;
+                enableMicroDodge = true;
+                enableShieldReaction = true;
+                enablePDTargeting = true;
+                pdCriticalThreatsOnly = true;
+                asteroidHealthMult = 0.60f;
+                pdAsteroidDamageMult = 6.0f;
+                break;
+            case 3: // Asteroid Storm (300–1000 rocks, 1200 speed)
+                streamSpeed = 1200.0f;
+                minFieldRocks = 300;
+                maxFieldRocks = 1000;
                 asteroidLifespan = 45.0f;
                 targetedSnipeChance = 0.08f;
                 figureEventInterval = 18.0f;
@@ -400,11 +397,10 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                 asteroidHealthMult = 0.70f;
                 pdAsteroidDamageMult = 6.5f;
                 break;
-            case 4: // Extreme Chaos
-                streamSpeed = 2400.0f;
+            case 4: // Extreme Chaos (500–1000 rocks, 3000 speed)
+                streamSpeed = 3000.0f;
                 minFieldRocks = 500;
-                maxFieldRocks = 900;
-                battleTargetCount = 700;
+                maxFieldRocks = 1000;
                 asteroidLifespan = 35.0f;
                 targetedSnipeChance = 0.15f;
                 figureEventInterval = 12.0f;
@@ -436,11 +432,11 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
     public String getPresetName() {
         switch (activePreset) {
-            case 1: return "Balanced";
-            case 2: return "Cinematic";
-            case 3: return "Storm";
-            case 4: return "Chaos";
-            default: return "Custom";
+            case 1: return IS_RUSSIAN ? "Кино" : "Cinematic";
+            case 2: return IS_RUSSIAN ? "Базовый" : "Balanced";
+            case 3: return IS_RUSSIAN ? "Шторм" : "Storm";
+            case 4: return IS_RUSSIAN ? "Хаос" : "Chaos";
+            default: return IS_RUSSIAN ? "Свой" : "Custom";
         }
     }
 
@@ -602,11 +598,16 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                         activePreset = pVal;
                         if (activePreset > 0) {
                             applyPresetSettings(activePreset);
+                            int minR = Math.min(minFieldRocks, maxFieldRocks);
+                            int maxR = Math.max(minFieldRocks, maxFieldRocks);
+                            battleTargetCount = minR + random.nextInt(Math.max(1, maxR - minR + 1));
+                            maxBackgroundRocks = Math.min(450, battleTargetCount / 2);
+                            backgroundSpawnInterval = Math.max(0.015f, 0.055f * (300f / Math.max(300, battleTargetCount)));
                             if (engine != null && engine.getCombatUI() != null) {
                                 String presetLabel = getPresetName();
                                 String msg = IS_RUSSIAN ? 
-                                    ("Dynamic Asteroids: Профиль [" + presetLabel + "] (" + (int)streamSpeed + " ед/с)") :
-                                    ("Dynamic Asteroids: Preset [" + presetLabel + "] (" + (int)streamSpeed + " u/s)");
+                                    ("Dynamic Asteroids: Профиль [" + presetLabel + "] (" + (int)streamSpeed + " ед/с, " + minR + "–" + maxR + " камней)") :
+                                    ("Dynamic Asteroids: Preset [" + presetLabel + "] (" + (int)streamSpeed + " u/s, " + minR + "–" + maxR + " rocks)");
                                 engine.getCombatUI().addMessage(1, msg, Color.CYAN);
                             }
                         }
@@ -619,10 +620,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                 Number nPdFlux = getLunaNumber("da_pdMaxFluxThreshold");
                 if (nPdFlux != null) pdMaxFluxThreshold = nPdFlux.floatValue();
 
-                if (activePreset > 0) {
-                    // Lock active preset settings: static sliders never overwrite the active preset!
-                    applyPresetSettings(activePreset);
-                } else {
+                if (activePreset == 0) {
                     // Preset 0 = Custom mode: user manually tunes individual sliders!
                     Number nSpeed = getLunaNumber("da_fieldSurgeSpeed");
                     if (nSpeed != null) streamSpeed = nSpeed.floatValue();
@@ -645,12 +643,6 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                     Number nMaxRocks = getLunaNumber("da_maxFieldRocks");
                     if (nMaxRocks != null) maxFieldRocks = nMaxRocks.intValue();
                 }
-
-                Number nThreatVel = getLunaNumber("da_aiMinThreatVelocity");
-                if (nThreatVel != null) aiMinThreatVelocity = nThreatVel.floatValue();
-
-                Number nLookahead = getLunaNumber("da_aiLookaheadTime");
-                if (nLookahead != null) aiLookaheadTime = nLookahead.floatValue();
             }
         } catch (Throwable t) {
         }
@@ -659,19 +651,23 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
     private Number getLunaNumber(String fieldId) {
         try {
             Class<?> clazz = Class.forName("lunalib.lunaSettings.LunaSettings");
-            Method method = null;
             try {
-                method = clazz.getMethod("getFloat", String.class, String.class);
-            } catch (NoSuchMethodException e) {
-                try {
-                    method = clazz.getMethod("getDouble", String.class, String.class);
-                } catch (NoSuchMethodException e2) {
-                }
-            }
-            if (method != null) {
-                Object val = method.invoke(null, MOD_ID, fieldId);
+                Method mInt = clazz.getMethod("getInt", String.class, String.class);
+                Object val = mInt.invoke(null, MOD_ID, fieldId);
                 if (val instanceof Number) return (Number) val;
-            }
+            } catch (Throwable t1) {}
+
+            try {
+                Method mFloat = clazz.getMethod("getFloat", String.class, String.class);
+                Object val = mFloat.invoke(null, MOD_ID, fieldId);
+                if (val instanceof Number) return (Number) val;
+            } catch (Throwable t2) {}
+
+            try {
+                Method mDouble = clazz.getMethod("getDouble", String.class, String.class);
+                Object val = mDouble.invoke(null, MOD_ID, fieldId);
+                if (val instanceof Number) return (Number) val;
+            } catch (Throwable t3) {}
         } catch (Throwable t) {
         }
         return null;
@@ -802,6 +798,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
         // ONLY ACTIVE IN SIMULATION! In regular campaign battles, does nothing.
         if (engine.isSimulation() && events != null) {
             boolean shiftHeld = Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) || Keyboard.isKeyDown(Keyboard.KEY_RSHIFT);
+            boolean ctrlHeld = Keyboard.isKeyDown(Keyboard.KEY_LCONTROL) || Keyboard.isKeyDown(Keyboard.KEY_RCONTROL);
 
             for (InputEventAPI event : events) {
                 if (!event.isConsumed() && event.isKeyDownEvent()) {
@@ -833,6 +830,40 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                         maxBackgroundRocks = Math.max(12, battleTargetCount / 2);
                         backgroundSpawnInterval = Math.max(0.005f, 0.055f * (300f / Math.max(300, battleTargetCount)));
                         showLimitFeedback(IS_RUSSIAN ? "Лимит астероидов УМЕНЬШЕН: " + battleTargetCount + " шт." : "Asteroid Limit DECREASED: " + battleTargetCount + " rocks", Color.YELLOW);
+                    } else if (ctrlHeld && (key == Keyboard.KEY_EQUALS || key == Keyboard.KEY_ADD)) {
+                        event.consume();
+                        float oldSpeed = streamSpeed;
+                        streamSpeed = Math.min(5000f, streamSpeed + 100f);
+                        if (engine != null && oldSpeed > 50f && streamSpeed > 50f) {
+                            float speedRatio = streamSpeed / oldSpeed;
+                            java.util.List<CombatEntityAPI> asts = engine.getAsteroids();
+                            if (asts != null) {
+                                for (int i = 0; i < asts.size(); i++) {
+                                    CombatEntityAPI a = asts.get(i);
+                                    if (a != null && a.getVelocity() != null) {
+                                        a.getVelocity().scale(speedRatio);
+                                    }
+                                }
+                            }
+                        }
+                        showLimitFeedback(IS_RUSSIAN ? ("Скорость потока УВЕЛИЧЕНА: " + (int)streamSpeed + " ед/с") : ("Stream Speed INCREASED: " + (int)streamSpeed + " u/s"), Color.CYAN);
+                    } else if (ctrlHeld && (key == Keyboard.KEY_MINUS || key == Keyboard.KEY_SUBTRACT)) {
+                        event.consume();
+                        float oldSpeed = streamSpeed;
+                        streamSpeed = Math.max(100f, streamSpeed - 100f);
+                        if (engine != null && oldSpeed > 50f && streamSpeed > 50f) {
+                            float speedRatio = streamSpeed / oldSpeed;
+                            java.util.List<CombatEntityAPI> asts = engine.getAsteroids();
+                            if (asts != null) {
+                                for (int i = 0; i < asts.size(); i++) {
+                                    CombatEntityAPI a = asts.get(i);
+                                    if (a != null && a.getVelocity() != null) {
+                                        a.getVelocity().scale(speedRatio);
+                                    }
+                                }
+                            }
+                        }
+                        showLimitFeedback(IS_RUSSIAN ? ("Скорость потока УМЕНЬШЕНА: " + (int)streamSpeed + " ед/с") : ("Stream Speed DECREASED: " + (int)streamSpeed + " u/s"), Color.YELLOW);
                     }
                 }
             }
@@ -842,7 +873,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
         if (engine.isSimulation() && !simulationHintShown) {
             simulationHintShown = true;
             if (engine.getCombatUI() != null) {
-                engine.getCombatUI().addMessage(1, IS_RUSSIAN ? "[Dynamic Asteroids 2.0] [/] Вкл/Выкл | [Shift + / -] Лимит (+-50)" : "[Dynamic Asteroids 2.0] [/] Toggle ON/OFF | [Shift + / -] Adjust limit (+-50)", Color.CYAN);
+                engine.getCombatUI().addMessage(1, IS_RUSSIAN ? "[Dynamic Asteroids 2.0] [/] Вкл/Выкл | [Shift +/-] Лимит (+-50) | [Ctrl +/-] Скорость (+-100)" : "[Dynamic Asteroids 2.0] [/] Toggle ON/OFF | [Shift +/-] Limit (+-50) | [Ctrl +/-] Speed (+-100)", Color.CYAN);
             }
         }
 
@@ -876,8 +907,8 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                         engine.maintainStatusForPlayerShip(
                             "DYNAMIC_ASTEROIDS_STATUS",
                             icon,
-                            (IS_RUSSIAN ? "СИМУЛЯЦИЯ: ПОЯС [" : "SIMULATION: ASTEROID BELT [") + getPresetName() + (IS_RUSSIAN ? "] (" : "] (") + battleTargetCount + (IS_RUSSIAN ? " макс)" : " max)"),
-                            streamInfo + (IS_RUSSIAN ? " | [Shift +/-] Лимит" : " | [Shift +/-] Limit"),
+                            (IS_RUSSIAN ? "СИМУЛЯЦИЯ: ПОЯС [" : "SIMULATION: ASTEROID BELT [") + getPresetName() + (IS_RUSSIAN ? "] (" : "] (") + battleTargetCount + (IS_RUSSIAN ? " макс, " : " max, ") + (int)streamSpeed + (IS_RUSSIAN ? " ск)" : " spd)"),
+                            streamInfo + (IS_RUSSIAN ? " | [Shift +/-] Лимит | [Ctrl +/-] Скорость" : " | [Shift +/-] Limit | [Ctrl +/-] Speed"),
                             true
                         );
                     }
@@ -2318,3 +2349,10 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
     }
 
 }
+
+
+
+
+
+
+

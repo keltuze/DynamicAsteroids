@@ -1,12 +1,18 @@
 {
   "id": "dynamic_asteroids",
-  "name": "Dynamic Asteroids 2.0 (Cyclone)",
+  "name": "Dynamic Asteroids 2.0.6 (Cyclone)",
   "author": "keltuze",
   "utility": "false",
-  "version": "2.0.5",
-  "description": "Standard Edition 2.0.5: Living asteroid belts (100–1000 rocks, 60s lifespan) with endless planetary ring avalanche, omnidirectional 360 cyclones & anticyclones, multi-angle converging swarms, and targeted sniper torrents (5 percent) against ships! Safe balanced collision velocity (600 u/s), sparkling kinetic trails, and live hotkeys [/] and [Shift +/-] in simulation.",
+  "version": "2.0.6",
+  "description": "Dynamic Asteroids 2.0.6: Living asteroid belts with collision damage scaling, rare derelict ship rescue and salvage, floating domain caches, and explosive volatile fuel tanks among the debris.",
   "gameVersion": "0.98a-RC8",
   "jars": [
     "jars/DynamicAsteroids.jar"
+  ],
+  "dependencies": [
+    {
+      "id": "lunalib",
+      "name": "LunaLib"
+    }
   ]
 }

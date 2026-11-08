@@ -19,6 +19,7 @@ import com.fs.starfarer.api.campaign.LocationAPI;
 import com.fs.starfarer.api.combat.BaseEveryFrameCombatPlugin;
 import com.fs.starfarer.api.combat.CombatEngineAPI;
 import com.fs.starfarer.api.combat.CombatEntityAPI;
+import com.fs.starfarer.api.combat.CombatAsteroidAPI;
 import com.fs.starfarer.api.combat.ShipAPI;
 import com.fs.starfarer.api.combat.ViewportAPI;
 import com.fs.starfarer.api.input.InputEventAPI;
@@ -40,6 +41,21 @@ import com.fs.starfarer.api.combat.DamagingProjectileAPI;
 import com.fs.starfarer.api.combat.MissileAPI;
 import com.fs.starfarer.api.combat.WeaponGroupAPI;
 import com.fs.starfarer.api.combat.listeners.DamageTakenModifier;
+import java.util.EnumSet;
+import com.fs.starfarer.api.campaign.BaseCampaignEventListener;
+import com.fs.starfarer.api.combat.BaseCombatLayeredRenderingPlugin;
+import lunalib.lunaSettings.LunaSettings;
+import com.fs.starfarer.api.combat.CombatEngineLayers;
+import com.fs.starfarer.api.combat.EngagementResultAPI;
+import com.fs.starfarer.api.fleet.FleetMemberAPI;
+import com.fs.starfarer.api.fleet.FleetMemberType;
+import com.fs.starfarer.api.graphics.SpriteAPI;
+import com.fs.starfarer.api.impl.campaign.FleetEncounterContext;
+import com.fs.starfarer.api.loading.DamagingExplosionSpec;
+import com.fs.starfarer.api.loading.FighterWingSpecAPI;
+import com.fs.starfarer.api.campaign.CargoAPI;
+import com.fs.starfarer.api.combat.ShipHullSpecAPI;
+import com.fs.starfarer.api.combat.ShipVariantAPI;
 
 
 /**
@@ -117,7 +133,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
     // Constant background avalanche direction for the whole battle
     private StreamDirection avalancheDirection = StreamDirection.RIGHT_TO_LEFT;
 
-    // Active Preset Profile (0=Custom, 1=Balanced, 2=Cinematic, 3=Storm, 4=Chaos)
+    // Active Preset Profile (0=Custom, 1=Cinematic, 2=Balanced [Default], 3=Storm, 4=Chaos)
     private int activePreset = 2;
 
     // Stream settings (Default 200 - 300)
@@ -129,11 +145,41 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
     private float targetedSnipeChance = 0.05f; // 5% chance to aim directly at random ship
     private float figureEventInterval = 28.0f; // Paced wave timing (25-35s)
     private boolean enableInSimulation = true;
+    private final java.util.Set<String> lunaSettingWarnings = new java.util.HashSet<String>();
 
     // Sparkling Kinetic Trails (Optimized: zero lag at 120 FPS)
     private boolean enableParticleTrails = true;
     private float particleTrailChance = 0.20f;
     private float trailTickTimer = 0f;
+
+    // Asteroid Ramming & Easter Eggs Tuning
+    private float asteroidCollisionDamageMult = 1.0f;
+    private float derelictSpawnChance = 0.015f;
+    private float debrisEasterEggChance = 0.040f;
+    private float resourceEasterEggChance = 0.020f;
+    private float otherEasterEggChance = 0.060f;
+    private float easterEggSpeed = 400.0f;
+    private float easterEggMagnetStrength = 3000.0f;
+    private float derelictRescueHoldTime = 60.0f;
+    private float derelictRescueChance = 1.0f;
+
+    // Detection Sound state
+    private int pendingDetectionSoundPlays = 0;
+    private float detectionSoundTimer = 0f;
+
+    // Runtime Easter Egg state
+    private boolean battleDerelictSpawned = false;
+    private CombatEntityAPI activeDerelictEntity = null;
+    private String rescuedDerelictVariantId = null;
+    private final List<String> rescuedDerelictVariantIds = new ArrayList<String>();
+    private final Map<String, DerelictSalvageRecord> derelictSalvageRecords = new HashMap<String, DerelictSalvageRecord>();
+    private float summonKeyCooldown = 0f;
+    private float summonContainerKeyCooldown = 0f;
+    private String rescuedDerelictHullName = null;
+    private boolean derelictRescueNotified = false;
+    private int activeOtherEasterEggs = 0;
+    private boolean campaignListenerRegistered = false;
+    private List<CombatEntityAPI> activeEasterEggEntities = new ArrayList<CombatEntityAPI>();
 
     // Simulation toggle state (persistent across encounters in same session)
     private static boolean simulationEnabled = true;
@@ -159,6 +205,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
     private int openSpaceTargetCount = 7;
     private float openSpaceTimer = 0f;
     private float openSpaceCurrentDelay = 2.5f;
+    private float openSpaceEasterEggMult = 0.14f;
 
     // Combat tracking
     private float totalCombatTime = 0f;
@@ -240,6 +287,45 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
         instance = this;
         this.imminentThreats.clear();
         this.wrappedShips.clear();
+        this.battleDerelictSpawned = false;
+        this.activeDerelictEntity = null;
+        this.rescuedDerelictVariantId = null;
+        this.rescuedDerelictVariantIds.clear();
+        this.derelictSalvageRecords.clear();
+        this.summonKeyCooldown = 0f;
+        this.summonContainerKeyCooldown = 0f;
+        this.rescuedDerelictHullName = null;
+        this.derelictRescueNotified = false;
+        this.activeOtherEasterEggs = 0;
+        this.campaignListenerRegistered = false;
+        this.activeEasterEggEntities.clear();
+
+        try {
+            Global.getSettings().loadTexture("graphics/icons/derelict.png");
+            Global.getSettings().loadTexture("graphics/icons/radar_circle.png");
+            Global.getSettings().loadTexture("graphics/icons/danger3.png");
+            Global.getSettings().loadTexture("graphics/icons/debris_field_icon.png");
+            Global.getSettings().loadTexture("graphics/icons/intel/log_to_derelict_ship.png");
+            Global.getSettings().loadTexture("graphics/icons/fleet_triangle.png");
+            Global.getSettings().loadTexture("graphics/warroom/ship_arrow.png");
+            Global.getSettings().loadTexture("graphics/stations/large_cache.png");
+            Global.getSettings().loadTexture("graphics/stations/survey_probe.png");
+            Global.getSettings().loadTexture("graphics/stations/probe.png");
+            Global.getSettings().loadTexture("graphics/ships/nav_buoy.png");
+            Global.getSettings().loadTexture("graphics/stations/cargo_pod_special.png");
+            Global.getSettings().loadTexture("graphics/ships/derelict/derelict_mothership_pod_engine_left.png");
+            Global.getSettings().loadTexture("graphics/debris/debris_lrg0.png");
+            Global.getSettings().loadTexture("graphics/debris/debris_lrg1.png");
+            Global.getSettings().loadTexture("graphics/ships/hound/hound_substandard.png");
+            Global.getSettings().loadTexture("graphics/ships/cerberus/cerberus_substandard.png");
+            Global.getSettings().loadTexture("graphics/ships/lasher/lasher_d.png");
+            Global.getSettings().loadTexture("graphics/ships/buffalo/buffalo_d.png");
+            Global.getSettings().loadTexture("graphics/ships/wayfarer/wayfarer.png");
+            Global.getSettings().loadTexture("graphics/ships/shepherd/shepherd.png");
+            Global.getSettings().loadTexture("graphics/ships/dram/dram.png");
+        } catch (Throwable t) {}
+
+        initDerelictPool();
 
         if (engine.getListenerManager() != null) {
             engine.getListenerManager().addListener(new AsteroidDamageModifier());
@@ -306,6 +392,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                 }
             }
         } catch (Throwable t) {
+            Global.getLogger(DynamicAsteroidsCombatPlugin.class).warn("Dynamic Asteroids: Failed to load mod settings; continuing with safe defaults.", t);
         }
 
         // 3. Location classification
@@ -353,10 +440,9 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
     }
 
     public void applyPresetSettings(int preset) {
-        float oldSpeed = streamSpeed;
         switch (preset) {
-            case 1: // Cinematic Soft (100–400 rocks, 400 speed)
-                streamSpeed = 400.0f;
+            case 1: // Cinematic Calm (400 speed)
+                setStreamSpeed(400.0f);
                 minFieldRocks = 100;
                 maxFieldRocks = 400;
                 asteroidLifespan = 75.0f;
@@ -368,9 +454,19 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                 pdCriticalThreatsOnly = true;
                 asteroidHealthMult = 0.50f;
                 pdAsteroidDamageMult = 7.0f;
+                asteroidCollisionDamageMult = 0.35f;
+                derelictSpawnChance = 0.005f;
+                debrisEasterEggChance = 0.015f;
+                resourceEasterEggChance = 0.010f;
+                otherEasterEggChance = 0.025f;
+                easterEggSpeed = 300.0f;
+                easterEggMagnetStrength = 3000.0f;
+                derelictRescueHoldTime = 45.0f;
+                derelictRescueChance = 1.0f;
+                openSpaceEasterEggMult = 0.10f;
                 break;
-            case 2: // Balanced Standard (200–800 rocks, 600 speed)
-                streamSpeed = 600.0f;
+            case 2: // Balanced Standard (600 speed)
+                setStreamSpeed(600.0f);
                 minFieldRocks = 200;
                 maxFieldRocks = 800;
                 asteroidLifespan = 60.0f;
@@ -382,9 +478,19 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                 pdCriticalThreatsOnly = true;
                 asteroidHealthMult = 0.60f;
                 pdAsteroidDamageMult = 6.0f;
+                asteroidCollisionDamageMult = 1.0f;
+                derelictSpawnChance = 0.015f;
+                debrisEasterEggChance = 0.040f;
+                resourceEasterEggChance = 0.020f;
+                otherEasterEggChance = 0.060f;
+                easterEggSpeed = 400.0f;
+                easterEggMagnetStrength = 3000.0f;
+                derelictRescueHoldTime = 60.0f;
+                derelictRescueChance = 1.0f;
+                openSpaceEasterEggMult = 0.14f;
                 break;
-            case 3: // Asteroid Storm (300–1000 rocks, 1200 speed)
-                streamSpeed = 1200.0f;
+            case 3: // Asteroid Storm (1200 speed)
+                setStreamSpeed(1200.0f);
                 minFieldRocks = 300;
                 maxFieldRocks = 1000;
                 asteroidLifespan = 45.0f;
@@ -396,9 +502,19 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                 pdCriticalThreatsOnly = false;
                 asteroidHealthMult = 0.70f;
                 pdAsteroidDamageMult = 6.5f;
+                asteroidCollisionDamageMult = 1.8f;
+                derelictSpawnChance = 0.035f;
+                debrisEasterEggChance = 0.080f;
+                resourceEasterEggChance = 0.040f;
+                otherEasterEggChance = 0.120f;
+                easterEggSpeed = 500.0f;
+                easterEggMagnetStrength = 3500.0f;
+                derelictRescueHoldTime = 60.0f;
+                derelictRescueChance = 1.0f;
+                openSpaceEasterEggMult = 0.16f;
                 break;
-            case 4: // Extreme Chaos (500–1000 rocks, 3000 speed)
-                streamSpeed = 3000.0f;
+            case 4: // Extreme Chaos: High Risk / High Reward (3000 speed, deadly collision, generous loot)
+                setStreamSpeed(3000.0f);
                 minFieldRocks = 500;
                 maxFieldRocks = 1000;
                 asteroidLifespan = 35.0f;
@@ -410,30 +526,51 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                 pdCriticalThreatsOnly = false;
                 asteroidHealthMult = 0.80f;
                 pdAsteroidDamageMult = 8.0f;
+                asteroidCollisionDamageMult = 3.5f;
+                derelictSpawnChance = 0.070f;
+                debrisEasterEggChance = 0.220f;
+                resourceEasterEggChance = 0.080f;
+                otherEasterEggChance = 0.250f;
+                easterEggSpeed = 650.0f;
+                easterEggMagnetStrength = 4500.0f;
+                derelictRescueHoldTime = 75.0f;
+                derelictRescueChance = 1.0f;
+                openSpaceEasterEggMult = 0.20f;
                 break;
             default:
                 break;
         }
 
-        // Live speed adjustment for active asteroids in battle
-        if (engine != null && oldSpeed > 50f && streamSpeed > 50f && Math.abs(oldSpeed - streamSpeed) > 10f) {
-            float speedRatio = streamSpeed / oldSpeed;
-            java.util.List<CombatEntityAPI> asts = engine.getAsteroids();
-            if (asts != null) {
-                for (int i = 0; i < asts.size(); i++) {
-                    CombatEntityAPI a = asts.get(i);
-                    if (a != null && a.getVelocity() != null) {
-                        a.getVelocity().scale(speedRatio);
+    }
+
+    private void setStreamSpeed(float newSpeed) {
+        float oldSpeed = streamSpeed;
+        if (engine != null && oldSpeed > 50f && newSpeed > 50f && Math.abs(oldSpeed - newSpeed) > 10f) {
+            float speedRatio = newSpeed / oldSpeed;
+            List<CombatEntityAPI> asteroids = engine.getAsteroids();
+            if (asteroids != null) {
+                for (CombatEntityAPI asteroid : asteroids) {
+                    if (asteroid == null) continue;
+                    if (asteroid.getVelocity() != null) {
+                        asteroid.getVelocity().scale(speedRatio);
+                    }
+
+                    Object baseVx = asteroid.getCustomData().get(BASE_VX_KEY);
+                    Object baseVy = asteroid.getCustomData().get(BASE_VY_KEY);
+                    if (baseVx instanceof Float && baseVy instanceof Float) {
+                        asteroid.setCustomData(BASE_VX_KEY, Float.valueOf(((Float) baseVx).floatValue() * speedRatio));
+                        asteroid.setCustomData(BASE_VY_KEY, Float.valueOf(((Float) baseVy).floatValue() * speedRatio));
                     }
                 }
             }
         }
+        streamSpeed = newSpeed;
     }
 
     public String getPresetName() {
         switch (activePreset) {
             case 1: return IS_RUSSIAN ? "Кино" : "Cinematic";
-            case 2: return IS_RUSSIAN ? "Базовый" : "Balanced";
+            case 2: return IS_RUSSIAN ? "Баланс" : "Balanced";
             case 3: return IS_RUSSIAN ? "Шторм" : "Storm";
             case 4: return IS_RUSSIAN ? "Хаос" : "Chaos";
             default: return IS_RUSSIAN ? "Свой" : "Custom";
@@ -441,6 +578,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
     }
 
     private void loadSettings() {
+        boolean lunaPresetLoaded = false;
         try {
             JSONObject config = Global.getSettings().loadJSON(SETTINGS_PATH);
             if (config != null) {
@@ -460,6 +598,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                 openSpaceMaxRocks = config.optInt("openSpaceMaxRocks", openSpaceMaxRocks);
                 openSpaceMinDelay = (float) config.optDouble("openSpaceMinDelay", openSpaceMinDelay);
                 openSpaceMaxDelay = (float) config.optDouble("openSpaceMaxDelay", openSpaceMaxDelay);
+                openSpaceEasterEggMult = (float) config.optDouble("openSpaceEasterEggMult", openSpaceEasterEggMult);
 
                 enableMicroDodge = config.optBoolean("enableMicroDodge", enableMicroDodge);
                 enableShieldReaction = config.optBoolean("enableShieldReaction", enableShieldReaction);
@@ -471,6 +610,15 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                 enableEarlySnipeEvasion = config.optBoolean("enableEarlySnipeEvasion", enableEarlySnipeEvasion);
                 asteroidHealthMult = (float) config.optDouble("asteroidHealthMult", asteroidHealthMult);
                 pdAsteroidDamageMult = (float) config.optDouble("pdAsteroidDamageMult", pdAsteroidDamageMult);
+                asteroidCollisionDamageMult = (float) config.optDouble("asteroidCollisionDamageMult", asteroidCollisionDamageMult);
+                derelictSpawnChance = (float) config.optDouble("derelictSpawnChance", derelictSpawnChance);
+                debrisEasterEggChance = (float) config.optDouble("debrisEasterEggChance", debrisEasterEggChance);
+                resourceEasterEggChance = (float) config.optDouble("resourceEasterEggChance", resourceEasterEggChance);
+                otherEasterEggChance = (float) config.optDouble("otherEasterEggChance", otherEasterEggChance);
+                easterEggSpeed = clampEasterEggSpeed((float) config.optDouble("easterEggSpeed", easterEggSpeed));
+                easterEggMagnetStrength = clampEasterEggMagnetStrength((float) config.optDouble("easterEggMagnetStrength", easterEggMagnetStrength));
+                derelictRescueHoldTime = (float) config.optDouble("derelictRescueHoldTime", derelictRescueHoldTime);
+                derelictRescueChance = (float) config.optDouble("derelictRescueChance", derelictRescueChance);
                 aiMinThreatVelocity = (float) config.optDouble("aiMinThreatVelocity", aiMinThreatVelocity);
                 aiLookaheadTime = (float) config.optDouble("aiLookaheadTime", aiLookaheadTime);
                 aiSafetyMargin = (float) config.optDouble("aiSafetyMargin", aiSafetyMargin);
@@ -478,13 +626,17 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                 aiMaxCheckInterval = (float) config.optDouble("aiMaxCheckInterval", aiMaxCheckInterval);
             }
         } catch (Throwable t) {
+            Global.getLogger(DynamicAsteroidsCombatPlugin.class).warn("Dynamic Asteroids: Failed to load mod config; continuing with safe defaults.", t);
         }
 
         // LunaLib F2 overrides
         try {
             if (Global.getSettings().getModManager().isModEnabled("lunalib")) {
-                Number nPreset = getLunaNumber("da_activePreset");
-                if (nPreset != null) activePreset = nPreset.intValue();
+                Integer nPreset = getLunaInt("da_activePreset");
+                if (nPreset != null) {
+                    activePreset = nPreset.intValue();
+                    lunaPresetLoaded = true;
+                }
                 loadLunaSettingNumber("da_minFieldRocks", minFieldRocks);
                 loadLunaSettingNumber("da_maxFieldRocks", maxFieldRocks);
                 loadLunaSettingNumber("da_fieldSurgeSpeed", streamSpeed);
@@ -496,6 +648,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                 loadLunaSettingNumber("da_openSpaceMaxRocks", openSpaceMaxRocks);
                 loadLunaSettingNumber("da_openSpaceMinDelay", openSpaceMinDelay);
                 loadLunaSettingNumber("da_openSpaceMaxDelay", openSpaceMaxDelay);
+                loadLunaSettingNumber("da_openSpaceEasterEggMult", openSpaceEasterEggMult);
 
                 Boolean simVal = getLunaBoolean("da_enableInSimulation");
                 if (simVal != null) enableInSimulation = simVal.booleanValue();
@@ -521,11 +674,22 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                 loadLunaSettingNumber("da_pdMaxFluxThreshold", pdMaxFluxThreshold);
                 loadLunaSettingNumber("da_asteroidHealthMult", asteroidHealthMult);
                 loadLunaSettingNumber("da_pdAsteroidDamageMult", pdAsteroidDamageMult);
+                loadLunaSettingNumber("da_asteroidCollisionDamageMult", asteroidCollisionDamageMult);
+                loadLunaSettingNumber("da_derelictSpawnChance", derelictSpawnChance);
+                loadLunaSettingNumber("da_otherEasterEggChance", otherEasterEggChance);
+                loadLunaSettingNumber("da_derelictRescueHoldTime", derelictRescueHoldTime);
+                loadLunaSettingNumber("da_derelictRescueChance", derelictRescueChance);
 
                 loadLunaSettingNumber("da_aiMinThreatVelocity", aiMinThreatVelocity);
                 loadLunaSettingNumber("da_aiLookaheadTime", aiLookaheadTime);
             }
         } catch (Throwable t) {
+            Global.getLogger(DynamicAsteroidsCombatPlugin.class).warn("Dynamic Asteroids: Failed to read LunaLib settings; using mod config values.", t);
+        }
+
+        if (activePreset < 0 || activePreset > 4) {
+            Global.getLogger(DynamicAsteroidsCombatPlugin.class).warn("Dynamic Asteroids: Invalid preset " + activePreset + "; using Balanced (2).");
+            activePreset = 2;
         }
 
         // Clamping (Defaults 200 to 300)
@@ -533,8 +697,8 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
         if (maxFieldRocks < minFieldRocks) maxFieldRocks = minFieldRocks + 100;
         if (maxFieldRocks > 2500) maxFieldRocks = 2500;
         if (streamSpeed > 5000f) streamSpeed = 5000f;
-        if (asteroidLifespan <= 0f) asteroidLifespan = 60.0f;
-        if (beamWidth < 300f) beamWidth = 650f;
+        if (asteroidLifespan < 1.0f) asteroidLifespan = 60.0f;
+        if (beamWidth < 150f) beamWidth = 650f;
         if (targetedSnipeChance < 0f) targetedSnipeChance = 0f;
         if (targetedSnipeChance > 1f) targetedSnipeChance = 1f;
         if (particleTrailChance < 0f) particleTrailChance = 0f;
@@ -544,13 +708,31 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
         if (openSpaceMaxRocks < openSpaceMinRocks) openSpaceMaxRocks = openSpaceMinRocks + 5;
         if (openSpaceMinDelay <= 0f) openSpaceMinDelay = 2.0f;
         if (openSpaceMaxDelay < openSpaceMinDelay) openSpaceMaxDelay = openSpaceMinDelay + 3.0f;
+        if (openSpaceEasterEggMult < 0f) openSpaceEasterEggMult = 0f;
+        if (openSpaceEasterEggMult > 1.0f) openSpaceEasterEggMult = 1.0f;
         if (asteroidHealthMult < 0.1f) asteroidHealthMult = 0.1f;
         if (asteroidHealthMult > 5.0f) asteroidHealthMult = 5.0f;
         if (pdAsteroidDamageMult < 1.0f) pdAsteroidDamageMult = 1.0f;
         if (pdAsteroidDamageMult > 20.0f) pdAsteroidDamageMult = 20.0f;
+        if (derelictSpawnChance < 0f) derelictSpawnChance = 0f;
+        if (derelictSpawnChance > 1f) derelictSpawnChance = 1f;
+        if (debrisEasterEggChance < 0f) debrisEasterEggChance = 0f;
+        if (debrisEasterEggChance > 1f) debrisEasterEggChance = 1f;
+        if (resourceEasterEggChance < 0f) resourceEasterEggChance = 0f;
+        if (resourceEasterEggChance > 1f) resourceEasterEggChance = 1f;
+        if (otherEasterEggChance < 0f) otherEasterEggChance = 0f;
+        if (otherEasterEggChance > 1f) otherEasterEggChance = 1f;
+        easterEggSpeed = clampEasterEggSpeed(easterEggSpeed);
+        easterEggMagnetStrength = clampEasterEggMagnetStrength(easterEggMagnetStrength);
         if (activePreset > 0) {
             applyPresetSettings(activePreset);
         }
+        if (!lunaPresetLoaded && Global.getSettings().getModManager().isModEnabled("lunalib")) {
+            Global.getLogger(DynamicAsteroidsCombatPlugin.class).warn("Dynamic Asteroids: LunaLib did not return da_activePreset; using preset " + activePreset + ".");
+        }
+        Global.getLogger(DynamicAsteroidsCombatPlugin.class).info(
+            "Dynamic Asteroids: Applied preset " + activePreset + " (" + getPresetName() + "), stream speed "
+                + (int) streamSpeed + ", asteroid range " + minFieldRocks + "-" + maxFieldRocks + ".");
     }
 
     private void loadLunaSettingNumber(String fieldId, float currentVal) {
@@ -569,10 +751,20 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
         else if (fieldId.equals("da_openSpaceMaxRocks")) openSpaceMaxRocks = num.intValue();
         else if (fieldId.equals("da_openSpaceMinDelay")) openSpaceMinDelay = num.floatValue();
         else if (fieldId.equals("da_openSpaceMaxDelay")) openSpaceMaxDelay = num.floatValue();
+        else if (fieldId.equals("da_openSpaceEasterEggMult")) openSpaceEasterEggMult = num.floatValue();
         else if (fieldId.equals("da_activePreset")) activePreset = num.intValue();
         else if (fieldId.equals("da_pdMaxFluxThreshold")) pdMaxFluxThreshold = num.floatValue();
         else if (fieldId.equals("da_asteroidHealthMult")) asteroidHealthMult = num.floatValue();
         else if (fieldId.equals("da_pdAsteroidDamageMult")) pdAsteroidDamageMult = num.floatValue();
+        else if (fieldId.equals("da_asteroidCollisionDamageMult")) asteroidCollisionDamageMult = num.floatValue();
+        else if (fieldId.equals("da_derelictSpawnChance")) derelictSpawnChance = num.floatValue();
+        else if (fieldId.equals("da_debrisEasterEggChance")) debrisEasterEggChance = num.floatValue();
+        else if (fieldId.equals("da_resourceEasterEggChance")) resourceEasterEggChance = num.floatValue();
+        else if (fieldId.equals("da_otherEasterEggChance")) otherEasterEggChance = num.floatValue();
+        else if (fieldId.equals("da_easterEggSpeed")) setEasterEggSpeed(num.floatValue());
+        else if (fieldId.equals("da_easterEggMagnetStrength")) easterEggMagnetStrength = clampEasterEggMagnetStrength(num.floatValue());
+        else if (fieldId.equals("da_derelictRescueHoldTime")) derelictRescueHoldTime = num.floatValue();
+        else if (fieldId.equals("da_derelictRescueChance")) derelictRescueChance = num.floatValue();
     }
 
         private void refreshLunaSettings() {
@@ -591,7 +783,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                 Boolean srVal = getLunaBoolean("da_enableShieldReaction");
                 if (srVal != null) enableShieldReaction = srVal.booleanValue();
 
-                Number nPreset = getLunaNumber("da_activePreset");
+                Integer nPreset = getLunaInt("da_activePreset");
                 if (nPreset != null) {
                     int pVal = nPreset.intValue();
                     if (pVal != activePreset) {
@@ -606,8 +798,15 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                             if (engine != null && engine.getCombatUI() != null) {
                                 String presetLabel = getPresetName();
                                 String msg = IS_RUSSIAN ? 
-                                    ("Dynamic Asteroids: Профиль [" + presetLabel + "] (" + (int)streamSpeed + " ед/с, " + minR + "–" + maxR + " камней)") :
-                                    ("Dynamic Asteroids: Preset [" + presetLabel + "] (" + (int)streamSpeed + " u/s, " + minR + "–" + maxR + " rocks)");
+                                    ("Dynamic Asteroids: Переключен профиль на [" + presetLabel + "] (" + (int)streamSpeed + " ед/с, " + minR + " - " + maxR + " камней, таран x" + asteroidCollisionDamageMult + ")") :
+                                    ("Dynamic Asteroids: Profile switched to [" + presetLabel + "] (" + (int)streamSpeed + " u/s, " + minR + " - " + maxR + " rocks, ram x" + asteroidCollisionDamageMult + ")");
+                                engine.getCombatUI().addMessage(1, msg, Color.CYAN);
+                            }
+                        } else {
+                            if (engine != null && engine.getCombatUI() != null) {
+                                String msg = IS_RUSSIAN ? 
+                                    "Dynamic Asteroids: Переключен профиль на [Свой] (Ручная настройка параметров)" :
+                                    "Dynamic Asteroids: Profile switched to [Custom] (Manual slider tuning)";
                                 engine.getCombatUI().addMessage(1, msg, Color.CYAN);
                             }
                         }
@@ -620,10 +819,63 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                 Number nPdFlux = getLunaNumber("da_pdMaxFluxThreshold");
                 if (nPdFlux != null) pdMaxFluxThreshold = nPdFlux.floatValue();
 
+                Boolean bTrails = getLunaBoolean("da_enableParticleTrails");
+                if (bTrails != null) enableParticleTrails = bTrails.booleanValue();
+
+                Boolean bEarlyEv = getLunaBoolean("da_enableEarlySnipeEvasion");
+                if (bEarlyEv != null) enableEarlySnipeEvasion = bEarlyEv.booleanValue();
+
                 if (activePreset == 0) {
                     // Preset 0 = Custom mode: user manually tunes individual sliders!
                     Number nSpeed = getLunaNumber("da_fieldSurgeSpeed");
-                    if (nSpeed != null) streamSpeed = nSpeed.floatValue();
+                    if (nSpeed != null) {
+                        float newSpeed = nSpeed.floatValue();
+                        if (Math.abs(newSpeed - streamSpeed) > 10f) {
+                            setStreamSpeed(newSpeed);
+                        }
+                    }
+
+                    Number nMinRocks = getLunaNumber("da_minFieldRocks");
+                    if (nMinRocks != null) minFieldRocks = nMinRocks.intValue();
+
+                    Number nMaxRocks = getLunaNumber("da_maxFieldRocks");
+                    if (nMaxRocks != null) maxFieldRocks = nMaxRocks.intValue();
+
+                    Number nLifespan = getLunaNumber("da_asteroidLifespan");
+                    if (nLifespan != null) asteroidLifespan = nLifespan.floatValue();
+
+                    Number nBeamW = getLunaNumber("da_beamWidth");
+                    if (nBeamW != null) beamWidth = nBeamW.floatValue();
+
+                    Number nCollDmg = getLunaNumber("da_asteroidCollisionDamageMult");
+                    if (nCollDmg != null) asteroidCollisionDamageMult = nCollDmg.floatValue();
+
+                    Number nDerelictChance = getLunaNumber("da_derelictSpawnChance");
+                    if (nDerelictChance != null) derelictSpawnChance = nDerelictChance.floatValue();
+
+                    Number nDebrisChance = getLunaNumber("da_debrisEasterEggChance");
+                    if (nDebrisChance != null) debrisEasterEggChance = nDebrisChance.floatValue();
+
+                    Number nResourceChance = getLunaNumber("da_resourceEasterEggChance");
+                    if (nResourceChance != null) resourceEasterEggChance = nResourceChance.floatValue();
+
+                    Number nOtherChance = getLunaNumber("da_otherEasterEggChance");
+                    if (nOtherChance != null) otherEasterEggChance = nOtherChance.floatValue();
+
+                    Number nEggSpeed = getLunaNumber("da_easterEggSpeed");
+                    if (nEggSpeed != null) setEasterEggSpeed(nEggSpeed.floatValue());
+
+                    Number nMagStrength = getLunaNumber("da_easterEggMagnetStrength");
+                    if (nMagStrength != null) easterEggMagnetStrength = clampEasterEggMagnetStrength(nMagStrength.floatValue());
+
+                    Number nHoldTime = getLunaNumber("da_derelictRescueHoldTime");
+                    if (nHoldTime != null) derelictRescueHoldTime = nHoldTime.floatValue();
+
+                    Number nRescueChance = getLunaNumber("da_derelictRescueChance");
+                    if (nRescueChance != null) derelictRescueChance = nRescueChance.floatValue();
+
+                    Number nTrailChance = getLunaNumber("da_particleTrailChance");
+                    if (nTrailChance != null) particleTrailChance = nTrailChance.floatValue();
 
                     Number nAstHp = getLunaNumber("da_asteroidHealthMult");
                     if (nAstHp != null) asteroidHealthMult = nAstHp.floatValue();
@@ -636,12 +888,6 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
                     Number nLookahead = getLunaNumber("da_aiLookaheadTime");
                     if (nLookahead != null) aiLookaheadTime = nLookahead.floatValue();
-
-                    Number nMinRocks = getLunaNumber("da_minFieldRocks");
-                    if (nMinRocks != null) minFieldRocks = nMinRocks.intValue();
-
-                    Number nMaxRocks = getLunaNumber("da_maxFieldRocks");
-                    if (nMaxRocks != null) maxFieldRocks = nMaxRocks.intValue();
                 }
             }
         } catch (Throwable t) {
@@ -650,40 +896,36 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
     private Number getLunaNumber(String fieldId) {
         try {
-            Class<?> clazz = Class.forName("lunalib.lunaSettings.LunaSettings");
-            try {
-                Method mInt = clazz.getMethod("getInt", String.class, String.class);
-                Object val = mInt.invoke(null, MOD_ID, fieldId);
-                if (val instanceof Number) return (Number) val;
-            } catch (Throwable t1) {}
-
-            try {
-                Method mFloat = clazz.getMethod("getFloat", String.class, String.class);
-                Object val = mFloat.invoke(null, MOD_ID, fieldId);
-                if (val instanceof Number) return (Number) val;
-            } catch (Throwable t2) {}
-
-            try {
-                Method mDouble = clazz.getMethod("getDouble", String.class, String.class);
-                Object val = mDouble.invoke(null, MOD_ID, fieldId);
-                if (val instanceof Number) return (Number) val;
-            } catch (Throwable t3) {}
+            Double value = LunaSettings.getDouble(MOD_ID, fieldId);
+            if (value != null) return value;
         } catch (Throwable t) {
+            logLunaSettingWarning(fieldId, t);
         }
         return null;
     }
 
+    private Integer getLunaInt(String fieldId) {
+        try {
+            return LunaSettings.getInt(MOD_ID, fieldId);
+        } catch (Throwable t) {
+            logLunaSettingWarning(fieldId, t);
+            return null;
+        }
+    }
+
     private Boolean getLunaBoolean(String fieldId) {
         try {
-            Class<?> clazz = Class.forName("lunalib.lunaSettings.LunaSettings");
-            Method method = clazz.getMethod("getBoolean", String.class, String.class);
-            if (method != null) {
-                Object val = method.invoke(null, MOD_ID, fieldId);
-                if (val instanceof Boolean) return (Boolean) val;
-            }
+            return LunaSettings.getBoolean(MOD_ID, fieldId);
         } catch (Throwable t) {
+            logLunaSettingWarning(fieldId, t);
         }
         return null;
+    }
+
+    private void logLunaSettingWarning(String fieldId, Throwable error) {
+        if (lunaSettingWarnings.add(fieldId)) {
+            Global.getLogger(DynamicAsteroidsCombatPlugin.class).warn("Dynamic Asteroids: Failed to read LunaLib setting " + fieldId + ".", error);
+        }
     }
 
     private ShipAPI getPlayerShipSafely() {
@@ -772,6 +1014,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
             Color dustColor = new Color(130, 115, 100, 110);
             for (CombatEntityAPI ast : existing) {
                 if (ast != null && !ast.isExpired()) {
+                    if (ast.getCustomData().containsKey("IS_EASTER_EGG")) continue;
                     if (withSmoke && ast.getLocation() != null && !isTitleScreen) {
                         float radius = Math.max(25f, ast.getCollisionRadius());
                         engine.addSmokeParticle(ast.getLocation(), new Vector2f(0f, 0f), radius * 0.8f, 0.4f, 0.6f, dustColor);
@@ -782,16 +1025,86 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
         }
     }
 
+    private void queueDetectionSoundBurst() {
+        pendingDetectionSoundPlays = Math.min(9, pendingDetectionSoundPlays + 3);
+    }
+
+    private void advanceDetectionSound(float amount) {
+        if (pendingDetectionSoundPlays <= 0) return;
+        detectionSoundTimer -= amount;
+        while (pendingDetectionSoundPlays > 0 && detectionSoundTimer <= 0f) {
+            try {
+                Global.getSoundPlayer().playUISound("da_derelict_detect", 1.0f, 0.9f);
+            } catch (Throwable t) {
+                try {
+                    Global.getSoundPlayer().playUISound("ui_radar_detect_vessel", 1.0f, 1.0f);
+                } catch (Throwable t2) {}
+            }
+            pendingDetectionSoundPlays--;
+            detectionSoundTimer += 0.25f;
+        }
+    }
+
     @Override
     public void advance(float amount, List<InputEventAPI> events) {
         if (!active || engine == null) return;
 
         totalCombatTime += amount;
+        advanceDetectionSound(amount);
 
         lunaCheckTimer += amount;
         if (lunaCheckTimer >= 0.5f) {
             lunaCheckTimer = 0f;
             refreshLunaSettings();
+        }
+
+        // Summon Derelict Hotkey: [ ' ] (KEY_APOSTROPHE / KEY_GRAVE)
+        if (summonKeyCooldown > 0f) {
+            summonKeyCooldown -= amount;
+        }
+        // Summon Loot Container Hotkey: [ ; ] (KEY_SEMICOLON)
+        if (summonContainerKeyCooldown > 0f) {
+            summonContainerKeyCooldown -= amount;
+        }
+
+        boolean summonTriggered = false;
+        boolean summonContainerTriggered = false;
+
+        if (events != null) {
+            for (InputEventAPI event : events) {
+                if (!event.isConsumed() && event.isKeyDownEvent()) {
+                    int key = event.getEventValue();
+                    if (key == Keyboard.KEY_APOSTROPHE || key == Keyboard.KEY_GRAVE) {
+                        event.consume();
+                        if (summonKeyCooldown <= 0f) summonTriggered = true;
+                        break;
+                    } else if (key == Keyboard.KEY_SEMICOLON) {
+                        event.consume();
+                        if (summonContainerKeyCooldown <= 0f) summonContainerTriggered = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (!summonTriggered && summonKeyCooldown <= 0f) {
+            if (Keyboard.isKeyDown(Keyboard.KEY_APOSTROPHE) || Keyboard.isKeyDown(Keyboard.KEY_GRAVE)) {
+                summonTriggered = true;
+            }
+        }
+        if (!summonContainerTriggered && summonContainerKeyCooldown <= 0f) {
+            if (Keyboard.isKeyDown(Keyboard.KEY_SEMICOLON)) {
+                summonContainerTriggered = true;
+            }
+        }
+
+        if (summonTriggered) {
+            summonKeyCooldown = 0.5f;
+            summonDerelictNearPlayer();
+        }
+        if (summonContainerTriggered) {
+            summonContainerKeyCooldown = 0.5f;
+            summonContainerNearPlayer();
         }
 
         // Process Simulation Hotkeys:
@@ -832,37 +1145,11 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                         showLimitFeedback(IS_RUSSIAN ? "Лимит астероидов УМЕНЬШЕН: " + battleTargetCount + " шт." : "Asteroid Limit DECREASED: " + battleTargetCount + " rocks", Color.YELLOW);
                     } else if (ctrlHeld && (key == Keyboard.KEY_EQUALS || key == Keyboard.KEY_ADD)) {
                         event.consume();
-                        float oldSpeed = streamSpeed;
-                        streamSpeed = Math.min(5000f, streamSpeed + 100f);
-                        if (engine != null && oldSpeed > 50f && streamSpeed > 50f) {
-                            float speedRatio = streamSpeed / oldSpeed;
-                            java.util.List<CombatEntityAPI> asts = engine.getAsteroids();
-                            if (asts != null) {
-                                for (int i = 0; i < asts.size(); i++) {
-                                    CombatEntityAPI a = asts.get(i);
-                                    if (a != null && a.getVelocity() != null) {
-                                        a.getVelocity().scale(speedRatio);
-                                    }
-                                }
-                            }
-                        }
+                        setStreamSpeed(Math.min(5000f, streamSpeed + 100f));
                         showLimitFeedback(IS_RUSSIAN ? ("Скорость потока УВЕЛИЧЕНА: " + (int)streamSpeed + " ед/с") : ("Stream Speed INCREASED: " + (int)streamSpeed + " u/s"), Color.CYAN);
                     } else if (ctrlHeld && (key == Keyboard.KEY_MINUS || key == Keyboard.KEY_SUBTRACT)) {
                         event.consume();
-                        float oldSpeed = streamSpeed;
-                        streamSpeed = Math.max(100f, streamSpeed - 100f);
-                        if (engine != null && oldSpeed > 50f && streamSpeed > 50f) {
-                            float speedRatio = streamSpeed / oldSpeed;
-                            java.util.List<CombatEntityAPI> asts = engine.getAsteroids();
-                            if (asts != null) {
-                                for (int i = 0; i < asts.size(); i++) {
-                                    CombatEntityAPI a = asts.get(i);
-                                    if (a != null && a.getVelocity() != null) {
-                                        a.getVelocity().scale(speedRatio);
-                                    }
-                                }
-                            }
-                        }
+                        setStreamSpeed(Math.max(100f, streamSpeed - 100f));
                         showLimitFeedback(IS_RUSSIAN ? ("Скорость потока УМЕНЬШЕНА: " + (int)streamSpeed + " ед/с") : ("Stream Speed DECREASED: " + (int)streamSpeed + " u/s"), Color.YELLOW);
                     }
                 }
@@ -874,6 +1161,10 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
             simulationHintShown = true;
             if (engine.getCombatUI() != null) {
                 engine.getCombatUI().addMessage(1, IS_RUSSIAN ? "[Dynamic Asteroids 2.0] [/] Вкл/Выкл | [Shift +/-] Лимит (+-50) | [Ctrl +/-] Скорость (+-100)" : "[Dynamic Asteroids 2.0] [/] Toggle ON/OFF | [Shift +/-] Limit (+-50) | [Ctrl +/-] Speed (+-100)", Color.CYAN);
+                String simPresetMsg = IS_RUSSIAN ?
+                    ("Dynamic Asteroids: Профиль [" + getPresetName() + "] (Скорость: " + (int)streamSpeed + " ед/с, " + minFieldRocks + " - " + maxFieldRocks + " камней, таран x" + asteroidCollisionDamageMult + ")") :
+                    ("Dynamic Asteroids: Profile [" + getPresetName() + "] (Speed: " + (int)streamSpeed + " u/s, " + minFieldRocks + " - " + maxFieldRocks + " rocks, ram x" + asteroidCollisionDamageMult + ")");
+                engine.getCombatUI().addMessage(1, simPresetMsg, Color.CYAN);
             }
         }
 
@@ -922,7 +1213,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                     engine.maintainStatusForPlayerShip(
                         "DYNAMIC_ASTEROIDS_STATUS",
                         icon,
-                        IS_RUSSIAN ? "ОПАСНОСТЬ: АСТЕРОИДНЫЙ ПОЯС" : "HAZARD: ASTEROID BELT",
+                        (IS_RUSSIAN ? "ПОЯС: [" : "BELT: [") + getPresetName() + (IS_RUSSIAN ? "] (" : "] (") + (int)streamSpeed + (IS_RUSSIAN ? " ск)" : " spd)"),
                         sub,
                         true
                     );
@@ -975,6 +1266,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
         // Visible boundaries and strict despawn margins
         float focalCX = 0f;
         float focalCY = 0f;
+
         float halfW = engine.getMapWidth() * 0.5f;
         float halfH = engine.getMapHeight() * 0.5f;
 
@@ -1007,6 +1299,11 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
             for (int i = 0; i < asteroids.size(); i++) {
                 CombatEntityAPI ast = asteroids.get(i);
                 if (ast == null || ast.isExpired()) continue;
+
+                // Easter eggs are managed separately by advanceEasterEgg, never delete or prune here!
+                if (ast.getCustomData().containsKey("IS_EASTER_EGG")) {
+                    continue;
+                }
 
                 Vector2f loc = ast.getLocation();
                 if (loc == null) continue;
@@ -1047,7 +1344,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
             if (toPoof != null) {
                 Color dustColor = new Color(130, 115, 100, 110);
                 for (CombatEntityAPI dead : toPoof) {
-                    if (dead != null && dead.getLocation() != null && !isTitleScreen) {
+                    if (dead != null && dead.getLocation() != null) {
                         float radius = Math.max(25f, dead.getCollisionRadius());
                         engine.addSmokeParticle(dead.getLocation(), new Vector2f(0f, 0f), radius * 0.8f, 0.4f, 0.6f, dustColor);
                     }
@@ -1187,9 +1484,313 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
         // Fleet AI Collision Avoidance & Interception
         advanceAIAvoidance(amount);
+
+        // Advance Easter Eggs (Derelicts, Caches, Probes, Tanks)
+        if (activeEasterEggEntities != null && !activeEasterEggEntities.isEmpty()) {
+            for (int i = activeEasterEggEntities.size() - 1; i >= 0; i--) {
+                CombatEntityAPI egg = activeEasterEggEntities.get(i);
+                if (egg == null || egg.isExpired()) {
+                    activeEasterEggEntities.remove(i);
+                    continue;
+                }
+                advanceEasterEgg(egg, amount);
+            }
+        }
+
+        // Update Derelict HUD Status Compass & Timer
+        updateDerelictHUDStatus();
+
+        // Check combat conclusion for derelict recovery registration in campaign
+        if (engine != null && engine.isCombatOver() && !campaignListenerRegistered) {
+            if (!derelictSalvageRecords.isEmpty() && !engine.isSimulation() && engine.isInCampaign() && Global.getSector() != null) {
+                campaignListenerRegistered = true;
+                Global.getSector().getListenerManager().addListener(
+                    new DerelictRecoveryCampaignListener(new ArrayList<DerelictSalvageRecord>(derelictSalvageRecords.values())),
+                    true
+                );
+            }
+        }
+    }
+
+    private final Map<String, SpriteAPI> spriteCache = new HashMap<String, SpriteAPI>();
+
+    public SpriteAPI getCachedSprite(String category, String key, String fallbackPath) {
+        String cacheKey = (category != null ? category : "") + ":" + (key != null ? key : "") + ":" + (fallbackPath != null ? fallbackPath : "");
+        if (spriteCache.containsKey(cacheKey)) {
+            return spriteCache.get(cacheKey);
+        }
+
+        SpriteAPI s = null;
+        if (category != null && key != null) {
+            try {
+                SpriteAPI cand = Global.getSettings().getSprite(category, key);
+                if (isValidSprite(cand)) {
+                    s = cand;
+                }
+            } catch (Throwable t) {}
+        }
+        if (s == null && fallbackPath != null) {
+            try {
+                Global.getSettings().loadTexture(fallbackPath);
+                SpriteAPI cand = Global.getSettings().getSprite(fallbackPath);
+                if (isValidSprite(cand)) {
+                    s = cand;
+                }
+            } catch (Throwable t) {}
+        }
+
+        spriteCache.put(cacheKey, s);
+        return s;
+    }
+
+    public static boolean isValidSprite(SpriteAPI s) {
+        if (s == null) return false;
+        try {
+            // Calling getWidth() throws NPE on broken proxy if the internal sprite (this.o00000) is null!
+            return s.getWidth() > 0.001f;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    private void updateDerelictHUDStatus() {
+        if (engine == null || activeEasterEggEntities == null || activeEasterEggEntities.isEmpty()) return;
+
+        ShipAPI playerShip = engine.getPlayerShip();
+        Vector2f pLoc = (playerShip != null) ? playerShip.getLocation() : null;
+
+        CombatEntityAPI bestDerelict = null;
+        float bestDistSq = Float.MAX_VALUE;
+        int derelictCount = 0;
+        int rescuedCount = 0;
+
+        for (int i = 0; i < activeEasterEggEntities.size(); i++) {
+            CombatEntityAPI ent = activeEasterEggEntities.get(i);
+            if (ent == null || ent.isExpired() || (ent.getCustomData() != null && ent.getCustomData().containsKey("DA_EXPIRED")) || !engine.isEntityInPlay(ent)) continue;
+            if (!"DERELICT".equals(ent.getCustomData().get("EASTER_EGG_TYPE"))) continue;
+
+            derelictCount++;
+            Boolean res = (Boolean) ent.getCustomData().get("DERELICT_RESCUED");
+            if (res != null && res.booleanValue()) rescuedCount++;
+
+            if (pLoc != null && ent.getLocation() != null) {
+                float dx = ent.getLocation().x - pLoc.x;
+                float dy = ent.getLocation().y - pLoc.y;
+                float dSq = dx * dx + dy * dy;
+                boolean isThisRescued = (res != null && res.booleanValue());
+                boolean isBestRescued = false;
+                if (bestDerelict != null) {
+                    Boolean bRes = (Boolean) bestDerelict.getCustomData().get("DERELICT_RESCUED");
+                    isBestRescued = (bRes != null && bRes.booleanValue());
+                }
+
+                if (bestDerelict == null) {
+                    bestDerelict = ent;
+                    bestDistSq = dSq;
+                } else if (isBestRescued && !isThisRescued) {
+                    bestDerelict = ent;
+                    bestDistSq = dSq;
+                } else if (isBestRescued == isThisRescued && dSq < bestDistSq) {
+                    bestDerelict = ent;
+                    bestDistSq = dSq;
+                }
+            } else if (bestDerelict == null) {
+                bestDerelict = ent;
+            }
+        }
+
+        if (bestDerelict == null) return;
+        activeDerelictEntity = bestDerelict;
+
+        Vector2f dLoc = bestDerelict.getLocation();
+        if (dLoc == null) return;
+
+        String hullName = (String) bestDerelict.getCustomData().get("DERELICT_NAME");
+        if (hullName == null) hullName = IS_RUSSIAN ? "Остов корабля" : "Derelict ship";
+
+        Float curT = (Float) bestDerelict.getCustomData().get("DERELICT_HOLD_TIMER");
+        float holdT = (curT != null) ? curT.floatValue() : 0f;
+        Boolean rescued = (Boolean) bestDerelict.getCustomData().get("DERELICT_RESCUED");
+        boolean isRescued = (rescued != null && rescued.booleanValue());
+
+        String hullSizeStr = (String) bestDerelict.getCustomData().get("DERELICT_HULL_SIZE");
+        String sizeTag = "";
+        if ("CAPITAL_SHIP".equals(hullSizeStr)) sizeTag = IS_RUSSIAN ? " [Линкор]" : " [Capital]";
+        else if ("CRUISER".equals(hullSizeStr)) sizeTag = IS_RUSSIAN ? " [Крейсер]" : " [Cruiser]";
+        else if ("DESTROYER".equals(hullSizeStr)) sizeTag = IS_RUSSIAN ? " [Эсминец]" : " [Destroyer]";
+        else if ("FRIGATE".equals(hullSizeStr)) sizeTag = IS_RUSSIAN ? " [Фрегат]" : " [Frigate]";
+
+        String countSuffix = sizeTag + ((derelictCount > 1) ? (" [" + (isRescued ? rescuedCount : (derelictCount - rescuedCount)) + "/" + derelictCount + "]") : "");
+        String title;
+        String data;
+
+        if (pLoc != null) {
+            float dx = dLoc.x - pLoc.x;
+            float dy = dLoc.y - pLoc.y;
+            float dist = (float) Math.sqrt(dx * dx + dy * dy);
+
+            float angleDeg = (float) Math.toDegrees(Math.atan2(dy, dx));
+            if (angleDeg < 0) angleDeg += 360f;
+            float relAngle = angleDeg - playerShip.getFacing();
+            while (relAngle > 180f) relAngle -= 360f;
+            while (relAngle < -180f) relAngle += 360f;
+
+            int clock = Math.round((90f - relAngle) / 30f);
+            while (clock <= 0) clock += 12;
+            while (clock > 12) clock -= 12;
+
+            String arrow = "↑";
+            if (relAngle > -22.5f && relAngle <= 22.5f) arrow = "↑";
+            else if (relAngle > 22.5f && relAngle <= 67.5f) arrow = "↖";
+            else if (relAngle > 67.5f && relAngle <= 112.5f) arrow = "←";
+            else if (relAngle > 112.5f && relAngle <= 157.5f) arrow = "↙";
+            else if (relAngle < -22.5f && relAngle >= -67.5f) arrow = "↗";
+            else if (relAngle < -67.5f && relAngle >= -112.5f) arrow = "→";
+            else if (relAngle < -112.5f && relAngle >= -157.5f) arrow = "↘";
+            else arrow = "↓";
+
+            if (isRescued) {
+                title = (IS_RUSSIAN ? ("ОСТОВ СПАСЕН: " + hullName) : ("RESCUED: " + hullName)) + countSuffix;
+                data = IS_RUSSIAN ?
+                    String.format("%s Дист: %d ед. (на %d ч.) | СИСТЕМЫ СТАБИЛЬНЫ", arrow, (int)dist, clock) :
+                    String.format("%s Dist: %d su (%d o'clock) | SYSTEMS STABLE", arrow, (int)dist, clock);
+            } else {
+                int pct = Math.min(100, Math.round((holdT / derelictRescueHoldTime) * 100f));
+                title = (IS_RUSSIAN ? ("СИГНАЛ SOS: " + hullName) : ("SOS SIGNAL: " + hullName)) + countSuffix;
+                data = IS_RUSSIAN ?
+                    String.format("%s Дист: %d ед. (на %d ч.) | Стабилизация: %d%% (%d/%d с)", arrow, (int)dist, clock, pct, (int)holdT, (int)derelictRescueHoldTime) :
+                    String.format("%s Dist: %d su (%d o'clock) | Stabilizing: %d%% (%d/%d s)", arrow, (int)dist, clock, pct, (int)holdT, (int)derelictRescueHoldTime);
+            }
+        } else {
+            title = (IS_RUSSIAN ? ("ОСТОВ: " + hullName) : ("DERELICT: " + hullName)) + countSuffix;
+            data = isRescued ?
+                (IS_RUSSIAN ? "Системы стабилизированы" : "Systems stabilized") :
+                (IS_RUSSIAN ? String.format("Стабилизация: %d/%d с", (int)holdT, (int)derelictRescueHoldTime) : String.format("Hold: %d/%d s", (int)holdT, (int)derelictRescueHoldTime));
+        }
+
+        try {
+            engine.maintainStatusForPlayerShip("DA_DERELICT_HUD", "graphics/icons/intel/log_to_derelict_ship.png", title, data, false);
+        } catch (Throwable t) {}
+    }
+
+    public void summonDerelictNearPlayer() {
+        if (engine == null) return;
+
+        Vector2f spawnLoc = new Vector2f(0f, 0f);
+        Vector2f driftVel = new Vector2f(0f, 0f);
+
+        ShipAPI playerShip = engine.getPlayerShip();
+        if (playerShip != null && playerShip.getLocation() != null) {
+            float playerFacingRad = (float) Math.toRadians(playerShip.getFacing());
+            float dist = 750f + random.nextFloat() * 250f;
+            float spawnAngle = playerFacingRad + (random.nextFloat() - 0.5f) * 0.5f;
+            spawnLoc.x = playerShip.getLocation().x + (float) Math.cos(spawnAngle) * dist;
+            spawnLoc.y = playerShip.getLocation().y + (float) Math.sin(spawnAngle) * dist;
+
+            float driftAngle = random.nextFloat() * 6.28f;
+            float driftSpeed = 35f + random.nextFloat() * 25f;
+            driftVel.x = (float) Math.cos(driftAngle) * driftSpeed;
+            driftVel.y = (float) Math.sin(driftAngle) * driftSpeed;
+        } else {
+            spawnLoc.x = (random.nextFloat() - 0.5f) * 600f;
+            spawnLoc.y = (random.nextFloat() - 0.5f) * 600f;
+            driftVel.x = (random.nextFloat() - 0.5f) * 40f;
+            driftVel.y = (random.nextFloat() - 0.5f) * 40f;
+        }
+
+        CombatEntityAPI derelict = spawnDerelictAtLocation(spawnLoc.x, spawnLoc.y, driftVel.x, driftVel.y);
+        if (derelict != null) {
+            String hullName = (String) derelict.getCustomData().get("DERELICT_NAME");
+            try {
+                Global.getSoundPlayer().playUISound("ui_rep_raise", 1.0f, 1.0f);
+            } catch (Throwable t) {}
+
+            if (engine.getCombatUI() != null) {
+                String msg = IS_RUSSIAN ?
+                    ("СЕНСОРЫ: По экстренному вызову ['] обнаружен остов (" + hullName + ")!") :
+                    ("SENSORS: Summoned derelict ship via ['] detected (" + hullName + ")!");
+                engine.getCombatUI().addMessage(1, msg, new Color(80, 255, 160));
+            }
+
+            engine.addSmoothParticle(spawnLoc, driftVel, 250f, 1.0f, 1.4f, new Color(80, 230, 255, 240));
+        }
+    }
+
+    public void summonContainerNearPlayer() {
+        if (engine == null) return;
+
+        Vector2f spawnLoc = new Vector2f(0f, 0f);
+        Vector2f driftVel = new Vector2f(0f, 0f);
+
+        ShipAPI playerShip = engine.getPlayerShip();
+        if (playerShip != null && playerShip.getLocation() != null) {
+            float playerFacingRad = (float) Math.toRadians(playerShip.getFacing());
+            float dist = 650f + random.nextFloat() * 200f;
+            float spawnAngle = playerFacingRad + (random.nextFloat() - 0.5f) * 0.4f;
+            spawnLoc.x = playerShip.getLocation().x + (float) Math.cos(spawnAngle) * dist;
+            spawnLoc.y = playerShip.getLocation().y + (float) Math.sin(spawnAngle) * dist;
+
+            float driftAngle = random.nextFloat() * 6.28f;
+            float driftSpeed = 25f + random.nextFloat() * 20f;
+            driftVel.x = (float) Math.cos(driftAngle) * driftSpeed;
+            driftVel.y = (float) Math.sin(driftAngle) * driftSpeed;
+        } else {
+            spawnLoc.x = (random.nextFloat() - 0.5f) * 500f;
+            spawnLoc.y = (random.nextFloat() - 0.5f) * 500f;
+            driftVel.x = (random.nextFloat() - 0.5f) * 30f;
+            driftVel.y = (random.nextFloat() - 0.5f) * 30f;
+        }
+
+        String[] lootTypes = new String[] { "CACHE", "PROBE", "CRYO_POD", "NAV_BUOY", "MOTHERSHIP_ENGINE", "FIGHTER" };
+        String chosenLootType = lootTypes[random.nextInt(lootTypes.length)];
+
+        CombatEntityAPI container = spawnOtherEasterEggAtLocation(spawnLoc.x, spawnLoc.y, driftVel.x, driftVel.y, chosenLootType);
+        if (container != null) {
+            try {
+                Global.getSoundPlayer().playUISound("ui_cargo_transfer", 1.0f, 1.0f);
+            } catch (Throwable t) {}
+
+            String typeLabel;
+            Color alertCol;
+            if ("CACHE".equals(chosenLootType)) {
+                typeLabel = IS_RUSSIAN ? "Грузовой тайник снабжения Домена" : "Domain Supply Cache";
+                alertCol = new Color(255, 215, 60);
+            } else if ("PROBE".equals(chosenLootType)) {
+                typeLabel = IS_RUSSIAN ? "Геологоразведочный зонд Домена" : "Domain Survey Probe";
+                alertCol = new Color(80, 230, 255);
+            } else if ("CRYO_POD".equals(chosenLootType)) {
+                typeLabel = IS_RUSSIAN ? "Аварийная криокапсула выживших" : "Emergency Cryo Stasis Pod";
+                alertCol = new Color(60, 255, 140);
+            } else if ("NAV_BUOY".equals(chosenLootType)) {
+                typeLabel = IS_RUSSIAN ? "Навигационно-сенсорный буй" : "Navigational Sensor Buoy";
+                alertCol = new Color(190, 130, 255);
+            } else if ("FIGHTER".equals(chosenLootType)) {
+                String fName = (String) container.getCustomData().get("FIGHTER_WING_NAME");
+                typeLabel = IS_RUSSIAN ?
+                    ("Дрейфующий истребитель (" + (fName != null ? fName : "Крыло") + ")") :
+                    ("Drifting Fighter (" + (fName != null ? fName : "Wing") + ")");
+                alertCol = new Color(100, 240, 255);
+            } else {
+                typeLabel = IS_RUSSIAN ? "Древний двигатель флагмана" : "Ancient Flagship Engine Debris";
+                alertCol = new Color(200, 215, 230);
+            }
+
+            if (engine.getCombatUI() != null) {
+                String msg = IS_RUSSIAN ?
+                    ("СЕНСОРЫ: По экстренному вызову [;] обнаружен " + typeLabel + "!") :
+                    ("SENSORS: Summoned container via [;] detected (" + typeLabel + ")!");
+                engine.getCombatUI().addMessage(1, msg, alertCol);
+            }
+
+            engine.addSmoothParticle(spawnLoc, driftVel, 220f, 1.0f, 1.2f, alertCol);
+        }
     }
 
     private void maintainVelocity(CombatEntityAPI ast) {
+        if (ast == null) return;
+        if (ast.getCustomData().containsKey("DA_NO_MAINTAIN_VELOCITY")) return;
+        if (ast.getCustomData().containsKey("IS_EASTER_EGG")) return;
+
         Vector2f vel = ast.getVelocity();
         if (vel == null) return;
 
@@ -1244,6 +1845,45 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                 vx = (random.nextFloat() - 0.5f) * 40.0f;
                 vy = -speed;
                 break;
+        }
+
+        // Rare Easter Eggs in Open Space (scaled down 5-10x to preserve quiet, atmospheric deep space)
+        if (openSpaceEasterEggMult > 0f) {
+            float roll = random.nextFloat();
+            float openDerelictChance = derelictSpawnChance * openSpaceEasterEggMult;
+            float openResourceChance = resourceEasterEggChance * openSpaceEasterEggMult;
+            float openDebrisChance = debrisEasterEggChance * openSpaceEasterEggMult;
+
+            boolean derelictAlreadyInPlay = (activeDerelictEntity != null && !activeDerelictEntity.isExpired() && engine.isEntityInPlay(activeDerelictEntity));
+
+            if (!derelictAlreadyInPlay && roll < openDerelictChance) {
+                Vector2f target = calculateEasterEggTarget(focalCX, focalCY);
+                Vector2f pt = calculateEasterEggSpawnPoint(target, focalCX, focalCY, halfW, halfH, random.nextFloat() * 6.28f);
+                float dx = target.x - pt.x;
+                float dy = target.y - pt.y;
+                float dLen = (float) Math.sqrt(dx * dx + dy * dy);
+                float spd = 250.0f; // Derelict cruising speed
+                float evx = (dLen > 0.001f) ? (dx / dLen) * spd : -spd;
+                float evy = (dLen > 0.001f) ? (dy / dLen) * spd : 0f;
+                spawnDerelictEasterEgg(pt.x, pt.y, evx, evy);
+                return;
+            } else if (roll < (openDerelictChance + openResourceChance)) {
+                Vector2f target = calculateEasterEggTarget(focalCX, focalCY);
+                Vector2f pt = calculateEasterEggSpawnPoint(target, focalCX, focalCY, halfW, halfH, random.nextFloat() * 6.28f);
+                float dx = target.x - pt.x;
+                float dy = target.y - pt.y;
+                float dLen = (float) Math.sqrt(dx * dx + dy * dy);
+                float spd = 250.0f; // Resource containers cruising speed
+                float evx = (dLen > 0.001f) ? (dx / dLen) * spd : -spd;
+                float evy = (dLen > 0.001f) ? (dy / dLen) * spd : 0f;
+                spawnOtherEasterEgg(pt.x, pt.y, evx, evy, true);
+                return;
+            } else if (roll < (openDerelictChance + openResourceChance + openDebrisChance)) {
+                float spd = 400.0f; // Debris and explosive tanks cruising speed
+                float ratio = spd / Math.max(1f, speed);
+                spawnOtherEasterEgg(spawnX, spawnY, vx * ratio, vy * ratio, false);
+                return;
+            }
         }
 
         int type = rollAsteroidType(false);
@@ -1321,6 +1961,39 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
      * - Heavy rock allocations (60 to 90 rocks per wave) for dense, dramatic formations!
      * - 5% Targeted Snipe towards any random alive ship.
      */
+    private Vector2f calculateEasterEggTarget(float focalCX, float focalCY) {
+        ShipAPI player = (engine != null) ? engine.getPlayerShip() : null;
+        if (player != null && player.isAlive() && !player.isHulk() && random.nextFloat() < 0.40f) {
+            Vector2f pLoc = player.getLocation();
+            Vector2f pVel = player.getVelocity();
+            if (pLoc != null) {
+                // Predict where player will be in 3.5 - 6.0 seconds
+                float leadSec = 3.5f + random.nextFloat() * 2.5f;
+                float leadX = (pVel != null) ? pVel.x * leadSec : 0f;
+                float leadY = (pVel != null) ? pVel.y * leadSec : 0f;
+                float tx = pLoc.x + leadX + (random.nextFloat() - 0.5f) * 450f;
+                float ty = pLoc.y + leadY + (random.nextFloat() - 0.5f) * 450f;
+                return new Vector2f(tx, ty);
+            }
+        }
+        return new Vector2f(focalCX, focalCY);
+    }
+
+    private Vector2f calculateEasterEggSpawnPoint(Vector2f target, float focalCX, float focalCY, float halfW, float halfH, float baseAngle) {
+        float off = 200f;
+        switch (avalancheDirection) {
+            case RIGHT_TO_LEFT:
+                return new Vector2f(focalCX + halfW + off, target.y + (random.nextFloat() - 0.5f) * 400f);
+            case LEFT_TO_RIGHT:
+                return new Vector2f(focalCX - halfW - off, target.y + (random.nextFloat() - 0.5f) * 400f);
+            case TOP_TO_BOTTOM:
+                return new Vector2f(target.x + (random.nextFloat() - 0.5f) * 400f, focalCY + halfH + off);
+            case BOTTOM_TO_TOP:
+                return new Vector2f(target.x + (random.nextFloat() - 0.5f) * 400f, focalCY - halfH - off);
+        }
+        return getRectangleBoundaryPoint(focalCX, focalCY, halfW, halfH, baseAngle);
+    }
+
     private void triggerMultiAngleFormationWave(float focalCX, float focalCY, float halfW, float halfH) {
         // Roll number of concurrent streams/angles:
         int streamCount = 1;
@@ -1343,6 +2016,41 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
         else if (streamCount == 3) rocksPerStream = Math.round(28 * capScale);
 
         float baseEntryAngle = random.nextFloat() * (float) (Math.PI * 2.0);
+
+        // Roll for Easter Egg (Derelict Ship, Resource Cache/Probe/Pod/Fighter, or Debris/Explosive Tank)
+        // High-value items preferentially drift across player's operational zone for exciting gameplay!
+        if (random.nextFloat() < derelictSpawnChance) {
+            Vector2f target = calculateEasterEggTarget(focalCX, focalCY);
+            Vector2f pt = calculateEasterEggSpawnPoint(target, focalCX, focalCY, halfW, halfH, baseEntryAngle);
+            float dx = target.x - pt.x;
+            float dy = target.y - pt.y;
+            float dLen = (float) Math.sqrt(dx * dx + dy * dy);
+            float spd = 250.0f; // Derelict cruising speed
+            float vx = (dLen > 0.001f) ? (dx / dLen) * spd : -spd;
+            float vy = (dLen > 0.001f) ? (dy / dLen) * spd : 0f;
+            spawnDerelictEasterEgg(pt.x, pt.y, vx, vy);
+        } else if (random.nextFloat() < resourceEasterEggChance) {
+            Vector2f target = calculateEasterEggTarget(focalCX, focalCY);
+            Vector2f pt = calculateEasterEggSpawnPoint(target, focalCX, focalCY, halfW, halfH, baseEntryAngle);
+            float dx = target.x - pt.x;
+            float dy = target.y - pt.y;
+            float dLen = (float) Math.sqrt(dx * dx + dy * dy);
+            float spd = 250.0f; // Resource containers cruising speed
+            float vx = (dLen > 0.001f) ? (dx / dLen) * spd : -spd;
+            float vy = (dLen > 0.001f) ? (dy / dLen) * spd : 0f;
+            spawnOtherEasterEgg(pt.x, pt.y, vx, vy, true);
+        } else if (random.nextFloat() < debrisEasterEggChance) {
+            float entryAngle = baseEntryAngle + (random.nextFloat() - 0.5f) * 0.4f;
+            Vector2f pt = getRectangleBoundaryPoint(focalCX, focalCY, halfW, halfH, entryAngle);
+            float dx = focalCX - pt.x;
+            float dy = focalCY - pt.y;
+            float dLen = (float) Math.sqrt(dx * dx + dy * dy);
+            float spd = 400.0f; // Debris and explosive tanks cruising speed
+            float vx = (dLen > 0.001f) ? (dx / dLen) * spd : -spd;
+            float vy = (dLen > 0.001f) ? (dy / dLen) * spd : 0f;
+            spawnOtherEasterEgg(pt.x, pt.y, vx, vy, false);
+        }
+
 
         // Pick base figure type for this wave
         FigureType[] allFigures = FigureType.values();
@@ -1432,19 +2140,19 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
         if (!anyTargeted) {
             if (IS_RUSSIAN) {
                 if (streamCount == 1) {
-                    notifyWaveIncoming("ВНИМАНИЕ: " + waveFigureType.getDisplayName().toUpperCase() + " прорезает сектор!");
+                    notifyWaveIncoming("СЕНСОРЫ: " + waveFigureType.getDisplayName().toUpperCase() + " прорезает сектор!");
                 } else if (streamCount == 2) {
-                    notifyWaveIncoming("ДВОЙНОЙ ЗАЛП: 2 волны " + waveFigureType.getDisplayName() + " с разных углов!");
+                    notifyWaveIncoming("СЕНСОРЫ: ДВОЙНОЙ ЗАЛП — 2 волны (" + waveFigureType.getDisplayName() + ") с разных углов!");
                 } else {
-                    notifyWaveIncoming("ТРОЙНОЙ ШКВАЛ: 3 волны " + waveFigureType.getDisplayName() + " пересекают сектор!");
+                    notifyWaveIncoming("СЕНСОРЫ: ТРОЙНОЙ ШКВАЛ — 3 волны (" + waveFigureType.getDisplayName() + ") пересекают сектор!");
                 }
             } else {
                 if (streamCount == 1) {
-                    notifyWaveIncoming(waveFigureType.getDisplayName().toUpperCase() + " incoming across sector!");
+                    notifyWaveIncoming("SENSORS: " + waveFigureType.getDisplayName().toUpperCase() + " sweeping across sector!");
                 } else if (streamCount == 2) {
-                    notifyWaveIncoming("DUAL CONVERGENCE: 2 " + waveFigureType.getDisplayName() + " waves converging!");
+                    notifyWaveIncoming("SENSORS: DUAL CONVERGENCE — 2 " + waveFigureType.getDisplayName() + " waves converging!");
                 } else {
-                    notifyWaveIncoming("TRIPLE CROSS-BARRAGE: 3 " + waveFigureType.getDisplayName() + " waves intersecting!");
+                    notifyWaveIncoming("SENSORS: TRIPLE CROSS-BARRAGE — 3 " + waveFigureType.getDisplayName() + " waves intersecting!");
                 }
             }
         }
@@ -1571,6 +2279,12 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                 );
                 if (engine.getCombatUI() != null) {
                     engine.getCombatUI().addMessage(1, (IS_RUSSIAN ? "ОПАСНОСТЬ: Астероидный пояс (" : "HAZARD: Asteroid Belt active (") + battleTargetCount + (IS_RUSSIAN ? " макс). Поток: " : " max). Baseline flow: ") + getAvalancheDirectionLabel());
+                    if (!engine.isSimulation()) {
+                        String presetMsg = IS_RUSSIAN ?
+                            ("Dynamic Asteroids: Профиль [" + getPresetName() + "] (Скорость: " + (int)streamSpeed + " ед/с, " + minFieldRocks + " - " + maxFieldRocks + " камней, таран x" + asteroidCollisionDamageMult + ")") :
+                            ("Dynamic Asteroids: Profile [" + getPresetName() + "] (Speed: " + (int)streamSpeed + " u/s, " + minFieldRocks + " - " + maxFieldRocks + " rocks, ram x" + asteroidCollisionDamageMult + ")");
+                        engine.getCombatUI().addMessage(1, presetMsg, Color.CYAN);
+                    }
                 }
             } else {
                 if (engine.getCombatUI() != null) {
@@ -1584,7 +2298,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
     private void notifyWaveIncoming(String text) {
         try {
             if (engine.getCombatUI() != null && !isTitleScreen) {
-                engine.getCombatUI().addMessage(1, (IS_RUSSIAN ? "ВНИМАНИЕ: " : "WARNING: ") + text, new Color(255, 175, 50));
+                engine.getCombatUI().addMessage(1, text, new Color(255, 175, 50));
             }
         } catch (Throwable t) {
         }
@@ -1616,33 +2330,81 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
             if (ship == null || isTitleScreen) return;
 
             boolean isPlayer = (engine != null && ship == engine.getPlayerShip());
+            boolean isSim = (engine != null && engine.isSimulation());
+
             if (isPlayer) {
-                engine.addFloatingText(
-                    ship.getLocation(),
-                    IS_RUSSIAN ? "КРИТИЧЕСКАЯ ТРЕВОГА: ПРИЦЕЛЬНЫЙ ШКВАЛ ПО ВАШЕЙ ПОЗИЦИИ!" : "CRITICAL ALERT: METEOR TORRENT TARGETED ON YOUR POSITION!",
-                    26f,
-                    new Color(255, 30, 30),
-                    ship,
-                    0.35f,
-                    4.0f
-                );
-                if (engine.getCombatUI() != null) {
-                    engine.getCombatUI().addMessage(1, IS_RUSSIAN ? "КРИТИЧЕСКАЯ ОПАСНОСТЬ: Прицельный захват (5 процентов)! Шквал астероидов по флагману!" : "CRITICAL HAZARD: Torrent Lock (5 процентов)! Hypersonic barrage targeted on flagship!", new Color(255, 50, 50));
+                if (isSim) {
+                    engine.addFloatingText(
+                        ship.getLocation(),
+                        IS_RUSSIAN ? "[СИМУЛЯЦИЯ] ВЕКТОРНЫЙ ШКВАЛ ПО ФЛАГМАНУ!" : "[SIMULATION] VECTOR BARRAGE ON FLAGSHIP!",
+                        24f,
+                        new Color(255, 60, 60),
+                        ship,
+                        0.35f,
+                        3.5f
+                    );
+                    if (engine.getCombatUI() != null) {
+                        engine.getCombatUI().addMessage(1, IS_RUSSIAN ?
+                            "[СИМУЛЯЦИЯ] Проверка прочности: по курсу флагмана симулирован встречный шквал астероидов!" :
+                            "[SIMULATION] Stress Test: Simulated meteor barrage spawned along flagship course!",
+                            new Color(255, 70, 70)
+                        );
+                    }
+                } else {
+                    engine.addFloatingText(
+                        ship.getLocation(),
+                        IS_RUSSIAN ? "ОПАСНОСТЬ: МЕТЕОРИТНЫЙ ШКВАЛ ПО КУРСУ!" : "COLLISION ALERT: METEOR BARRAGE ON COURSE!",
+                        26f,
+                        new Color(255, 40, 40),
+                        ship,
+                        0.35f,
+                        4.0f
+                    );
+                    if (engine.getCombatUI() != null) {
+                        engine.getCombatUI().addMessage(1, IS_RUSSIAN ?
+                            "ОПАСНОСТЬ СТОЛКНОВЕНИЯ: Прямо по курсу флагмана зафиксирован плотный град астероидов!" :
+                            "COLLISION WARNING: Dense swarm of high-speed asteroids detected along flagship course!",
+                            new Color(255, 50, 50)
+                        );
+                    }
                 }
             } else {
                 String shipName = ship.getName();
                 String hullName = (ship.getHullSpec() != null) ? ship.getHullSpec().getHullName() : (IS_RUSSIAN ? "Корабль" : "Ship");
-                engine.addFloatingText(
-                    ship.getLocation(),
-                    IS_RUSSIAN ? "ПРИЦЕЛЬНЫЙ ШКВАЛ АСТЕРОИДОВ!" : "METEOR TORRENT TARGETED!",
-                    20f,
-                    new Color(255, 80, 50),
-                    ship,
-                    0.35f,
-                    3.0f
-                );
-                if (engine.getCombatUI() != null) {
-                    engine.getCombatUI().addMessage(1, (IS_RUSSIAN ? "ОПАСНОСТЬ: Захват цели на " : "HAZARD: Torrent Lock on ") + shipName + " (" + hullName + ")!", new Color(255, 120, 50));
+                if (isSim) {
+                    engine.addFloatingText(
+                        ship.getLocation(),
+                        IS_RUSSIAN ? "[СИМУЛЯЦИЯ] ВЕКТОРНЫЙ ПОТОК ПО КОРАБЛЮ" : "[SIMULATION] VECTOR STREAM ON SHIP",
+                        20f,
+                        new Color(255, 100, 50),
+                        ship,
+                        0.35f,
+                        3.0f
+                    );
+                    if (engine.getCombatUI() != null) {
+                        engine.getCombatUI().addMessage(1, (IS_RUSSIAN ?
+                            ("[СИМУЛЯЦИЯ] Симулирован встречный поток астероидов по курсу " + shipName + " (" + hullName + ")") :
+                            ("[SIMULATION] Simulated meteor stream along " + shipName + " (" + hullName + ") course")),
+                            new Color(255, 120, 50)
+                        );
+                    }
+                } else {
+                    engine.addFloatingText(
+                        ship.getLocation(),
+                        IS_RUSSIAN ? "ОПАСНОЕ СБЛИЖЕНИЕ: ГРАД АСТЕРОИДОВ!" : "HAZARD: METEOR STREAM ON COURSE!",
+                        20f,
+                        new Color(255, 90, 50),
+                        ship,
+                        0.35f,
+                        3.0f
+                    );
+                    if (engine.getCombatUI() != null) {
+                        engine.getCombatUI().addMessage(1, (IS_RUSSIAN ?
+                            ("ВНИМАНИЕ: По курсу корабля " + shipName + " (" + hullName + ") движется встречный град астероидов!") :
+                            ("WARNING: High-density meteor stream heading towards " + shipName + " (" + hullName + ")!")),
+                            new Color(255, 110, 50)
+                        );
+                    }
                 }
             }
         } catch (Throwable t) {
@@ -1717,6 +2479,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                 Vector2f vel = ast.getVelocity();
                 if (vel == null) continue;
 
+                if (ast.getCustomData().containsKey("IS_EASTER_EGG")) continue;
                 float speedSq = vel.x * vel.x + vel.y * vel.y;
                 if (speedSq >= minSpeedSq) {
                     fastThreats.add(ast);
@@ -2021,6 +2784,8 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                         flags.setFlag(AIFlags.KEEP_SHIELDS_ON, Math.max(0.35f, timeToImpact + 0.2f));
                         flags.setFlag(AIFlags.HAS_INCOMING_DAMAGE, 0.35f);
                     }
+                } else {
+                    updateFixedShieldFacingCommand(ship, state);
                 }
             }
         }
@@ -2265,23 +3030,113 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
         @Override
         public String modifyDamageTaken(Object paramObject, CombatEntityAPI target, DamageAPI damage, Vector2f point, boolean paramBoolean) {
             if (target == null || damage == null) return null;
-            if (target.getCollisionClass() != CollisionClass.ASTEROID && !target.getCustomData().containsKey(TRACKED_KEY)) {
-                return null;
-            }
 
-            if (isPDSource(paramObject)) {
-                float mult = getPDAsteroidDamageMult();
-                if (mult > 1.0f) {
-                    damage.getModifier().modifyMult("da_pd_shatter", mult);
-                    return "da_pd_shatter";
+            // 1. Asteroid collision damage to ships
+            if (target instanceof ShipAPI && paramObject instanceof CombatEntityAPI) {
+                CombatEntityAPI source = (CombatEntityAPI) paramObject;
+                if (source.getCollisionClass() == CollisionClass.ASTEROID || source.getCustomData().containsKey(TRACKED_KEY)) {
+                    if (!source.getCustomData().containsKey("IS_EASTER_EGG")) {
+                        float mult = getAsteroidCollisionDamageMult();
+                        if (Math.abs(mult - 1.0f) > 0.01f) {
+                            damage.getModifier().modifyMult("da_asteroid_collision", mult);
+                            return "da_asteroid_collision";
+                        }
+                    } else {
+                        // Easter egg collided with a ship! Disable velocity correction permanently
+                        source.getCustomData().put("DA_NO_MAINTAIN_VELOCITY", Boolean.TRUE);
+                        if ("EXPLOSIVE_TANK".equals(source.getCustomData().get("EASTER_EGG_TYPE")) && instance != null) {
+                            instance.triggerTankExplosion(source, (ShipAPI) target);
+                        } else if (!"DERELICT".equals(source.getCustomData().get("EASTER_EGG_TYPE")) && instance != null) {
+                            damage.getModifier().modifyMult("da_salvage_pickup", 0.0f);
+                            instance.triggerSalvagePickup(source, (ShipAPI) target);
+                            return "da_salvage_pickup";
+                        }
+                    }
                 }
             }
+
+            // 2. Arrival protection and interaction triggers for Easter Eggs & Derelicts
+            if (target.getCustomData().containsKey("IS_EASTER_EGG")) {
+                String eggType = (String) target.getCustomData().get("EASTER_EGG_TYPE");
+
+                if ("DERELICT".equals(eggType)) {
+                    boolean engaged = Boolean.TRUE.equals(target.getCustomData().get("DERELICT_PLAYER_ENGAGED"));
+                    if (!engaged) {
+                        ShipAPI sourceShip = extractShipFromSource(paramObject);
+                        if (sourceShip != null && isPlayerSideShip(sourceShip)) {
+                            target.getCustomData().put("DERELICT_PLAYER_ENGAGED", Boolean.TRUE);
+                            engaged = true;
+                        }
+                    }
+
+                    // Before player/ally engagement: immune to damage from asteroids and debris impacts
+                    if (!engaged && paramObject instanceof CombatEntityAPI) {
+                        CombatEntityAPI source = (CombatEntityAPI) paramObject;
+                        if (source.getCollisionClass() == CollisionClass.ASTEROID || source.getCustomData().containsKey(TRACKED_KEY)) {
+                            damage.getModifier().modifyMult("da_derelict_arrival_immunity", 0.0f);
+                            return "da_derelict_arrival_immunity";
+                        }
+                    }
+                } else {
+                    if (paramObject instanceof ShipAPI || paramObject instanceof DamagingProjectileAPI || paramObject instanceof BeamAPI || paramObject instanceof MissileAPI) {
+                        target.getCustomData().put("DA_NO_MAINTAIN_VELOCITY", Boolean.TRUE);
+                        if (paramObject instanceof ShipAPI && instance != null) {
+                            if ("EXPLOSIVE_TANK".equals(eggType)) {
+                                instance.triggerTankExplosion(target, (ShipAPI) paramObject);
+                            } else {
+                                damage.getModifier().modifyMult("da_salvage_pickup", 0.0f);
+                                instance.triggerSalvagePickup(target, (ShipAPI) paramObject);
+                                return "da_salvage_pickup";
+                            }
+                        }
+                    }
+
+                    if (paramObject instanceof CombatEntityAPI) {
+                        CombatEntityAPI source = (CombatEntityAPI) paramObject;
+                        if (source.getCollisionClass() == CollisionClass.ASTEROID || source.getCustomData().containsKey(TRACKED_KEY)) {
+                            if (!source.getCustomData().containsKey("IS_EASTER_EGG")) {
+                                damage.getModifier().modifyMult("da_egg_rubbing_immunity", 0.0f);
+                                return "da_egg_rubbing_immunity";
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 3. Point Defense shatter bonus against normal asteroids
+            if (target.getCollisionClass() == CollisionClass.ASTEROID || target.getCustomData().containsKey(TRACKED_KEY)) {
+                if (!target.getCustomData().containsKey("IS_EASTER_EGG") && isPDSource(paramObject)) {
+                    float mult = getPDAsteroidDamageMult();
+                    if (mult > 1.0f) {
+                        damage.getModifier().modifyMult("da_pd_shatter", mult);
+                        return "da_pd_shatter";
+                    }
+                }
+            }
+
             return null;
         }
     }
 
     public static float getPDAsteroidDamageMult() {
         return instance != null ? instance.pdAsteroidDamageMult : 6.0f;
+    }
+
+        public static ShipAPI extractShipFromSource(Object paramObject) {
+        if (paramObject instanceof ShipAPI) {
+            return (ShipAPI) paramObject;
+        } else if (paramObject instanceof DamagingProjectileAPI) {
+            DamagingProjectileAPI proj = (DamagingProjectileAPI) paramObject;
+            if (proj.getSource() instanceof ShipAPI) return (ShipAPI) proj.getSource();
+            if (proj.getWeapon() != null) return proj.getWeapon().getShip();
+        } else if (paramObject instanceof BeamAPI) {
+            return ((BeamAPI) paramObject).getSource();
+        } else if (paramObject instanceof MissileAPI) {
+            return ((MissileAPI) paramObject).getSource();
+        } else if (paramObject instanceof WeaponAPI) {
+            return ((WeaponAPI) paramObject).getShip();
+        }
+        return null;
     }
 
     public static WeaponAPI extractWeaponFromSource(Object paramObject) {
@@ -2342,17 +3197,1401 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
         return diff;
     }
 
+    private static void updateFixedShieldFacingCommand(ShipAPI ship, ShipAvoidanceState state) {
+        if (ship == null || state == null) return;
+        float angleDiff = getShortestRotation(ship.getFacing(), state.targetAngle);
+        if (Math.abs(angleDiff) > 3f) {
+            state.activeTurnCommand = angleDiff > 0f ? ShipCommand.TURN_LEFT : ShipCommand.TURN_RIGHT;
+            ship.giveCommand(state.activeTurnCommand, null, 0);
+        } else {
+            state.activeTurnCommand = null;
+        }
+    }
+
     private static float normalizeAngle(float angle) {
         angle = angle % 360f;
         if (angle < 0f) angle += 360f;
         return angle;
     }
 
+
+    public static float getAsteroidCollisionDamageMult() {
+        return instance != null ? instance.asteroidCollisionDamageMult : 1.0f;
+    }
+
+    @Deprecated
+    public static class EasterEggRenderer extends BaseCombatLayeredRenderingPlugin {
+        public EasterEggRenderer(String spritePath, float radius, DynamicAsteroidsCombatPlugin parent) {
+            super(CombatEngineLayers.ASTEROIDS_LAYER);
+        }
+    }
+
+        public static class DerelictSalvageRecord {
+        public String variantId;
+        public String hullName;
+        public float rescueChance;
+        public float minDmodProb;
+        public float maxDmodProb;
+        public boolean outOfBounds = false;
+        public boolean destroyed = false;
+
+        public DerelictSalvageRecord(String variantId, String hullName, float rescueChance, float minDmodProb, float maxDmodProb) {
+            this.variantId = variantId;
+            this.hullName = hullName;
+            this.rescueChance = rescueChance;
+            this.minDmodProb = minDmodProb;
+            this.maxDmodProb = maxDmodProb;
+        }
+    }
+
+    public static class DerelictRecoveryCampaignListener extends BaseCampaignEventListener {
+        private final List<DerelictSalvageRecord> records;
+        private boolean processed = false;
+
+        public DerelictRecoveryCampaignListener(List<DerelictSalvageRecord> records) {
+            super(true); // transient
+            this.records = new ArrayList<DerelictSalvageRecord>(records);
+        }
+
+        public DerelictRecoveryCampaignListener(String variantId, float rescueChance) {
+            super(true); // transient
+            this.records = new ArrayList<DerelictSalvageRecord>();
+            if (variantId != null) {
+                this.records.add(new DerelictSalvageRecord(variantId, variantId, rescueChance, 0.15f, 0.35f));
+            }
+        }
+
+        @Override
+        public void reportPlayerEngagement(EngagementResultAPI result) {
+            if (processed || records == null || records.isEmpty()) return;
+            processed = true;
+
+            try {
+                Random rnd = new Random();
+                for (DerelictSalvageRecord rec : records) {
+                    if (rec == null || rec.variantId == null) continue;
+                    if (rec.rescueChance <= 0f) continue;
+                    if (rnd.nextFloat() > rec.rescueChance) continue;
+
+                    if (result != null && result.didPlayerWin() && result.getLoserResult() != null) {
+                        FleetMemberAPI member = Global.getFactory().createFleetMember(FleetMemberType.SHIP, rec.variantId);
+                        member.setOwner(1);
+                        FleetEncounterContext.prepareShipForRecovery(member, false, false, true, rec.minDmodProb, rec.maxDmodProb, rnd);
+                        result.getLoserResult().getDisabled().add(member);
+                    }
+                }
+            } catch (Throwable t) {}
+        }
+    }
+
+    public void triggerTankExplosion(CombatEntityAPI tank, ShipAPI hitShip) {
+        if (tank == null || tank.isExpired() || engine == null) return;
+        removeEasterEggEntity(tank);
+
+        Vector2f loc = tank.getLocation();
+        if (loc == null) return;
+
+        try {
+            DamagingExplosionSpec spec = new DamagingExplosionSpec(
+                0.18f, 350f, 160f, 1200f, 400f,
+                CollisionClass.PROJECTILE_FF, CollisionClass.PROJECTILE_FIGHTER,
+                3f, 6f, 0.8f, 50,
+                new Color(255, 130, 40, 255), new Color(255, 200, 100, 200)
+            );
+            spec.setSoundSetId("explosion_ship");
+            engine.spawnDamagingExplosion(spec, hitShip, loc);
+
+            Global.getSoundPlayer().playSound("explosion_ship", 1.0f, 1.0f, loc, new Vector2f());
+
+            if (engine.getCombatUI() != null && !isTitleScreen) {
+                String shipLabel = (hitShip != null) ? hitShip.getName() : null;
+                String msg = (shipLabel != null) ?
+                    (IS_RUSSIAN ? ("ДЕТОНАЦИЯ: Взрывоопасный бак с горючим врезался в " + shipLabel + "!") : ("DETONATION: Explosive volatile tank detonated against " + shipLabel + "!")) :
+                    (IS_RUSSIAN ? "ВЗРЫВ: Взрывоопасный бак сдетонировал от попадания!" : "EXPLOSION: Volatile fuel tank detonated from weapon fire!");
+                engine.getCombatUI().addMessage(1, msg, new Color(255, 140, 40));
+            }
+        } catch (Throwable t) {}
+    }
+
+    public void triggerSalvagePickup(CombatEntityAPI entity, ShipAPI ship) {
+        if (entity == null || entity.isExpired() || engine == null) return;
+        String eggType = (String) entity.getCustomData().get("EASTER_EGG_TYPE");
+
+        // Before player engagement: allow asteroid impact vector deflection but cap speed magnitude to cruising speed (250)
+        if ("DERELICT".equals(eggType)) {
+            boolean engaged = Boolean.TRUE.equals(entity.getCustomData().get("DERELICT_PLAYER_ENGAGED"));
+            if (!engaged) {
+                Vector2f vel = entity.getVelocity();
+                if (vel != null) {
+                    float curSpeedSq = vel.x * vel.x + vel.y * vel.y;
+                    float maxCruising = 250.0f;
+                    if (curSpeedSq > maxCruising * maxCruising) {
+                        float curSpeed = (float) Math.sqrt(curSpeedSq);
+                        vel.scale(maxCruising / curSpeed);
+                    }
+                }
+            }
+        }
+        Vector2f loc = entity.getLocation();
+        removeEasterEggEntity(entity);
+        if (loc == null) return;
+
+        try {
+            Global.getSoundPlayer().playUISound("ui_cargo_transfer", 1.0f, 1.0f);
+        } catch (Throwable t) {}
+
+        for (int i = 0; i < 14; i++) {
+            float angle = random.nextFloat() * 6.28f;
+            float spd = 60f + random.nextFloat() * 120f;
+            Vector2f pVel = new Vector2f((float)Math.cos(angle) * spd, (float)Math.sin(angle) * spd);
+            engine.addHitParticle(loc, pVel, 8f + random.nextFloat() * 10f, 0.9f, 0.35f, new Color(255, 220, 100, 240));
+        }
+
+        if ("CACHE".equals(eggType)) {
+            int supplies = 35 + random.nextInt(36);
+            int fuel = 20 + random.nextInt(31);
+            try {
+                if (engine.isInCampaign() && Global.getSector() != null && Global.getSector().getPlayerFleet() != null) {
+                    CargoAPI cargo = Global.getSector().getPlayerFleet().getCargo();
+                    if (cargo != null) {
+                        cargo.addSupplies(supplies);
+                        cargo.addFuel(fuel);
+                    }
+                }
+            } catch (Throwable t) {}
+
+            String txt = IS_RUSSIAN ?
+                ("ТАЙНИК СОБРАН: +" + supplies + " припасов, +" + fuel + " топлива!") :
+                ("CACHE RECOVERED: +" + supplies + " supplies, +" + fuel + " fuel!");
+            engine.addFloatingText(loc, txt, 22f, new Color(255, 215, 60), entity, 0.3f, 3.0f);
+            if (engine.getCombatUI() != null && !isTitleScreen) {
+                engine.getCombatUI().addMessage(1, txt, new Color(255, 215, 60));
+            }
+        } else if ("PROBE".equals(eggType)) {
+            int metals = 60 + random.nextInt(61);
+            int rareMetals = 20 + random.nextInt(26);
+            try {
+                if (engine.isInCampaign() && Global.getSector() != null && Global.getSector().getPlayerFleet() != null) {
+                    CargoAPI cargo = Global.getSector().getPlayerFleet().getCargo();
+                    if (cargo != null) {
+                        cargo.addCommodity("metals", metals);
+                        cargo.addCommodity("rare_metals", rareMetals);
+                    }
+                }
+            } catch (Throwable t) {}
+
+            String txt = IS_RUSSIAN ?
+                ("ЗОНД ИССЛЕДОВАН: Данные датчиков, +" + metals + " металлов, +" + rareMetals + " редких металлов!") :
+                ("PROBE SALVAGED: Sensor data, +" + metals + " metals, +" + rareMetals + " rare metals!");
+            engine.addFloatingText(loc, txt, 22f, new Color(80, 230, 255), entity, 0.3f, 3.0f);
+            if (engine.getCombatUI() != null && !isTitleScreen) {
+                engine.getCombatUI().addMessage(1, txt, new Color(80, 230, 255));
+            }
+        } else if ("CRYO_POD".equals(eggType)) {
+            int crew = 12 + random.nextInt(17);
+            int supplies = 15 + random.nextInt(16);
+            try {
+                if (engine.isInCampaign() && Global.getSector() != null && Global.getSector().getPlayerFleet() != null) {
+                    CargoAPI cargo = Global.getSector().getPlayerFleet().getCargo();
+                    if (cargo != null) {
+                        cargo.addCrew(crew);
+                        cargo.addSupplies(supplies);
+                    }
+                }
+            } catch (Throwable t) {}
+
+            String txt = IS_RUSSIAN ?
+                ("КРИОКАПСУЛА СПАСЕНА: +" + crew + " выживших членов экипажа, +" + supplies + " припасов!") :
+                ("CRYO POD SALVAGED: +" + crew + " rescued crew members, +" + supplies + " supplies!");
+            engine.addFloatingText(loc, txt, 22f, new Color(60, 255, 140), entity, 0.3f, 3.0f);
+            if (engine.getCombatUI() != null && !isTitleScreen) {
+                engine.getCombatUI().addMessage(1, txt, new Color(60, 255, 140));
+            }
+        } else if ("NAV_BUOY".equals(eggType)) {
+            int machinery = 15 + random.nextInt(16);
+            int volatiles = 15 + random.nextInt(16);
+            try {
+                if (engine.isInCampaign() && Global.getSector() != null && Global.getSector().getPlayerFleet() != null) {
+                    CargoAPI cargo = Global.getSector().getPlayerFleet().getCargo();
+                    if (cargo != null) {
+                        cargo.addCommodity("heavy_machinery", machinery);
+                        cargo.addCommodity("volatiles", volatiles);
+                    }
+                }
+            } catch (Throwable t) {}
+
+            String txt = IS_RUSSIAN ?
+                ("БУЙ ДЕМОНТИРОВАН: +" + machinery + " тяжёлого оборудования, +" + volatiles + " летучих веществ!") :
+                ("BUOY DECONSTRUCTED: +" + machinery + " heavy machinery, +" + volatiles + " volatiles!");
+            engine.addFloatingText(loc, txt, 22f, new Color(190, 130, 255), entity, 0.3f, 3.0f);
+            if (engine.getCombatUI() != null && !isTitleScreen) {
+                engine.getCombatUI().addMessage(1, txt, new Color(190, 130, 255));
+            }
+        } else if ("FIGHTER".equals(eggType)) {
+            String wingId = (String) entity.getCustomData().get("FIGHTER_WING_ID");
+            String wingName = (String) entity.getCustomData().get("FIGHTER_WING_NAME");
+            if (wingName == null && wingId != null) wingName = wingId;
+            if (wingName == null) wingName = IS_RUSSIAN ? "Истребитель" : "Fighter";
+
+            try {
+                if (engine.isInCampaign() && Global.getSector() != null && Global.getSector().getPlayerFleet() != null) {
+                    CargoAPI cargo = Global.getSector().getPlayerFleet().getCargo();
+                    if (cargo != null && wingId != null) {
+                        cargo.addFighters(wingId, 1);
+                    }
+                }
+            } catch (Throwable t) {}
+
+            String txt = IS_RUSSIAN ?
+                ("ИСТРЕБИТЕЛЬ ЭВАКУИРОВАН: " + wingName + " (чип LPC в трюме)!") :
+                ("FIGHTER RECOVERED: " + wingName + " (LPC added to cargo)!");
+            engine.addFloatingText(loc, txt, 22f, new Color(100, 240, 255), entity, 0.3f, 3.5f);
+            if (engine.getCombatUI() != null && !isTitleScreen) {
+                String logMsg = IS_RUSSIAN ?
+                    ("СЕНСОРЫ: Истребитель " + wingName + " взят на борт и законсервирован в трюме!") :
+                    ("SENSORS: Fighter " + wingName + " secured and stored in fleet cargo!");
+                engine.getCombatUI().addMessage(1, logMsg, new Color(100, 240, 255));
+            }
+        } else {
+            int metals = 60 + random.nextInt(41);
+            int rareMetals = 15 + random.nextInt(16);
+            try {
+                if (engine.isInCampaign() && Global.getSector() != null && Global.getSector().getPlayerFleet() != null) {
+                    CargoAPI cargo = Global.getSector().getPlayerFleet().getCargo();
+                    if (cargo != null) {
+                        cargo.addCommodity("metals", metals);
+                        cargo.addCommodity("rare_metals", rareMetals);
+                    }
+                }
+            } catch (Throwable t) {}
+
+            String txt = IS_RUSSIAN ?
+                ("ДРЕВНИЙ ДВИГАТЕЛЬ РАЗОБРАН: +" + metals + " металлов, +" + rareMetals + " редких металлов!") :
+                ("ANCIENT ENGINE DISMANTLED: +" + metals + " metals, +" + rareMetals + " rare metals!");
+            engine.addFloatingText(loc, txt, 20f, new Color(200, 215, 230), entity, 0.3f, 2.5f);
+            if (engine.getCombatUI() != null && !isTitleScreen) {
+                engine.getCombatUI().addMessage(1, txt, new Color(200, 215, 230));
+            }
+        }
+    }
+
+    public void triggerSalvageDestruction(CombatEntityAPI entity) {
+        if (entity == null || entity.isExpired() || engine == null) return;
+        String eggType = (String) entity.getCustomData().get("EASTER_EGG_TYPE");
+        Vector2f loc = entity.getLocation();
+        removeEasterEggEntity(entity);
+        if (loc == null) return;
+
+        Color dustColor = new Color(140, 130, 115, 130);
+        float radius = Math.max(30f, entity.getCollisionRadius());
+        engine.addSmokeParticle(loc, new Vector2f(), radius * 1.2f, 0.5f, 0.8f, dustColor);
+
+        try {
+            Global.getSoundPlayer().playSound("explosion_small", 1.0f, 1.0f, loc, new Vector2f());
+        } catch (Throwable t) {}
+
+        if ("CACHE".equals(eggType)) {
+            int supplies = 10 + random.nextInt(16);
+            try {
+                if (engine.isInCampaign() && Global.getSector() != null && Global.getSector().getPlayerFleet() != null) {
+                    CargoAPI cargo = Global.getSector().getPlayerFleet().getCargo();
+                    if (cargo != null) cargo.addSupplies(supplies);
+                }
+            } catch (Throwable t) {}
+
+            String txt = IS_RUSSIAN ?
+                ("ТАЙНИК ВСКРЫТ ОГНЕМ: Уцелело +" + supplies + " припасов!") :
+                ("CACHE BREACHED: Salvaged +" + supplies + " supplies!");
+            engine.addFloatingText(loc, txt, 20f, new Color(255, 180, 60), entity, 0.3f, 2.5f);
+            if (engine.getCombatUI() != null && !isTitleScreen) {
+                engine.getCombatUI().addMessage(1, txt, new Color(255, 180, 60));
+            }
+        } else if ("PROBE".equals(eggType)) {
+            int metals = 25 + random.nextInt(26);
+            try {
+                if (engine.isInCampaign() && Global.getSector() != null && Global.getSector().getPlayerFleet() != null) {
+                    CargoAPI cargo = Global.getSector().getPlayerFleet().getCargo();
+                    if (cargo != null) cargo.addCommodity("metals", metals);
+                }
+            } catch (Throwable t) {}
+
+            String txt = IS_RUSSIAN ?
+                ("ЗОНД УНИЧТОЖЕН: Подобрано +" + metals + " металлов") :
+                ("PROBE DESTROYED: Gathered +" + metals + " metals");
+            engine.addFloatingText(loc, txt, 20f, new Color(120, 200, 240), entity, 0.3f, 2.5f);
+        } else if ("CRYO_POD".equals(eggType)) {
+            int supplies = 8 + random.nextInt(9);
+            try {
+                if (engine.isInCampaign() && Global.getSector() != null && Global.getSector().getPlayerFleet() != null) {
+                    CargoAPI cargo = Global.getSector().getPlayerFleet().getCargo();
+                    if (cargo != null) cargo.addSupplies(supplies);
+                }
+            } catch (Throwable t) {}
+
+            String txt = IS_RUSSIAN ?
+                ("КРИОКАПСУЛА РАЗРУШЕНА: Экипаж погиб, уцелело +" + supplies + " припасов") :
+                ("CRYO POD DESTROYED: Crew lost, salvaged +" + supplies + " supplies");
+            engine.addFloatingText(loc, txt, 20f, new Color(255, 120, 100), entity, 0.3f, 2.5f);
+        } else if ("NAV_BUOY".equals(eggType)) {
+            int machinery = 8 + random.nextInt(9);
+            try {
+                if (engine.isInCampaign() && Global.getSector() != null && Global.getSector().getPlayerFleet() != null) {
+                    CargoAPI cargo = Global.getSector().getPlayerFleet().getCargo();
+                    if (cargo != null) cargo.addCommodity("heavy_machinery", machinery);
+                }
+            } catch (Throwable t) {}
+
+            String txt = IS_RUSSIAN ?
+                ("БУЙ ВЗОРВАН: Подобрано +" + machinery + " оборудования") :
+                ("BUOY DESTROYED: Gathered +" + machinery + " machinery");
+            engine.addFloatingText(loc, txt, 20f, new Color(180, 140, 240), entity, 0.3f, 2.5f);
+        } else if ("FIGHTER".equals(eggType)) {
+            String wingName = (String) entity.getCustomData().get("FIGHTER_WING_NAME");
+            if (wingName == null) wingName = IS_RUSSIAN ? "Истребитель" : "Fighter";
+            int metals = 5 + random.nextInt(6);
+            try {
+                if (engine.isInCampaign() && Global.getSector() != null && Global.getSector().getPlayerFleet() != null) {
+                    CargoAPI cargo = Global.getSector().getPlayerFleet().getCargo();
+                    if (cargo != null) cargo.addCommodity("metals", metals);
+                }
+            } catch (Throwable t) {}
+
+            String txt = IS_RUSSIAN ?
+                ("ИСТРЕБИТЕЛЬ РАЗРУШЕН ОГНЕМ: Чип LPC сгорел, собрано +" + metals + " металлов") :
+                ("FIGHTER DESTROYED BY FIRE: LPC lost, salvaged +" + metals + " metals");
+            engine.addFloatingText(loc, txt, 20f, new Color(255, 120, 90), entity, 0.3f, 2.8f);
+            if (engine.getCombatUI() != null && !isTitleScreen) {
+                engine.getCombatUI().addMessage(1, txt, new Color(255, 120, 90));
+            }
+        } else {
+            int metals = 25 + random.nextInt(26);
+            try {
+                if (engine.isInCampaign() && Global.getSector() != null && Global.getSector().getPlayerFleet() != null) {
+                    CargoAPI cargo = Global.getSector().getPlayerFleet().getCargo();
+                    if (cargo != null) cargo.addCommodity("metals", metals);
+                }
+            } catch (Throwable t) {}
+
+            String txt = IS_RUSSIAN ?
+                ("ОБЛОМКИ РАЗРУШЕНЫ: +" + metals + " металлов") :
+                ("DEBRIS DESTROYED: +" + metals + " metals");
+            engine.addFloatingText(loc, txt, 18f, new Color(180, 195, 210), entity, 0.3f, 2.2f);
+        }
+    }
+
+    private void applyShieldMagnet(CombatEntityAPI entity, List<ShipAPI> ships, float amount) {
+        if (easterEggMagnetStrength <= 0f || amount <= 0f || entity == null) return;
+        if (!Boolean.TRUE.equals(entity.getCustomData().get("IS_EASTER_EGG"))) return;
+
+        Vector2f eggLoc = entity.getLocation();
+        Vector2f eggVelocity = entity.getVelocity();
+        if (eggLoc == null || eggVelocity == null) return;
+
+        ShipAPI closestShieldedShip = null;
+        float closestDistanceSq = Float.MAX_VALUE;
+        float activeMagnetRange = 1350f;
+
+        for (int i = 0; i < ships.size(); i++) {
+            ShipAPI ship = ships.get(i);
+            if (ship == null || !ship.isAlive() || ship.isHulk() || !isPlayerSideShip(ship)) continue;
+            if (ship.getShield() == null || ship.getShield().isOff()) continue;
+
+            Vector2f shipLoc = ship.getLocation();
+            if (shipLoc == null) continue;
+
+            float dx = shipLoc.x - eggLoc.x;
+            float dy = shipLoc.y - eggLoc.y;
+            float distanceSq = dx * dx + dy * dy;
+            float range = Math.max(1350f, ship.getCollisionRadius() * 4.5f + 550f);
+            if (distanceSq <= range * range && distanceSq < closestDistanceSq) {
+                closestShieldedShip = ship;
+                closestDistanceSq = distanceSq;
+                activeMagnetRange = range;
+            }
+        }
+
+        if (closestShieldedShip == null || closestDistanceSq <= 0.01f) return;
+
+        // Prevent velocity maintainer from resetting magnetic pull
+        entity.getCustomData().put("DA_NO_MAINTAIN_VELOCITY", Boolean.TRUE);
+        if ("DERELICT".equals(entity.getCustomData().get("EASTER_EGG_TYPE"))) {
+            entity.getCustomData().put("DERELICT_PLAYER_ENGAGED", Boolean.TRUE);
+        }
+
+        Vector2f shipLoc = closestShieldedShip.getLocation();
+        Vector2f shipVel = closestShieldedShip.getVelocity();
+        float dx = shipLoc.x - eggLoc.x;
+        float dy = shipLoc.y - eggLoc.y;
+        float distance = (float) Math.sqrt(closestDistanceSq);
+        if (distance < 1f) distance = 1f;
+
+        float nx = dx / distance;
+        float ny = dy / distance;
+
+        // Smooth physical falloff: retains high force throughout range (100% near to 72% at edge)
+        float normDist = Math.max(0f, Math.min(1f, distance / activeMagnetRange));
+        float distanceFactor = 1.0f - 0.28f * (normDist * normDist);
+
+        float effectiveAccel = easterEggMagnetStrength * distanceFactor;
+        float pullDv = effectiveAccel * amount;
+
+        // Direct inward attraction along the tractor axis
+        eggVelocity.x += nx * pullDv;
+        eggVelocity.y += ny * pullDv;
+
+        // Lateral speed damping & relative velocity alignment:
+        // Dampens only the perpendicular lateral speed relative to the ship, eliminating orbital slingshotting
+        float sVx = (shipVel != null) ? shipVel.x : 0f;
+        float sVy = (shipVel != null) ? shipVel.y : 0f;
+        float relVx = eggVelocity.x - sVx;
+        float relVy = eggVelocity.y - sVy;
+
+        float radialSpeed = relVx * nx + relVy * ny; // positive = moving toward ship, negative = moving away
+        float latVx = relVx - radialSpeed * nx;
+        float latVy = relVy - radialSpeed * ny;
+
+        float latDamp = Math.min(0.92f, 4.5f * amount);
+        eggVelocity.x -= latVx * latDamp;
+        eggVelocity.y -= latVy * latDamp;
+
+        // Gentle braking when entering the close docking zone (< 220 units) to prevent violent hull crashes
+        if (distance < 220f && radialSpeed > 280f) {
+            float brake = Math.min(1.0f, 5.0f * amount);
+            eggVelocity.x -= nx * (radialSpeed - 180f) * brake;
+            eggVelocity.y -= ny * (radialSpeed - 180f) * brake;
+        }
+
+        // Visual tractor beam ions
+        if (engine != null && random.nextFloat() < 0.50f) {
+            Vector2f pVel = new Vector2f(nx * 180f, ny * 180f);
+            engine.addSmoothParticle(
+                eggLoc,
+                pVel,
+                16f + random.nextFloat() * 14f,
+                0.90f,
+                0.35f,
+                new Color(70, 225, 255, 205)
+            );
+        }
+    }
+
+    private static boolean isPlayerSideShip(ShipAPI ship) {
+        if (ship == null) return false;
+        return ship.getOwner() == 0 || ship.isAlly();
+    }
+
+    private static float clampEasterEggSpeed(float speed) {
+        if (Float.isNaN(speed) || Float.isInfinite(speed)) return 400.0f;
+        return Math.max(100f, Math.min(3000f, speed));
+    }
+
+    private static float clampEasterEggMagnetStrength(float strength) {
+        if (Float.isNaN(strength) || Float.isInfinite(strength)) return 3000.0f;
+        return Math.max(0f, Math.min(10000f, strength));
+    }
+
+    private void setEasterEggSpeed(float newSpeed) {
+        newSpeed = clampEasterEggSpeed(newSpeed);
+        if (Math.abs(newSpeed - easterEggSpeed) < 1f) return;
+
+        float speedRatio = newSpeed / easterEggSpeed;
+        if (activeEasterEggEntities != null) {
+            for (int i = 0; i < activeEasterEggEntities.size(); i++) {
+                CombatEntityAPI egg = activeEasterEggEntities.get(i);
+                if (egg == null) continue;
+                if (egg.getVelocity() != null) {
+                    egg.getVelocity().scale(speedRatio);
+                }
+                Object bvx = egg.getCustomData().get(BASE_VX_KEY);
+                Object bvy = egg.getCustomData().get(BASE_VY_KEY);
+                if (bvx instanceof Float && bvy instanceof Float) {
+                    egg.setCustomData(BASE_VX_KEY, Float.valueOf(((Float) bvx).floatValue() * speedRatio));
+                    egg.setCustomData(BASE_VY_KEY, Float.valueOf(((Float) bvy).floatValue() * speedRatio));
+                }
+            }
+        }
+        easterEggSpeed = newSpeed;
+    }
+
+    public void advanceEasterEgg(CombatEntityAPI entity, float amount) {
+        if (entity == null || entity.isExpired() || engine == null) return;
+        if (!engine.isEntityInPlay(entity)) {
+            removeEasterEggEntity(entity);
+            return;
+        }
+
+        Vector2f loc = entity.getLocation();
+        if (loc == null) return;
+
+        String eggType = (String) entity.getCustomData().get("EASTER_EGG_TYPE");
+
+        float halfW = engine.getMapWidth() * 0.5f;
+        float halfH = engine.getMapHeight() * 0.5f;
+
+        // No soft boundary reflection / blocking: if they drift beyond the map edge,
+        // it is the player's fault for losing them.
+        // Deep space loss: if an easter egg drifts far beyond the sector boundaries (4000+ units), it is lost forever.
+        float maxBoundaryX = halfW + 4000f;
+        float maxBoundaryY = halfH + 4000f;
+        if (Math.abs(loc.x) > maxBoundaryX || Math.abs(loc.y) > maxBoundaryY) {
+            Boolean wasRescued = (Boolean) entity.getCustomData().get("DERELICT_RESCUED");
+            String vId = (String) entity.getCustomData().get("DERELICT_VARIANT_ID");
+            String dName = (String) entity.getCustomData().get("DERELICT_NAME");
+            if (wasRescued != null && wasRescued.booleanValue() && vId != null) {
+                DerelictSalvageRecord rec = derelictSalvageRecords.get(vId);
+                if (rec != null) {
+                    rec.outOfBounds = true;
+                    rec.rescueChance = 0.10f; // 10% recovery chance when knocked out of bounds
+                    rec.minDmodProb = 0.40f;
+                    rec.maxDmodProb = 0.65f;
+                }
+                if (engine.getCombatUI() != null) {
+                    String msg = IS_RUSSIAN ?
+                        ("Остов " + dName + " унесло за границу сектора! Маяки активны (Шанс эвакуации: 10%).") :
+                        ("Derelict " + dName + " drifted beyond sector perimeter! Beacons active (Recovery chance: 10%).");
+                    engine.getCombatUI().addMessage(1, msg, new Color(255, 140, 60));
+                }
+            }
+            removeEasterEggEntity(entity);
+            return;
+        }
+
+        List<ShipAPI> ships = engine.getShips();
+        if (ships != null && !ships.isEmpty()) {
+            applyShieldMagnet(entity, ships, amount);
+            float eRadius = entity.getCollisionRadius();
+            for (int i = 0; i < ships.size(); i++) {
+                ShipAPI ship = ships.get(i);
+                if (ship == null || !ship.isAlive() || ship.isHulk()) continue;
+
+                Vector2f sLoc = ship.getLocation();
+                if (sLoc == null) continue;
+
+                float dx = sLoc.x - loc.x;
+                float dy = sLoc.y - loc.y;
+                float distSq = dx * dx + dy * dy;
+                float combinedRadius = ship.getCollisionRadius() + eRadius;
+
+                if (distSq <= combinedRadius * combinedRadius) {
+                    entity.getCustomData().put("DA_NO_MAINTAIN_VELOCITY", Boolean.TRUE);
+                    if (isPlayerSideShip(ship) && "DERELICT".equals(eggType)) {
+                        entity.getCustomData().put("DERELICT_PLAYER_ENGAGED", Boolean.TRUE);
+                    }
+                    if ("EXPLOSIVE_TANK".equals(eggType)) {
+                        triggerTankExplosion(entity, ship);
+                        return;
+                    } else if (!"DERELICT".equals(eggType)) {
+                        triggerSalvagePickup(entity, ship);
+                        return;
+                    }
+                }
+            }
+        }
+
+        if ("DERELICT".equals(eggType)) {
+            // Proximity notification when player ship enters visual range
+            ShipAPI pShip = engine.getPlayerShip();
+            if (pShip != null && pShip.getLocation() != null) {
+                float pdx = loc.x - pShip.getLocation().x;
+                float pdy = loc.y - pShip.getLocation().y;
+                float pDistSq = pdx * pdx + pdy * pdy;
+                if (pDistSq <= 1800f * 1800f) {
+                    Boolean nearNotified = (Boolean) entity.getCustomData().get("DA_NEAR_NOTIFIED");
+                    if (nearNotified == null || !nearNotified.booleanValue()) {
+                        entity.getCustomData().put("DA_NEAR_NOTIFIED", Boolean.TRUE);
+                        String hName = (String) entity.getCustomData().get("DERELICT_NAME");
+                        if (engine.getCombatUI() != null && !isTitleScreen) {
+                            String nearTxt = IS_RUSSIAN ?
+                                ("СЕНСОРЫ: Остов (" + hName + ") в зоне видимости! Защищайте его до стабилизации систем!") :
+                                ("SENSORS: Derelict (" + hName + ") in visual range! Protect it until systems stabilize!");
+                            engine.getCombatUI().addMessage(1, nearTxt, new Color(255, 215, 60));
+                        }
+                        try {
+                            queueDetectionSoundBurst();
+                        } catch (Throwable t) {
+                            try {
+                                Global.getSoundPlayer().playUISound("ui_radar_detect_vessel", 1.0f, 1.0f);
+                            } catch (Throwable t2) {}
+                        }
+                    }
+                }
+            }
+
+            // Glowing SOS beacon pulses in space
+            Float lastPing = (Float) entity.getCustomData().get("DA_LAST_BEACON_PING");
+            float now = totalCombatTime;
+            if (lastPing == null || now - lastPing.floatValue() >= 1.35f) {
+                entity.getCustomData().put("DA_LAST_BEACON_PING", Float.valueOf(now));
+                Boolean rescued = (Boolean) entity.getCustomData().get("DERELICT_RESCUED");
+                boolean isRescued = (rescued != null && rescued.booleanValue());
+                Color pingCol = isRescued ? new Color(60, 255, 140, 210) : new Color(255, 215, 60, 230);
+
+                engine.addSmoothParticle(loc, entity.getVelocity(), 160f, 0.9f, 1.1f, pingCol);
+                for (int p = 0; p < 4; p++) {
+                    float pAngle = random.nextFloat() * 6.28f;
+                    float pSpd = 25f + random.nextFloat() * 45f;
+                    Vector2f pVel = new Vector2f(entity.getVelocity().x + (float)Math.cos(pAngle)*pSpd, entity.getVelocity().y + (float)Math.sin(pAngle)*pSpd);
+                    engine.addHitParticle(loc, pVel, 8f, 1.0f, 0.7f, pingCol);
+                }
+            }
+
+            boolean inBounds = Math.abs(loc.x) <= halfW && Math.abs(loc.y) <= halfH;
+
+            if (inBounds) {
+                Float curT = (Float) entity.getCustomData().get("DERELICT_HOLD_TIMER");
+                float holdTimer = (curT != null ? curT.floatValue() : 0f) + amount;
+                entity.getCustomData().put("DERELICT_HOLD_TIMER", Float.valueOf(holdTimer));
+
+                Boolean rescued = (Boolean) entity.getCustomData().get("DERELICT_RESCUED");
+                if ((rescued == null || !rescued.booleanValue()) && holdTimer >= derelictRescueHoldTime) {
+                    entity.getCustomData().put("DERELICT_RESCUED", Boolean.TRUE);
+                    derelictRescueNotified = true;
+                    rescuedDerelictHullName = (String) entity.getCustomData().get("DERELICT_NAME");
+
+                    if (engine.isSimulation()) {
+                        rescuedDerelictVariantId = null;
+
+                        engine.addFloatingText(
+                            loc,
+                            IS_RUSSIAN ? "СИМУЛЯЦИЯ: СИСТЕМЫ СТАБИЛИЗИРОВАНЫ!" : "SIMULATION: SYSTEMS STABILIZED!",
+                            22f,
+                            new Color(80, 220, 255),
+                            entity,
+                            0.3f,
+                            3.5f
+                        );
+
+                        if (engine.getCombatUI() != null) {
+                            String msg = IS_RUSSIAN ?
+                                ("Симуляция: остов " + rescuedDerelictHullName + " стабилизирован (спасение в симуляции отключено).") :
+                                ("Simulation: hull " + rescuedDerelictHullName + " stabilized (recovery disabled in simulation).");
+                            engine.getCombatUI().addMessage(1, msg, new Color(80, 220, 255));
+                        }
+                    } else {
+                        String vId = (String) entity.getCustomData().get("DERELICT_VARIANT_ID");
+                        rescuedDerelictVariantId = vId;
+                        if (vId != null) {
+                            if (!rescuedDerelictVariantIds.contains(vId)) {
+                                rescuedDerelictVariantIds.add(vId);
+                            }
+                            derelictSalvageRecords.put(vId, new DerelictSalvageRecord(
+                                vId, rescuedDerelictHullName, derelictRescueChance, 0.15f, 0.35f
+                            ));
+                        }
+
+                        engine.addFloatingText(
+                            loc,
+                            IS_RUSSIAN ? "КОРАБЛЬ СПАСЕН! СИСТЕМЫ СТАБИЛИЗИРОВАНЫ!" : "SHIP RESCUED! SYSTEMS STABILIZED!",
+                            22f,
+                            new Color(60, 255, 140),
+                            entity,
+                            0.3f,
+                            3.5f
+                        );
+
+                        if (engine.getCombatUI() != null) {
+                            String msg = IS_RUSSIAN ?
+                                ("Вы спасли заброшенный корабль: " + rescuedDerelictHullName + "!") :
+                                ("You rescued a derelict ship: " + rescuedDerelictHullName + "!");
+                            engine.getCombatUI().addMessage(1, msg, new Color(60, 255, 140));
+                        }
+                    }
+
+                    try {
+                        Global.getSoundPlayer().playUISound("ui_intel_positive", 1.0f, 1.0f);
+                    } catch (Throwable t) {}
+                }
+            }
+
+            if (entity.getHitpoints() <= 0f) {
+                Boolean wasRescued = (Boolean) entity.getCustomData().get("DERELICT_RESCUED");
+                String dName = (String) entity.getCustomData().get("DERELICT_NAME");
+                String vId = (String) entity.getCustomData().get("DERELICT_VARIANT_ID");
+                if (wasRescued != null && wasRescued.booleanValue() && vId != null) {
+                    DerelictSalvageRecord rec = derelictSalvageRecords.get(vId);
+                    if (rec != null) {
+                        rec.destroyed = true;
+                        rec.rescueChance = 0.15f; // 15% recovery chance if shattered/destroyed
+                        rec.minDmodProb = 0.75f;  // Severe D-mod damage penalty
+                        rec.maxDmodProb = 1.0f;
+                    }
+                    if (engine.getCombatUI() != null) {
+                        String msg = IS_RUSSIAN ?
+                            ("Захваченный остов " + dName + " расколот в бою! (Шанс сборки обломков: 15%, повышенный износ).") :
+                            ("Rescued hull " + dName + " was shattered! (Scrap recovery chance: 15%, severe damage).");
+                        engine.getCombatUI().addMessage(1, msg, new Color(255, 75, 75));
+                    }
+                }
+                removeEasterEggEntity(entity);
+                if (entity == activeDerelictEntity) activeDerelictEntity = null;
+            }
+        } else if (entity.getHitpoints() <= 0f) {
+            if ("EXPLOSIVE_TANK".equals(eggType)) {
+                triggerTankExplosion(entity, null);
+            } else {
+                triggerSalvageDestruction(entity);
+            }
+            return;
+        }
+    }
+
+    private static List<String> cachedDerelictVariants = null;
+    private static List<String> cachedFrigates = null;
+    private static List<String> cachedDestroyers = null;
+    private static List<String> cachedCruisers = null;
+    private static List<String> cachedCapitals = null;
+
+    public synchronized void initDerelictPool() {
+        if (cachedDerelictVariants != null && !cachedDerelictVariants.isEmpty()) return;
+
+        cachedDerelictVariants = new ArrayList<String>();
+        cachedFrigates = new ArrayList<String>();
+        cachedDestroyers = new ArrayList<String>();
+        cachedCruisers = new ArrayList<String>();
+        cachedCapitals = new ArrayList<String>();
+
+        try {
+            List<String> allVarIds = Global.getSettings().getAllVariantIds();
+            if (allVarIds != null) {
+                for (String vId : allVarIds) {
+                    if (vId == null || vId.isEmpty()) continue;
+                    ShipVariantAPI variant = null;
+                    try {
+                        variant = Global.getSettings().getVariant(vId);
+                    } catch (Throwable t) { continue; }
+                    if (variant == null) continue;
+
+                    // 1. Direct API checks: strictly exclude stations and fighters
+                    if (variant.isStation() || variant.isFighter()) continue;
+
+                    ShipHullSpecAPI spec = variant.getHullSpec();
+                    if (spec == null) continue;
+
+                    // 2. Hull size check: only valid ship hull sizes (Frigate, Destroyer, Cruiser, Capital)
+                    ShipAPI.HullSize size = spec.getHullSize();
+                    if (size == null || size == ShipAPI.HullSize.FIGHTER || size == ShipAPI.HullSize.DEFAULT) continue;
+
+                    // 3. Hints exclusion (Stations, Modules, Fighter wings, Unboardable targets)
+                    EnumSet<ShipHullSpecAPI.ShipTypeHints> hints = spec.getHints();
+                    if (hints != null) {
+                        if (hints.contains(ShipHullSpecAPI.ShipTypeHints.STATION)) continue;
+                        if (hints.contains(ShipHullSpecAPI.ShipTypeHints.MODULE)) continue;
+                        if (hints.contains(ShipHullSpecAPI.ShipTypeHints.UNDER_PARENT)) continue;
+                        if (hints.contains(ShipHullSpecAPI.ShipTypeHints.UNBOARDABLE)) continue;
+                    }
+
+                    // 4. Tags exclusion
+                    if (spec.hasTag("station") || spec.hasTag("module") || spec.hasTag("module_hull_bar_only") || spec.hasTag("hide_in_codex")) continue;
+
+                    // 5. Name string heuristic safety against modded station parts & platforms
+                    String hIdLow = spec.getHullId().toLowerCase();
+                    String vIdLow = vId.toLowerCase();
+                    if (hIdLow.contains("station") || hIdLow.contains("module_") || hIdLow.startsWith("module")) continue;
+                    if (vIdLow.contains("station") || vIdLow.contains("module_") || vIdLow.startsWith("module")) continue;
+                    if (hIdLow.contains("platform") || hIdLow.contains("satellite") || hIdLow.contains("bastion")) continue;
+                    if (hIdLow.contains("shuttlepod") || hIdLow.contains("escape_pod")) continue;
+
+                    // 6. Ensure texture exists and is loadable
+                    String spritePath = spec.getSpriteName();
+                    if (spritePath == null || spritePath.isEmpty()) continue;
+
+                    // Valid ship! Categorize by hull size
+                    cachedDerelictVariants.add(vId);
+                    if (size == ShipAPI.HullSize.FRIGATE) {
+                        cachedFrigates.add(vId);
+                    } else if (size == ShipAPI.HullSize.DESTROYER) {
+                        cachedDestroyers.add(vId);
+                    } else if (size == ShipAPI.HullSize.CRUISER) {
+                        cachedCruisers.add(vId);
+                    } else if (size == ShipAPI.HullSize.CAPITAL_SHIP) {
+                        cachedCapitals.add(vId);
+                    }
+                }
+            }
+        } catch (Throwable t) {}
+
+        if (cachedDerelictVariants.isEmpty()) {
+            String[] fallbacks = new String[] {
+                "hound_d_Standard", "cerberus_d_Standard", "wayfarer_Standard",
+                "shepherd_Frontier", "lasher_d_CS", "buffalo_d_Standard", "dram_Light"
+            };
+            for (String f : fallbacks) {
+                cachedDerelictVariants.add(f);
+                cachedFrigates.add(f);
+            }
+        }
+    }
+
+    public String pickRandomDerelictVariant() {
+        initDerelictPool();
+
+        // Size weighted distribution: Frigate 45%, Destroyer 30%, Cruiser 18%, Capital 7%
+        float roll = random.nextFloat();
+        if (roll < 0.45f && cachedFrigates != null && !cachedFrigates.isEmpty()) {
+            return cachedFrigates.get(random.nextInt(cachedFrigates.size()));
+        } else if (roll < 0.75f && cachedDestroyers != null && !cachedDestroyers.isEmpty()) {
+            return cachedDestroyers.get(random.nextInt(cachedDestroyers.size()));
+        } else if (roll < 0.93f && cachedCruisers != null && !cachedCruisers.isEmpty()) {
+            return cachedCruisers.get(random.nextInt(cachedCruisers.size()));
+        } else if (cachedCapitals != null && !cachedCapitals.isEmpty()) {
+            return cachedCapitals.get(random.nextInt(cachedCapitals.size()));
+        }
+
+        if (cachedDerelictVariants != null && !cachedDerelictVariants.isEmpty()) {
+            return cachedDerelictVariants.get(random.nextInt(cachedDerelictVariants.size()));
+        }
+        return "hound_d_Standard";
+    }
+
+    private static List<String> cachedFighterWings = null;
+
+    public synchronized void initFighterPool() {
+        if (cachedFighterWings != null && !cachedFighterWings.isEmpty()) return;
+        cachedFighterWings = new ArrayList<String>();
+        try {
+            List<FighterWingSpecAPI> allSpecs = Global.getSettings().getAllFighterWingSpecs();
+            if (allSpecs != null) {
+                for (FighterWingSpecAPI spec : allSpecs) {
+                    if (spec == null) continue;
+                    String id = spec.getId();
+                    if (id == null || id.isEmpty()) continue;
+
+                    // Exclude non-salvageable, restricted, or hidden wings
+                    if (spec.hasTag("no_drop") || spec.hasTag("restricted") || spec.hasTag("hide_in_codex") || spec.hasTag("dummy") || spec.hasTag("station")) continue;
+
+                    ShipVariantAPI var = spec.getVariant();
+                    if (var == null) continue;
+                    ShipHullSpecAPI hSpec = var.getHullSpec();
+                    if (hSpec == null) continue;
+                    String sprite = hSpec.getSpriteName();
+                    if (sprite == null || sprite.isEmpty()) continue;
+
+                    // Verify that the texture actually loads and is valid!
+                    try {
+                        Global.getSettings().loadTexture(sprite);
+                        SpriteAPI test = Global.getSettings().getSprite(sprite);
+                        if (!isValidSprite(test)) continue;
+                    } catch (Throwable t) {
+                        continue;
+                    }
+
+                    cachedFighterWings.add(id);
+                }
+            }
+        } catch (Throwable t) {}
+        if (cachedFighterWings.isEmpty()) {
+            cachedFighterWings.add("broadsword_wing");
+            cachedFighterWings.add("talon_wing");
+            cachedFighterWings.add("dagger_wing");
+            cachedFighterWings.add("thunder_wing");
+            cachedFighterWings.add("gladius_wing");
+            cachedFighterWings.add("warthog_wing");
+        }
+    }
+
+    public String pickRandomFighterWing() {
+        initFighterPool();
+        if (cachedFighterWings != null && !cachedFighterWings.isEmpty()) {
+            for (int attempts = 0; attempts < 6; attempts++) {
+                String candidate = cachedFighterWings.get(random.nextInt(cachedFighterWings.size()));
+                try {
+                    FighterWingSpecAPI spec = Global.getSettings().getFighterWingSpec(candidate);
+                    if (spec != null && spec.getVariant() != null && spec.getVariant().getHullSpec() != null) {
+                        String s = spec.getVariant().getHullSpec().getSpriteName();
+                        if (s != null && !s.isEmpty()) return candidate;
+                    }
+                } catch (Throwable t) {}
+            }
+        }
+        return "broadsword_wing";
+    }
+
+    public CombatEntityAPI spawnDerelictAtLocation(float spawnX, float spawnY, float vx, float vy) {
+        initDerelictPool();
+        String chosenVariant = pickRandomDerelictVariant();
+
+        try {
+            ShipVariantAPI variant = null;
+            try {
+                variant = Global.getSettings().getVariant(chosenVariant);
+            } catch (Throwable t) {}
+
+            ShipHullSpecAPI spec = (variant != null) ? variant.getHullSpec() : null;
+            if (spec == null) {
+                try {
+                    spec = Global.getSettings().getHullSpec(chosenVariant);
+                } catch (Throwable t) {}
+            }
+            if (spec == null) {
+                spec = Global.getSettings().getHullSpec("hound_d");
+            }
+
+            String spritePath = (spec != null && spec.getSpriteName() != null) ? spec.getSpriteName() : "graphics/ships/hound/hound_substandard.png";
+            String hullName = (spec != null) ? spec.getHullNameWithDashClass() : null;
+            if (hullName == null || hullName.isEmpty()) {
+                hullName = (spec != null) ? spec.getHullName() : (IS_RUSSIAN ? "Заброшенный корабль" : "Derelict Ship");
+            }
+
+            float radius = (spec != null) ? Math.max(35f, spec.getCollisionRadius()) : 50f;
+            float baseHp = (spec != null) ? spec.getHitpoints() : 2000f;
+            float mass = Math.max(120f, baseHp * 0.16f);
+            float hp = Math.max(3200f, baseHp * 2.2f);
+
+            try {
+                Global.getSettings().loadTexture(spritePath);
+            } catch (Throwable t) {}
+
+            CombatEntityAPI entity = engine.spawnAsteroid(spritePath, spawnX, spawnY, vx, vy, false);
+            if (entity != null) {
+                entity.setFacing(random.nextFloat() * 360f);
+                entity.setAngularVelocity((random.nextFloat() - 0.5f) * 16f);
+                entity.setCollisionRadius(radius);
+                entity.setMass(mass);
+                entity.setHitpoints(hp);
+
+                if (entity instanceof CombatAsteroidAPI) {
+                    try {
+                        CombatAsteroidAPI ast = (CombatAsteroidAPI) entity;
+                        SpriteAPI s = ast.getSpriteAPI();
+                        if (s != null && isValidSprite(s)) {
+                            float maxDim = Math.max(s.getTextureWidth(), s.getTextureHeight());
+                            if (maxDim > 0f) {
+                                float scale = (radius * 2.25f) / maxDim;
+                                s.setSize(s.getTextureWidth() * scale, s.getTextureHeight() * scale);
+                            } else {
+                                s.setSize(radius * 2.25f, radius * 2.25f);
+                            }
+                            s.setColor(new Color(230, 230, 240, 255));
+                            s.setAlphaMult(1.0f);
+                        }
+                    } catch (Throwable t) {}
+                }
+
+                entity.setCustomData("IS_EASTER_EGG", Boolean.TRUE);
+                entity.setCustomData(TRACKED_KEY, Boolean.TRUE);
+                entity.setCustomData("EASTER_EGG_TYPE", "DERELICT");
+                entity.setCustomData("DERELICT_VARIANT_ID", chosenVariant);
+                entity.setCustomData("DERELICT_NAME", hullName);
+                entity.setCustomData("DERELICT_HULL_SIZE", (spec != null && spec.getHullSize() != null) ? spec.getHullSize().name() : "FRIGATE");
+                entity.setCustomData("DERELICT_HOLD_TIMER", Float.valueOf(0f));
+                entity.setCustomData("DERELICT_RESCUED", Boolean.FALSE);
+                entity.setCustomData("DERELICT_PLAYER_ENGAGED", Boolean.FALSE);
+                entity.setCustomData("DA_NO_MAINTAIN_VELOCITY", Boolean.TRUE);
+                try {
+                    queueDetectionSoundBurst();
+                } catch (Throwable t) {}
+
+                entity.setCustomData(BASE_VX_KEY, Float.valueOf(vx));
+                entity.setCustomData(BASE_VY_KEY, Float.valueOf(vy));
+
+                activeDerelictEntity = entity;
+                activeEasterEggEntities.add(entity);
+
+                return entity;
+            }
+        } catch (Throwable t) {}
+        return null;
+    }
+
+    private void spawnDerelictEasterEgg(float spawnX, float spawnY, float vx, float vy) {
+        battleDerelictSpawned = true;
+        CombatEntityAPI entity = spawnDerelictAtLocation(spawnX, spawnY, vx, vy);
+        if (entity != null) {
+            String hullName = (String) entity.getCustomData().get("DERELICT_NAME");
+            try {
+                Global.getSoundPlayer().playUISound("ui_rep_raise", 1.0f, 1.0f);
+            } catch (Throwable t) {}
+
+            if (engine.getCombatUI() != null && !isTitleScreen) {
+                String alert = IS_RUSSIAN ?
+                    ("СЕНСОРЫ: В потоке астероидов замечен дрейфующий остов корабля (" + hullName + ")!") :
+                    ("SENSORS: Derelict ship detected drifting in the asteroid belt (" + hullName + ")!");
+                engine.getCombatUI().addMessage(1, alert, new Color(255, 215, 60));
+            }
+        }
+    }
+
+    public CombatEntityAPI spawnOtherEasterEggAtLocation(float spawnX, float spawnY, float vx, float vy, String specificType) {
+        activeOtherEasterEggs++;
+
+        String spritePath = "graphics/stations/large_cache.png";
+        String eggType = "CACHE";
+        float radius = 40f;
+        float mass = 160f;
+        float hp = 2000f;
+        float spin = 18f;
+        String fighterWingId = null;
+        String fighterWingName = null;
+
+        if ("CACHE".equals(specificType)) {
+            spritePath = "graphics/stations/large_cache.png";
+            eggType = "CACHE";
+            radius = 42f; mass = 180f; hp = 2200f; spin = 15f;
+        } else if ("PROBE".equals(specificType)) {
+            spritePath = "graphics/stations/survey_probe.png";
+            eggType = "PROBE";
+            radius = 36f; mass = 120f; hp = 1500f; spin = 20f;
+        } else if ("CRYO_POD".equals(specificType)) {
+            spritePath = "graphics/stations/probe.png";
+            eggType = "CRYO_POD";
+            radius = 34f; mass = 100f; hp = 1200f; spin = 12f;
+        } else if ("NAV_BUOY".equals(specificType)) {
+            spritePath = "graphics/ships/nav_buoy.png";
+            eggType = "NAV_BUOY";
+            radius = 38f; mass = 160f; hp = 1800f; spin = 10f;
+        } else if ("MOTHERSHIP_ENGINE".equals(specificType) || "DEBRIS".equals(specificType)) {
+            spritePath = "graphics/ships/derelict/derelict_mothership_pod_engine_left.png";
+            eggType = "MOTHERSHIP_ENGINE";
+            radius = 58f; mass = 300f; hp = 2600f; spin = 14f;
+        } else if ("EXPLOSIVE_TANK".equals(specificType)) {
+            spritePath = "graphics/stations/cargo_pod_special.png";
+            eggType = "EXPLOSIVE_TANK";
+            radius = 32f; mass = 80f; hp = 600f; spin = 15f;
+        } else if ("FIGHTER".equals(specificType)) {
+            initFighterPool();
+            fighterWingId = pickRandomFighterWing();
+            FighterWingSpecAPI fSpec = null;
+            try {
+                fSpec = Global.getSettings().getFighterWingSpec(fighterWingId);
+            } catch (Throwable t) {}
+            if (fSpec != null) {
+                fighterWingName = fSpec.getWingName();
+                if (fSpec.getVariant() != null && fSpec.getVariant().getHullSpec() != null) {
+                    spritePath = fSpec.getVariant().getHullSpec().getSpriteName();
+                    radius = Math.max(22f, fSpec.getVariant().getHullSpec().getCollisionRadius());
+                }
+            }
+            eggType = "FIGHTER";
+            mass = 65f;
+            hp = 750f;
+            spin = 12f;
+        } else {
+            int roll = random.nextInt(7);
+            switch (roll) {
+                case 0:
+                    spritePath = "graphics/stations/large_cache.png";
+                    eggType = "CACHE";
+                    radius = 42f; mass = 180f; hp = 2200f; spin = 15f;
+                    break;
+                case 1:
+                    spritePath = "graphics/stations/survey_probe.png";
+                    eggType = "PROBE";
+                    radius = 36f; mass = 120f; hp = 1500f; spin = 20f;
+                    break;
+                case 2:
+                    spritePath = "graphics/stations/probe.png";
+                    eggType = "CRYO_POD";
+                    radius = 34f; mass = 100f; hp = 1200f; spin = 12f;
+                    break;
+                case 3:
+                    spritePath = "graphics/ships/nav_buoy.png";
+                    eggType = "NAV_BUOY";
+                    radius = 38f; mass = 160f; hp = 1800f; spin = 10f;
+                    break;
+                case 4:
+                    spritePath = "graphics/stations/cargo_pod_special.png";
+                    eggType = "EXPLOSIVE_TANK";
+                    radius = 32f; mass = 80f; hp = 600f; spin = 15f;
+                    break;
+                case 5:
+                    spritePath = "graphics/ships/derelict/derelict_mothership_pod_engine_left.png";
+                    eggType = "MOTHERSHIP_ENGINE";
+                    radius = 58f; mass = 300f; hp = 2600f; spin = 14f;
+                    break;
+                default:
+                    initFighterPool();
+                    fighterWingId = pickRandomFighterWing();
+                    FighterWingSpecAPI fSpec = null;
+                    try {
+                        fSpec = Global.getSettings().getFighterWingSpec(fighterWingId);
+                    } catch (Throwable t) {}
+                    if (fSpec != null) {
+                        fighterWingName = fSpec.getWingName();
+                        if (fSpec.getVariant() != null && fSpec.getVariant().getHullSpec() != null) {
+                            spritePath = fSpec.getVariant().getHullSpec().getSpriteName();
+                            radius = Math.max(22f, fSpec.getVariant().getHullSpec().getCollisionRadius());
+                        }
+                    }
+                    eggType = "FIGHTER";
+                    mass = 65f;
+                    hp = 750f;
+                    spin = 12f;
+                    break;
+            }
+        }
+
+        try {
+            Global.getSettings().loadTexture(spritePath);
+        } catch (Throwable t) {}
+
+        try {
+            CombatEntityAPI entity = engine.spawnAsteroid(spritePath, spawnX, spawnY, vx, vy, false);
+            if (entity != null) {
+                entity.setFacing(random.nextFloat() * 360f);
+                entity.setAngularVelocity((random.nextFloat() - 0.5f) * spin);
+                entity.setCollisionRadius(radius);
+                entity.setMass(mass);
+                entity.setHitpoints(hp);
+
+                if (entity instanceof CombatAsteroidAPI) {
+                    try {
+                        CombatAsteroidAPI ast = (CombatAsteroidAPI) entity;
+                        SpriteAPI s = ast.getSpriteAPI();
+                        if (s != null && isValidSprite(s)) {
+                            float maxDim = Math.max(s.getTextureWidth(), s.getTextureHeight());
+                            if (maxDim > 0f) {
+                                float scale = (radius * 2.2f) / maxDim;
+                                s.setSize(s.getTextureWidth() * scale, s.getTextureHeight() * scale);
+                            } else {
+                                s.setSize(radius * 2.2f, radius * 2.2f);
+                            }
+                            s.setColor(Color.WHITE);
+                            s.setAlphaMult(1.0f);
+                        }
+                    } catch (Throwable t) {}
+                }
+
+                entity.setCustomData("IS_EASTER_EGG", Boolean.TRUE);
+                entity.setCustomData(TRACKED_KEY, Boolean.TRUE);
+                entity.setCustomData("EASTER_EGG_TYPE", eggType);
+                entity.setCustomData("DA_NO_MAINTAIN_VELOCITY", Boolean.TRUE);
+                if ("FIGHTER".equals(eggType) && fighterWingId != null) {
+                    entity.setCustomData("FIGHTER_WING_ID", fighterWingId);
+                    entity.setCustomData("FIGHTER_WING_NAME", (fighterWingName != null ? fighterWingName : fighterWingId));
+                }
+                entity.setCustomData(BASE_VX_KEY, Float.valueOf(vx));
+                entity.setCustomData(BASE_VY_KEY, Float.valueOf(vy));
+
+                activeEasterEggEntities.add(entity);
+
+                if ("FIGHTER".equals(eggType)) {
+                    try {
+                        Global.getSoundPlayer().playUISound("ui_radar_detect_vessel", 1.1f, 0.9f);
+                    } catch (Throwable t) {}
+                    if (engine.getCombatUI() != null && !isTitleScreen) {
+                        String alert = IS_RUSSIAN ?
+                            ("СЕНСОРЫ: В потоке астероидов замечен дрейфующий истребитель (" + (fighterWingName != null ? fighterWingName : "Крыло") + ")!") :
+                            ("SENSORS: Drifting fighter detected in asteroid stream (" + (fighterWingName != null ? fighterWingName : "Wing") + ")!");
+                        engine.getCombatUI().addMessage(1, alert, new Color(100, 240, 255));
+                    }
+                } else if ("EXPLOSIVE_TANK".equals(eggType)) {
+                    try {
+                        Global.getSoundPlayer().playUISound("ui_radar_detect_vessel", 1.2f, 0.7f);
+                    } catch (Throwable t) {}
+                    if (engine.getCombatUI() != null && !isTitleScreen) {
+                        String alert = IS_RUSSIAN ?
+                            "СЕНСОРЫ: Внимание! В потоке обнаружен взрывоопасный бак с горючим!" :
+                            "SENSORS: Warning! Explosive fuel canister detected in the asteroid stream!";
+                        engine.getCombatUI().addMessage(1, alert, new Color(255, 140, 40));
+                    }
+                }
+                return entity;
+            }
+        } catch (Throwable t) {}
+        return null;
+    }
+
+    private void spawnOtherEasterEgg(float spawnX, float spawnY, float vx, float vy, boolean isResource) {
+        String specificType = null;
+        if (isResource) {
+            String[] resourcePool = new String[] { "CACHE", "PROBE", "CRYO_POD", "NAV_BUOY", "FIGHTER" };
+            specificType = resourcePool[random.nextInt(resourcePool.length)];
+        } else {
+            String[] debrisPool = new String[] { "MOTHERSHIP_ENGINE", "DEBRIS", "EXPLOSIVE_TANK" };
+            specificType = debrisPool[random.nextInt(debrisPool.length)];
+        }
+        spawnOtherEasterEggAtLocation(spawnX, spawnY, vx, vy, specificType);
+    }
+
+    private void spawnOtherEasterEgg(float spawnX, float spawnY, float vx, float vy) {
+        spawnOtherEasterEgg(spawnX, spawnY, vx, vy, random.nextFloat() < 0.35f);
+    }
+
+    public void removeEasterEggEntity(CombatEntityAPI entity) {
+        if (entity == null) return;
+        entity.getCustomData().put("DA_EXPIRED", Boolean.TRUE);
+        if (activeEasterEggEntities != null) {
+            activeEasterEggEntities.remove(entity);
+        }
+        if (entity == activeDerelictEntity) {
+            activeDerelictEntity = null;
+        }
+        if (engine != null) {
+            engine.removeEntity(entity);
+        }
+    }
+
+    @Override
+    public void renderInUICoords(ViewportAPI viewport) {
+        if (engine == null || viewport == null) return;
+        if (activeEasterEggEntities == null || activeEasterEggEntities.isEmpty()) return;
+
+        float sw = Global.getSettings().getScreenWidthPixels();
+        float sh = Global.getSettings().getScreenHeightPixels();
+        float cx = sw * 0.5f;
+        float cy = sh * 0.5f;
+        float totalTime = engine.getTotalElapsedTime(false);
+        float pulse = (float) (0.5 + 0.5 * Math.sin(totalTime * 4.5));
+
+        boolean isTacticalMap = engine.getCombatUI() != null && engine.getCombatUI().isShowingCommandUI();
+
+        for (int i = activeEasterEggEntities.size() - 1; i >= 0; i--) {
+            try {
+                CombatEntityAPI entity = activeEasterEggEntities.get(i);
+                if (entity == null || entity.isExpired() || (entity.getCustomData() != null && entity.getCustomData().containsKey("DA_EXPIRED")) || !engine.isEntityInPlay(entity)) {
+                    activeEasterEggEntities.remove(i);
+                    continue;
+                }
+
+                Vector2f loc = entity.getLocation();
+                if (loc == null) continue;
+
+                float sx = viewport.convertWorldXtoScreenX(loc.x);
+                float sy = viewport.convertWorldYtoScreenY(loc.y);
+
+                String eggType = (String) entity.getCustomData().get("EASTER_EGG_TYPE");
+                if (eggType == null) eggType = "DEBRIS";
+
+                float padX = 55f;
+                float padY = 55f;
+                boolean onScreen = (sx >= padX && sx <= sw - padX && sy >= padY && sy <= sh - padY);
+
+                if ("DERELICT".equals(eggType)) {
+                    Boolean rescued = (Boolean) entity.getCustomData().get("DERELICT_RESCUED");
+                    boolean isRescued = (rescued != null && rescued.booleanValue());
+                    Color themeCol = isRescued ? new Color(60, 255, 140) : new Color(255, 215, 60);
+
+                    String hullSizeStr = (String) entity.getCustomData().get("DERELICT_HULL_SIZE");
+                    float sizeScale = 1.0f;
+                    if ("CAPITAL_SHIP".equals(hullSizeStr)) {
+                        sizeScale = 1.35f;
+                    } else if ("CRUISER".equals(hullSizeStr)) {
+                        sizeScale = 1.20f;
+                    } else if ("DESTROYER".equals(hullSizeStr)) {
+                        sizeScale = 1.08f;
+                    } else {
+                        sizeScale = 0.95f;
+                    }
+
+                    if (onScreen) {
+                        SpriteAPI ring = getCachedSprite("systemMap", "radar_circle", "graphics/icons/radar_circle.png");
+                        if (ring != null && isValidSprite(ring)) {
+                            float ringSize = (isTacticalMap ? 26f : 44f + 18f * pulse) * sizeScale;
+                            ring.setSize(ringSize, ringSize);
+                            ring.setColor(new Color(themeCol.getRed(), themeCol.getGreen(), themeCol.getBlue(), (int)(isTacticalMap ? 220 : 150 + 95 * pulse)));
+                            ring.setAdditiveBlend();
+                            ring.renderAtCenter(sx, sy);
+                        }
+
+                        SpriteAPI icon = getCachedSprite("systemMap", "icon_derelict", "graphics/icons/derelict.png");
+                        if (icon != null && isValidSprite(icon)) {
+                            float iconSize = (isTacticalMap ? 20f : 28f) * sizeScale;
+                            icon.setSize(iconSize, iconSize);
+                            icon.setColor(new Color(themeCol.getRed(), themeCol.getGreen(), themeCol.getBlue(), 245));
+                            icon.renderAtCenter(sx, sy);
+                        }
+                    } else {
+                        // Derelict is high-value: KEEP off-screen HUD arrows so player never loses track of the ship!
+                        float dx = sx - cx;
+                        float dy = sy - cy;
+                        if (Math.abs(dx) > 0.001f || Math.abs(dy) > 0.001f) {
+                            float tX = Float.MAX_VALUE;
+                            float tY = Float.MAX_VALUE;
+                            if (dx > 0) tX = (sw - padX - cx) / dx;
+                            else if (dx < 0) tX = (padX - cx) / dx;
+                            if (dy > 0) tY = (sh - padY - cy) / dy;
+                            else if (dy < 0) tY = (padY - cy) / dy;
+                            float t = Math.min(tX, tY);
+                            float edgeX = cx + dx * t;
+                            float edgeY = cy + dy * t;
+                            float angleDeg = (float) Math.toDegrees(Math.atan2(dy, dx));
+
+                            SpriteAPI arrow = getCachedSprite("systemMap", "sensor_contact", "graphics/icons/fleet_triangle.png");
+                            if (arrow != null && isValidSprite(arrow)) {
+                                float arrowSize = isTacticalMap ? 18f : (26f + 4f * pulse);
+                                arrow.setSize(arrowSize, arrowSize);
+                                arrow.setAngle(angleDeg - 90f);
+                                arrow.setColor(new Color(themeCol.getRed(), themeCol.getGreen(), themeCol.getBlue(), (int)(180 + 75 * pulse)));
+                                arrow.setAdditiveBlend();
+                                arrow.renderAtCenter(edgeX, edgeY);
+                            }
+
+                            float len = (float) Math.sqrt(dx * dx + dy * dy);
+                            float inwardOffset = isTacticalMap ? 20f : 28f;
+                            float inwardX = edgeX - (dx / len) * inwardOffset;
+                            float inwardY = edgeY - (dy / len) * inwardOffset;
+
+                            SpriteAPI icon = getCachedSprite("systemMap", "icon_derelict", "graphics/icons/derelict.png");
+                            if (icon != null && isValidSprite(icon)) {
+                                float iconSize = isTacticalMap ? 16f : 22f;
+                                icon.setSize(iconSize, iconSize);
+                                icon.setColor(new Color(themeCol.getRed(), themeCol.getGreen(), themeCol.getBlue(), 230));
+                                icon.renderAtCenter(inwardX, inwardY);
+                            }
+                        }
+                    }
+                } else if ("CACHE".equals(eggType) || "PROBE".equals(eggType) || "CRYO_POD".equals(eggType) || "NAV_BUOY".equals(eggType) || "MOTHERSHIP_ENGINE".equals(eggType) || "FIGHTER".equals(eggType)) {
+                    // Resource containers ONLY show when on-screen (no off-screen HUD arrows to avoid screen clutter!)
+                    if (onScreen) {
+                        Color cCol = new Color(255, 205, 55);
+                        if ("PROBE".equals(eggType)) cCol = new Color(60, 230, 255);
+                        else if ("CRYO_POD".equals(eggType)) cCol = new Color(60, 255, 140);
+                        else if ("NAV_BUOY".equals(eggType)) cCol = new Color(195, 130, 255);
+                        else if ("FIGHTER".equals(eggType)) cCol = new Color(90, 215, 255);
+                        else if ("MOTHERSHIP_ENGINE".equals(eggType)) cCol = new Color(190, 215, 235);
+
+                        boolean isFighter = "FIGHTER".equals(eggType);
+
+                        SpriteAPI ring = getCachedSprite("systemMap", "radar_circle", "graphics/icons/radar_circle.png");
+                        if (ring != null && isValidSprite(ring)) {
+                            float ringSize = isTacticalMap ? 22f : 36f + 14f * pulse;
+                            ring.setSize(ringSize, ringSize);
+                            ring.setColor(new Color(cCol.getRed(), cCol.getGreen(), cCol.getBlue(), (int)(isTacticalMap ? 210 : 130 + 85 * pulse)));
+                            ring.setAdditiveBlend();
+                            ring.renderAtCenter(sx, sy);
+                        }
+
+                        SpriteAPI icon = null;
+                        if (isFighter) {
+                            icon = getCachedSprite("ui", "cargoFighterChip", "graphics/icons/cargo/fighter_lpc.png");
+                            if (icon == null || !isValidSprite(icon)) icon = getCachedSprite("codex", "fighters", "graphics/icons/codex/fighters.png");
+                            if (icon == null || !isValidSprite(icon)) icon = getCachedSprite("systemMap", "icon_fighter", "graphics/icons/fleet_triangle.png");
+                        } else {
+                            icon = getCachedSprite(null, null, "graphics/icons/debris_field_icon.png");
+                        }
+
+                        if (icon != null && isValidSprite(icon)) {
+                            float iconSize = isTacticalMap ? 16f : 22f;
+                            icon.setSize(iconSize, iconSize);
+                            icon.setColor(new Color(cCol.getRed(), cCol.getGreen(), cCol.getBlue(), 245));
+                            icon.renderAtCenter(sx, sy);
+                        }
+                    }
+                } else if ("EXPLOSIVE_TANK".equals(eggType)) {
+                    // Explosive tank ONLY shows when on-screen (no off-screen HUD arrows to avoid screen clutter!)
+                    if (onScreen) {
+                        Color dangerCol = new Color(255, 95, 25);
+                        SpriteAPI danger = getCachedSprite(null, null, "graphics/icons/danger3.png");
+                        if (danger != null && isValidSprite(danger)) {
+                            float dSize = isTacticalMap ? 18f : (24f + 5f * pulse);
+                            danger.setSize(dSize, dSize);
+                            danger.setColor(new Color(dangerCol.getRed(), dangerCol.getGreen(), dangerCol.getBlue(), (int)(180 + 75 * pulse)));
+                            danger.renderAtCenter(sx, sy);
+                        }
+                    }
+                } else {
+                    // Regular debris ONLY when on-screen
+                    if (onScreen) {
+                        SpriteAPI icon = getCachedSprite(null, null, "graphics/icons/debris_field_icon.png");
+                        if (icon != null && isValidSprite(icon)) {
+                            float iconSize = isTacticalMap ? 14f : 18f;
+                            icon.setSize(iconSize, iconSize);
+                            icon.setColor(new Color(130, 210, 255, 190));
+                            icon.renderAtCenter(sx, sy);
+                        }
+                    }
+                }
+            } catch (Throwable t) {}
+        }
+    }
 }
-
-
-
-
-
-
-

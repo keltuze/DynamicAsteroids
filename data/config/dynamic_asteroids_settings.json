@@ -30,5 +30,15 @@
   "pdMaxFluxThreshold": 0.75,
   "enableEarlySnipeEvasion": true,
   "asteroidHealthMult": 0.6,
-  "pdAsteroidDamageMult": 6.0
+  "pdAsteroidDamageMult": 6.0,
+  "asteroidCollisionDamageMult": 1.0,
+  "derelictSpawnChance": 0.015,
+  "otherEasterEggChance": 0.06,
+  "derelictRescueHoldTime": 60.0,
+  "derelictRescueChance": 1.0,
+  "debrisEasterEggChance": 0.04,
+  "resourceEasterEggChance": 0.02,
+  "easterEggSpeed": 400.0,
+  "easterEggMagnetStrength": 3000.0,
+  "openSpaceEasterEggMult": 0.14
 }

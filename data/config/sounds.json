@@ -1,0 +1,9 @@
+{
+    "da_derelict_detect": [
+        {
+            "file": "sounds/sfx_interface/da_derelict_detect.ogg",
+            "pitch": 1.0,
+            "volume": 0.8
+        }
+    ]
+}

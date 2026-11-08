@@ -99,6 +99,11 @@ public class AsteroidPDAutofirePlugin implements AutofireAIPlugin {
             return;
         }
 
+        // Never target easter eggs (derelicts, wreckage, fuel tanks)
+        if (threat.getCustomData().containsKey("IS_EASTER_EGG")) {
+            return;
+        }
+
         Vector2f wLoc = weapon.getLocation();
         Vector2f tLoc = threat.getLocation();
         Vector2f tVel = threat.getVelocity();

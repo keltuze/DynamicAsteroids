@@ -1,4 +1,4 @@
-modID,fieldID,fieldName,fieldType,defaultValue,secondaryValue,fieldDescription,minValue,maxValue,tab
+﻿modID,fieldID,fieldName,fieldType,defaultValue,secondaryValue,fieldDescription,minValue,maxValue,tab
 dynamic_asteroids,da_header_sim,Presets & Simulation,Header,Stream parameters and modes,,,,,Asteroid Stream
 dynamic_asteroids,da_activePreset,Active Profile,Int,2,,0=Custom (all sliders manual); 1=Cinematic (100-400 rocks / 400 spd / 0.5 pct derelict / 1.0 pct loot); 2=Balanced [Default] (200-800 rocks / 600 spd / 1.5 pct derelict / 2.0 pct loot); 3=Storm (300-1000 rocks / 1200 spd / 3.5 pct derelict / 4.0 pct loot); 4=Chaos [High Risk / High Reward] (500-1000 rocks / 3000 spd / 7.0 pct derelict / 8.0 pct loot),0,4,Asteroid Stream
 dynamic_asteroids,da_enableInSimulation,Enable in Simulator,Boolean,true,,Asteroid stream activity in simulator tests ([/] toggle; Shift +/- limit; Ctrl +/- speed),,,Asteroid Stream
@@ -14,30 +14,23 @@ dynamic_asteroids,da_derelictSpawnChance,Derelict Ship Chance,Double,0.015,,Chan
 dynamic_asteroids,da_debrisEasterEggChance,Debris & Fuel Tanks Chance,Double,0.04,,Chance to spawn ancient engines and explosive fuel canisters (0.04 = 4.0 pct; max 0.40 = 40 pct),0.0,0.40,Asteroid Stream
 dynamic_asteroids,da_resourceEasterEggChance,Valuable Cache Chance,Double,0.02,,"Chance to spawn Domain probes, supply caches, cryopods and fighter LPCs (0.02 = 2.0 pct; max 0.15 = 15 pct)",0.0,0.15,Asteroid Stream
 dynamic_asteroids,da_easterEggSpeed,Salvage Drift Speed,Double,400.0,,Drift speed of salvageable items and derelicts (units/sec). Lower speed makes interception easier,100.0,1500.0,Asteroid Stream
-dynamic_asteroids,da_easterEggMagnetStrength,Shield Tractor Beam Force,Double,3000.0,,Magnetic pull power of active shields on passing loot containers (0 = disabled. 3000 = standard),0.0,10000.0,Asteroid Stream
+dynamic_asteroids,da_easterEggMagnetStrength,Shield Tractor Beam Force,Double,1400.0,,Magnetic pull power of active shields on passing loot containers (0 = disabled. 1400 = standard),0.0,8000.0,Asteroid Stream
 dynamic_asteroids,da_derelictRescueHoldTime,Stabilization Time (sec),Double,60.0,,Seconds required to keep the derelict intact in the combat zone (60 sec),10.0,180.0,Asteroid Stream
 dynamic_asteroids,da_derelictRescueChance,Stabilization Success Chance,Double,1.0,,Chance to salvage and recover the rescued ship in post-battle menu (1.0 = 100 percent),0.1,1.0,Asteroid Stream
 dynamic_asteroids,da_header_trails,Trails & Particles,Header,Kinetic sparkling trails,,,,,Asteroid Stream
 dynamic_asteroids,da_enableParticleTrails,Enable Asteroid Trails,Boolean,true,,Sparkling kinetic trails behind moving asteroids (Zero lag),,,Asteroid Stream
-dynamic_asteroids,da_particleTrailChance,Trail Particle Chance,Double,0.20,,Fraction of asteroids emitting trails (0.20 = 20 percent),0.0,1.0,Asteroid Stream
-dynamic_asteroids,da_header_space,Open Deep Space,Header,Deep space meteor encounters,,,,,Asteroid Stream
-dynamic_asteroids,da_openSpaceMinRocks,Min Stray Meteors,Int,4,,Minimum stray meteors in deep space,1,15,Asteroid Stream
-dynamic_asteroids,da_openSpaceMaxRocks,Max Stray Meteors,Int,10,,Maximum stray meteors in deep space,2,30,Asteroid Stream
-dynamic_asteroids,da_openSpaceMinDelay,Min Spawn Delay (sec),Double,2.0,,Minimum pause between stray meteors,0.5,10.0,Asteroid Stream
-dynamic_asteroids,da_openSpaceMaxDelay,Max Spawn Delay (sec),Double,5.5,,Maximum pause between stray meteors,1.0,20.0,Asteroid Stream
-dynamic_asteroids,da_openSpaceEasterEggMult,Deep Space Salvage Mult,Double,0.14,,Frequency multiplier for rare salvage in deep space outside belts (0.14 = 7x rarer than belts. 0.0 = meteors only),0.0,0.50,Asteroid Stream
-dynamic_asteroids,da_header_ai,Fleet Tactics & AI,Header,Fleet reaction to collision threats,,,,,Fleet AI Reaction
-dynamic_asteroids,da_enableMicroDodge,AI Agile Micro-Dodge,Boolean,true,,AI frigates and destroyers perform agile lateral micro-thrusts to avoid head-on collisions. [Effect: High],,,Fleet AI Reaction
-dynamic_asteroids,da_enableShieldReaction,Shield Defense vs Ramming,Boolean,true,,AI raises and rotates shields to brace against unavoidable kinetic impacts. [Effect: High],,,Fleet AI Reaction
-dynamic_asteroids,da_enableEarlySnipeEvasion,Formation Early Evasion,Boolean,true,,AI detects incoming focused asteroid torrents early and clears the kill corridor,,,Fleet AI Reaction
-dynamic_asteroids,da_targetedSnipeChance,Focused Snipe Wave Chance,Double,0.05,,Chance for targeted torrent directed straight at a ship (0.05 = 5 percent),0.0,0.5,Fleet AI Reaction
-dynamic_asteroids,da_header_pd,PD Defense vs Asteroids,Header,Laser and kinetic point defense fire against rocks,,,,,Fleet AI Reaction
-dynamic_asteroids,da_enablePDTargeting,PD Fire at Asteroids,Boolean,true,,Point defense weapons intercept hazardous asteroids. Note: Consumes weapon flux! [Effect: High],,,Fleet AI Reaction
-dynamic_asteroids,da_pdCriticalThreatsOnly,Critical Threats Only,Boolean,true,,PD weapons fire ONLY at asteroids on confirmed collision courses. [Effect: High],,,Fleet AI Reaction
-dynamic_asteroids,da_enablePDFluxSafety,PD Flux Overload Safety,Boolean,true,,Automatically halts PD fire against rocks during heavy flux build-up in combat,,,Fleet AI Reaction
-dynamic_asteroids,da_pdMaxFluxThreshold,PD Cutoff Flux Threshold,Double,0.75,,Fraction of ship flux capacity (0.75 = 75 percent. 1.0 = never stop firing),0.20,1.0,Fleet AI Reaction
-dynamic_asteroids,da_asteroidHealthMult,Asteroid Durability Mult,Double,0.60,,Asteroid hitpoint multiplier (0.60 = 60 percent. Lower values shatter easier),0.1,2.0,Fleet AI Reaction
-dynamic_asteroids,da_pdAsteroidDamageMult,PD Bonus Damage vs Rocks,Double,6.0,,Damage multiplier for Point Defense weapons against asteroids (6.0 = 600 percent damage),1.0,10.0,Fleet AI Reaction
-dynamic_asteroids,da_header_ai_perf,AI Sensor Optimization,Header,Threat scanning and prediction thresholds,,,,,Fleet AI Reaction
-dynamic_asteroids,da_aiMinThreatVelocity,Min Threat Velocity,Double,200.0,,Relative velocity threshold for radar threat detection (units/sec),100.0,600.0,Fleet AI Reaction
-dynamic_asteroids,da_aiLookaheadTime,Collision Prediction (sec),Double,1.25,,Time lookahead horizon for AI trajectory calculation,0.5,2.5,Fleet AI Reaction
+dynamic_asteroids,da_particleTrailChance,Trail Frequency Chance,Double,0.40,,Fraction of asteroids spawning trails (0.40 = 40 pct),0.05,1.0,Asteroid Stream
+dynamic_asteroids,da_header_deep_space,Deep Space Drift Encounters,Header,Rare solitary meteors and anomalies outside asteroid fields,,,,,Asteroid Stream
+dynamic_asteroids,da_openSpaceMinRocks,Min Stray Meteors in Open Space,Int,0,,Minimum simultaneous stray meteors in non-asteroid terrain battles,0,10,Asteroid Stream
+dynamic_asteroids,da_openSpaceMaxRocks,Max Stray Meteors in Open Space,Int,2,,Maximum simultaneous stray meteors in open space encounters,0,25,Asteroid Stream
+dynamic_asteroids,da_openSpaceMinDelay,Min Interval Between Meteors (sec),Double,30.0,,Minimum seconds before a stray meteor wanders into the sector,5.0,120.0,Asteroid Stream
+dynamic_asteroids,da_openSpaceMaxDelay,Max Interval Between Meteors (sec),Double,75.0,,Maximum seconds between stray meteors,10.0,300.0,Asteroid Stream
+dynamic_asteroids,da_openSpaceEasterEggMult,Deep Space Anomaly Frequency,Double,0.14,,Multiplier for derelict and cache encounters in deep space (0.14 = ~7x rarer than belts. 0.0 = disabled),0.0,0.50,Asteroid Stream
+dynamic_asteroids,da_header_ai,Tactical Fleet AI,Header,"Fleet safety, avoidance and point defense",,,,,Asteroid Stream
+dynamic_asteroids,da_enableMicroDodge,AI Maneuvering Avoidance,Boolean,true,,Ships gently evade hazardous asteroids with maneuvering thrusters,,,Asteroid Stream
+dynamic_asteroids,da_enableShieldReaction,Emergency Shield Defense,Boolean,true,,Ships deploy shields to block imminent asteroid collisions,,,Asteroid Stream
+dynamic_asteroids,da_enablePDTargeting,Point Defense Interception,Boolean,true,,PD weapons automatically track and shatter dangerous asteroids,,,Asteroid Stream
+dynamic_asteroids,da_pdCriticalThreatsOnly,Intercept Collision Course Only,Boolean,true,,"PD fires only at asteroids directly on collision course, saving ammunition and flux",,,Asteroid Stream
+dynamic_asteroids,da_enablePDFluxSafety,Flux Overload Safety,Boolean,true,,Disables PD asteroid interception when ship flux exceeds safe threshold,,,Asteroid Stream
+dynamic_asteroids,da_pdMaxFluxThreshold,Max Flux Safety Threshold,Double,0.65,,Flux level at which PD stops engaging rocks to prevent overload (0.65 = 65 pct flux),0.2,0.95,Asteroid Stream
+dynamic_asteroids,da_enableEarlySnipeEvasion,Sniper Salvo Early Warning,Boolean,true,,Evasive maneuver alerts against targeted high-speed asteroid snipes,,,Asteroid Stream

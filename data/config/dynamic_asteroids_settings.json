@@ -1,6 +1,6 @@
 {
   "activePreset": 2,
-  "language": "en",
+  "language": "ru",
   "enableInSimulation": true,
   "simulationToggleKey": "SLASH",
   "minFieldRocks": 200,
@@ -39,6 +39,6 @@
   "debrisEasterEggChance": 0.04,
   "resourceEasterEggChance": 0.02,
   "easterEggSpeed": 400.0,
-  "easterEggMagnetStrength": 3000.0,
+  "easterEggMagnetStrength": 1400.0,
   "openSpaceEasterEggMult": 0.14
 }

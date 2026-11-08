@@ -1,5 +1,5 @@
 {
   "plugins": {
-    "dynamic_asteroids_combat_plugin": "data.scripts.plugins.DynamicAsteroidsCombatPlugin"
+    "DynamicAsteroids": "data.scripts.plugins.DynamicAsteroidsCombatPlugin"
   }
 }

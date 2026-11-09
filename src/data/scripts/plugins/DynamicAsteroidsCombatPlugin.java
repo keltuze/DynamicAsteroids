@@ -7173,6 +7173,32 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
 
 
+        private static boolean isEntityWithinShieldArc(ShipAPI ship, Vector2f targetLoc) {
+        if (ship == null || targetLoc == null) return false;
+        if (ship.isPhased()) return true; // Phase cloak envelops entire hull (360 degrees)
+
+        ShieldAPI shield = ship.getShield();
+        if (shield == null || !shield.isOn() || shield.isOff()) return false;
+
+        float arc = shield.getArc();
+        if (arc >= 359f) return true; // Omnidirectional 360 degree shield
+
+        Vector2f shieldCenter = shield.getLocation();
+        if (shieldCenter == null) shieldCenter = ship.getLocation();
+        if (shieldCenter == null) return false;
+
+        float toTargetX = targetLoc.x - shieldCenter.x;
+        float toTargetY = targetLoc.y - shieldCenter.y;
+        float angleToTarget = (float) Math.toDegrees(Math.atan2(toTargetY, toTargetX));
+        if (angleToTarget < 0f) angleToTarget += 360f;
+
+        float shieldFacing = shield.getFacing();
+        float diff = Math.abs(getShortestRotation(shieldFacing, angleToTarget));
+
+        // Half-arc plus fringe margin (10 degrees) for smooth field edge
+        return diff <= (arc * 0.5f + 10.0f);
+    }
+
     private void applyShieldMagnet(CombatEntityAPI entity, List<ShipAPI> ships, float amount) {
         if (easterEggMagnetStrength <= 0f || amount <= 0f || entity == null) return;
         if (!Boolean.TRUE.equals(entity.getCustomData().get("IS_EASTER_EGG"))) return;
@@ -7183,7 +7209,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
         ShipAPI closestShieldedShip = null;
         float closestDistanceSq = Float.MAX_VALUE;
-        
+        float closestShipRange = 1350f;
 
         for (int i = 0; i < ships.size(); i++) {
             ShipAPI ship = ships.get(i);
@@ -7196,6 +7222,10 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
             Vector2f shipLoc = ship.getLocation();
             if (shipLoc == null) continue;
 
+            // Directional Shield Vector Check:
+            // If shield has directional arc, only magnetize if target is within active shield arc cone!
+            if (!isEntityWithinShieldArc(ship, eggLoc)) continue;
+
             float dx = shipLoc.x - eggLoc.x;
             float dy = shipLoc.y - eggLoc.y;
             float distanceSq = dx * dx + dy * dy;
@@ -7203,7 +7233,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
             if (distanceSq <= range * range && distanceSq < closestDistanceSq) {
                 closestShieldedShip = ship;
                 closestDistanceSq = distanceSq;
-                
+                closestShipRange = range;
             }
         }
 
@@ -7225,26 +7255,14 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
         float nx = dx / distance;
         float ny = dy / distance;
 
-        // =========================================================================
-        // SAFE HOVER & MOORING BOUNDARY (Prevents clipping and perpetual runaway)
-        // =========================================================================
+        // Safe hover & mooring boundary: keeps the object hovering gracefully outside the shield bubble
         float shipEdge = (closestShieldedShip.getShield() != null && closestShieldedShip.getShield().isOn())
             ? closestShieldedShip.getShield().getRadius()
             : closestShieldedShip.getCollisionRadius();
         float targetRadius = entity.getCollisionRadius();
-
-        // Safe hover distance: keeps the object hovering gracefully outside the shield bubble
         float safeHoverDistance = shipEdge + targetRadius + 45f;
 
-        // =========================================================================
-        // NATURAL MASS SCALING (Newton's Third Law with non-linear mass contrast):
-        // When ship is tiny (Frigate, mass 200) and target is huge (Derelict Capital, mass 2500):
-        //   - Target receives virtually 0% pull, staying firmly on its original course.
-        //   - Frigate receives ~99% pull, reeling smoothly towards the giant derelict.
-        // When ship is massive (Capital, mass 3500) and target is small (Cache/Probe, mass 150):
-        //   - Target receives ~99% pull, reeled smoothly into the shield.
-        //   - Ship receives virtually 0% pull.
-        // =========================================================================
+        // Newtonian mass contrast tensor:
         float shipMass = Math.max(80f, closestShieldedShip.getMass());
         float targetMass = Math.max(50f, entity.getMass());
 
@@ -7270,18 +7288,48 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
         // Radial closing speed along n: positive = closing in towards each other, negative = separating
         float vRadial = relVx * nx + relVy * ny;
 
-        // Desired closing speed: smoothly scales with distance outside safeHoverDistance, capped at 140
+        // =========================================================================
+        // 1. NON-LINEAR DISTANCE CURVE: [Edge = 10%] -> [10% Path = 20%] -> [Target = 100%]
+        // Formula: F(p) = 0.10 + 0.90 * p^k, where k = log10(9) = 0.9542425f
+        // =========================================================================
+        float effectiveMaxRange = Math.max(safeHoverDistance + 60f, closestShipRange);
+        float progress = 0f;
+        if (distance > safeHoverDistance && effectiveMaxRange > safeHoverDistance) {
+            progress = (effectiveMaxRange - distance) / (effectiveMaxRange - safeHoverDistance);
+            if (progress < 0f) progress = 0f;
+            else if (progress > 1f) progress = 1f;
+        } else if (distance <= safeHoverDistance) {
+            progress = 1.0f;
+        }
+
+        float forceNorm = 0.10f + 0.90f * (float) Math.pow(progress, 0.9542425);
+        if (forceNorm > 1.0f) forceNorm = 1.0f;
+
+        // Base max force from LunaLib/config (default 1400 u/s2)
+        float maxConfigForce = Math.max(400.0f, easterEggMagnetStrength);
+        float currentTractiveForce = maxConfigForce * forceNorm;
+
+        // =========================================================================
+        // 2. DYNAMIC VELOCITY GOVERNOR & ACCELERATION LIMIT (300+ u/s)
+        // Scaled by size difference and distance
+        // =========================================================================
+        float sizeContrast = Math.max(0.70f, Math.min(2.50f, shipEdge / Math.max(25f, targetRadius)));
+        float maxClosingSpeed = 300.0f + 60.0f * (sizeContrast - 1.0f); // 300 - 390 u/s
+
         float desiredClosingSpeed = 0f;
         if (distance > safeHoverDistance) {
-            desiredClosingSpeed = Math.min(140.0f, (distance - safeHoverDistance) * 0.60f);
+            desiredClosingSpeed = Math.min(maxClosingSpeed, (distance - safeHoverDistance) * 0.75f);
         }
+
+        // Acceleration limit: scales dynamically from 300 u/s2 up to config force (1400+ u/s2)
+        float maxAccelLimit = Math.max(300.0f, currentTractiveForce * Math.max(0.85f, sizeContrast * 0.65f));
 
         // Speed deficit to achieve desired closing speed
         float speedDeficit = desiredClosingSpeed - vRadial;
 
         if (speedDeficit > 0f) {
-            // Apply controlled inward closing step (prevents runaway acceleration)
-            float pullStep = Math.min(speedDeficit, 280.0f * amount);
+            // Apply controlled inward closing step
+            float pullStep = Math.min(speedDeficit, maxAccelLimit * amount);
             // Target accelerates towards ship (+n)
             eggVelocity.x += nx * (pullStep * massRatioTarget);
             eggVelocity.y += ny * (pullStep * massRatioTarget);
@@ -7290,20 +7338,20 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                 shipVel.x -= nx * (pullStep * massRatioShip);
                 shipVel.y -= ny * (pullStep * massRatioShip);
             }
-        } else if (vRadial > desiredClosingSpeed + 15.0f) {
-            // Gentle approach braking if closing in faster than desired
-            float brakeStep = Math.min(vRadial - desiredClosingSpeed, 200.0f * amount);
+        } else if (vRadial > desiredClosingSpeed + 20.0f) {
+            // Gentle approach braking if inertia carries object faster than desired closing speed
+            float brakeStep = Math.min(vRadial - desiredClosingSpeed, Math.max(250.0f, maxAccelLimit * 0.70f) * amount);
             eggVelocity.x -= nx * (brakeStep * massRatioTarget);
             eggVelocity.y -= ny * (brakeStep * massRatioTarget);
             if (shipVel != null) {
-                shipVel.x += nx * (brakeStep * massRatioShip);
-                shipVel.y += ny * (brakeStep * massRatioShip);
+                shipVel.x -= nx * (brakeStep * massRatioShip);
+                shipVel.y -= ny * (brakeStep * massRatioShip);
             }
         }
 
-        // Magnetic cushion buffer: if pushed inside safeHoverDistance, softly separate
+        // Magnetic cushion buffer: if pushed inside safeHoverDistance, softly separate to prevent clipping
         if (distance < safeHoverDistance) {
-            float cushion = Math.min(1.0f, (safeHoverDistance - distance) / Math.max(1f, safeHoverDistance)) * 300.0f * amount;
+            float cushion = Math.min(1.0f, (safeHoverDistance - distance) / Math.max(1f, safeHoverDistance)) * 400.0f * amount;
             eggVelocity.x -= nx * (cushion * massRatioTarget);
             eggVelocity.y -= ny * (cushion * massRatioTarget);
             if (shipVel != null) {
@@ -7315,7 +7363,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
         // Lateral (perpendicular) relative velocity damping: eliminates orbital slingshotting
         float latVx = relVx - (vRadial * nx);
         float latVy = relVy - (vRadial * ny);
-        float latDamp = Math.min(0.90f, 4.0f * amount);
+        float latDamp = Math.min(0.92f, 4.2f * amount);
 
         eggVelocity.x -= latVx * (latDamp * massRatioTarget);
         eggVelocity.y -= latVy * (latDamp * massRatioTarget);
@@ -7324,16 +7372,16 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
             shipVel.y += latVy * (latDamp * massRatioShip);
         }
 
-        // Visual tractor beam particles
-        if (engine != null && random.nextFloat() < 0.35f) {
-            Vector2f pVel = new Vector2f(nx * 140f, ny * 140f);
+        // Visual tractor beam particles along active shield vector
+        if (engine != null && random.nextFloat() < 0.38f) {
+            Vector2f pVel = new Vector2f(nx * 160f, ny * 160f);
             engine.addSmoothParticle(
                 eggLoc,
                 pVel,
-                14f + random.nextFloat() * 12f,
+                14f + random.nextFloat() * 14f,
                 0.85f,
                 0.30f,
-                new Color(70, 225, 255, 190)
+                new Color(70, 225, 255, 195)
             );
         }
 
@@ -7341,7 +7389,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
         if (engine != null && massRatioShip > 0.35f && random.nextFloat() < 0.35f) {
             Vector2f sLoc = closestShieldedShip.getLocation();
             if (sLoc != null) {
-                Vector2f sPvel = new Vector2f(-nx * 140f, -ny * 140f);
+                Vector2f sPvel = new Vector2f(-nx * 160f, -ny * 160f);
                 engine.addSmoothParticle(
                     sLoc,
                     sPvel,

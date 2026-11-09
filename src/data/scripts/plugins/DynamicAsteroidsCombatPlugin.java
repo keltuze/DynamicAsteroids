@@ -2132,203 +2132,94 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
         }
 
-
-
-        // Summon Derelict Hotkey: [ ' ] (KEY_APOSTROPHE / KEY_GRAVE)
-
-        if (summonKeyCooldown > 0f) {
-
-            summonKeyCooldown -= amount;
-
-        }
-
-        // Summon Loot Container Hotkey: [ ; ] (KEY_SEMICOLON)
-
-        if (summonContainerKeyCooldown > 0f) {
-
-            summonContainerKeyCooldown -= amount;
-
-        }
-
-
-
-        boolean summonTriggered = false;
-
-        boolean summonContainerTriggered = false;
-
-
-
-        if (events != null) {
-
-            for (InputEventAPI event : events) {
-
-                if (!event.isConsumed() && event.isKeyDownEvent()) {
-
-                    int key = event.getEventValue();
-
-                    if (key == Keyboard.KEY_APOSTROPHE || key == Keyboard.KEY_GRAVE) {
-
-                        event.consume();
-
-                        if (summonKeyCooldown <= 0f) summonTriggered = true;
-
-                        break;
-
-                    } else if (key == Keyboard.KEY_SEMICOLON) {
-
-                        event.consume();
-
-                        if (summonContainerKeyCooldown <= 0f) summonContainerTriggered = true;
-
-                        break;
-
-                    }
-
-                }
-
-            }
-
-        }
-
-
-
-        if (!summonTriggered && summonKeyCooldown <= 0f) {
-
-            if (Keyboard.isKeyDown(Keyboard.KEY_APOSTROPHE) || Keyboard.isKeyDown(Keyboard.KEY_GRAVE)) {
-
-                summonTriggered = true;
-
-            }
-
-        }
-
-        if (!summonContainerTriggered && summonContainerKeyCooldown <= 0f) {
-
-            if (Keyboard.isKeyDown(Keyboard.KEY_SEMICOLON)) {
-
-                summonContainerTriggered = true;
-
-            }
-
-        }
-
-
-
-        if (summonTriggered) {
-
-            summonKeyCooldown = 0.5f;
-
-            summonDerelictNearPlayer();
-
-        }
-
-        if (summonContainerTriggered) {
-
-            summonContainerKeyCooldown = 0.5f;
-
-            summonContainerNearPlayer();
-
-        }
-
-
-
         // Process Simulation Hotkeys:
-
-        // ONLY ACTIVE IN SIMULATION! In regular campaign battles, does nothing.
-
-        if (engine.isSimulation() && events != null) {
-
-            boolean shiftHeld = Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) || Keyboard.isKeyDown(Keyboard.KEY_RSHIFT);
-
-            boolean ctrlHeld = Keyboard.isKeyDown(Keyboard.KEY_LCONTROL) || Keyboard.isKeyDown(Keyboard.KEY_RCONTROL);
-
-
-
-            for (InputEventAPI event : events) {
-
-                if (!event.isConsumed() && event.isKeyDownEvent()) {
-
-                    int key = event.getEventValue();
-
-
-
-                    if (key == Keyboard.KEY_SLASH) {
-
-                        event.consume();
-
-                        simulationEnabled = !simulationEnabled;
-
-                        if (!simulationEnabled) {
-
-                            activeStreams.clear();
-
-                            clearAllAsteroids(true);
-
-                            if (engine.getCombatUI() != null) {
-
-                                engine.getCombatUI().addMessage(1, IS_RUSSIAN ? "Dynamic Asteroids: Поток астероидов ОТКЛЮЧЕН (Нажмите [/] для включения)" : "Dynamic Asteroids: Stream DISABLED (Press [/] to enable)", Color.YELLOW);
-
-                            }
-
-                        } else {
-
-                            if (engine.getCombatUI() != null) {
-
-                                engine.getCombatUI().addMessage(1, IS_RUSSIAN ? "Dynamic Asteroids: Поток астероидов ВКЛЮЧЕН (Нажмите [/] для отключения)" : "Dynamic Asteroids: Stream ENABLED (Press [/] to disable)", Color.GREEN);
-
-                            }
-
-                        }
-
-                    } else if (shiftHeld && (key == Keyboard.KEY_EQUALS || key == Keyboard.KEY_ADD)) {
-
-                        event.consume();
-
-                        battleTargetCount = Math.min(10000, battleTargetCount + 50);
-
-                        maxBackgroundRocks = battleTargetCount / 2;
-
-                        backgroundSpawnInterval = Math.max(0.005f, 0.055f * (300f / Math.max(300, battleTargetCount)));
-
-                        showLimitFeedback(IS_RUSSIAN ? "Лимит астероидов УВЕЛИЧЕН: " + battleTargetCount + " шт." : "Asteroid Limit INCREASED: " + battleTargetCount + " rocks", Color.GREEN);
-
-                    } else if (shiftHeld && (key == Keyboard.KEY_MINUS || key == Keyboard.KEY_SUBTRACT)) {
-
-                        event.consume();
-
-                        battleTargetCount = Math.max(25, battleTargetCount - 50);
-
-                        maxBackgroundRocks = Math.max(12, battleTargetCount / 2);
-
-                        backgroundSpawnInterval = Math.max(0.005f, 0.055f * (300f / Math.max(300, battleTargetCount)));
-
-                        showLimitFeedback(IS_RUSSIAN ? "Лимит астероидов УМЕНЬШЕН: " + battleTargetCount + " шт." : "Asteroid Limit DECREASED: " + battleTargetCount + " rocks", Color.YELLOW);
-
-                    } else if (ctrlHeld && (key == Keyboard.KEY_EQUALS || key == Keyboard.KEY_ADD)) {
-
-                        event.consume();
-
-                        setStreamSpeed(Math.min(5000f, streamSpeed + 100f));
-
-                        showLimitFeedback(IS_RUSSIAN ? ("Скорость потока УВЕЛИЧЕНА: " + (int)streamSpeed + " ед/с") : ("Stream Speed INCREASED: " + (int)streamSpeed + " u/s"), Color.CYAN);
-
-                    } else if (ctrlHeld && (key == Keyboard.KEY_MINUS || key == Keyboard.KEY_SUBTRACT)) {
-
-                        event.consume();
-
-                        setStreamSpeed(Math.max(100f, streamSpeed - 100f));
-
-                        showLimitFeedback(IS_RUSSIAN ? ("Скорость потока УМЕНЬШЕНА: " + (int)streamSpeed + " ед/с") : ("Stream Speed DECREASED: " + (int)streamSpeed + " u/s"), Color.YELLOW);
-
-                    }
-
-                }
-
+        // ONLY ACTIVE IN SIMULATION! In regular campaign battles, hotkeys do nothing.
+        if (engine.isSimulation()) {
+            if (summonKeyCooldown > 0f) {
+                summonKeyCooldown -= amount;
+            }
+            if (summonContainerKeyCooldown > 0f) {
+                summonContainerKeyCooldown -= amount;
             }
 
+            boolean summonTriggered = false;
+            boolean summonContainerTriggered = false;
+
+            if (events != null) {
+                boolean shiftHeld = Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) || Keyboard.isKeyDown(Keyboard.KEY_RSHIFT);
+                boolean ctrlHeld = Keyboard.isKeyDown(Keyboard.KEY_LCONTROL) || Keyboard.isKeyDown(Keyboard.KEY_RCONTROL);
+
+                for (InputEventAPI event : events) {
+                    if (!event.isConsumed() && event.isKeyDownEvent()) {
+                        int key = event.getEventValue();
+
+                        if (key == Keyboard.KEY_APOSTROPHE || key == Keyboard.KEY_GRAVE) {
+                            event.consume();
+                            if (summonKeyCooldown <= 0f) summonTriggered = true;
+                            break;
+                        } else if (key == Keyboard.KEY_SEMICOLON) {
+                            event.consume();
+                            if (summonContainerKeyCooldown <= 0f) summonContainerTriggered = true;
+                            break;
+                        } else if (key == Keyboard.KEY_SLASH) {
+                            event.consume();
+                            simulationEnabled = !simulationEnabled;
+                            if (!simulationEnabled) {
+                                activeStreams.clear();
+                                clearAllAsteroids(true);
+                                if (engine.getCombatUI() != null) {
+                                    engine.getCombatUI().addMessage(1, IS_RUSSIAN ? "Dynamic Asteroids: Поток астероидов ОТКЛЮЧЕН (Нажмите [/] для включения)" : "Dynamic Asteroids: Stream DISABLED (Press [/] to enable)", Color.YELLOW);
+                                }
+                            } else {
+                                if (engine.getCombatUI() != null) {
+                                    engine.getCombatUI().addMessage(1, IS_RUSSIAN ? "Dynamic Asteroids: Поток астероидов ВКЛЮЧЕН (Нажмите [/] для отключения)" : "Dynamic Asteroids: Stream ENABLED (Press [/] to disable)", Color.GREEN);
+                                }
+                            }
+                        } else if (shiftHeld && (key == Keyboard.KEY_EQUALS || key == Keyboard.KEY_ADD)) {
+                            event.consume();
+                            battleTargetCount = Math.min(10000, battleTargetCount + 50);
+                            maxBackgroundRocks = battleTargetCount / 2;
+                            backgroundSpawnInterval = Math.max(0.005f, 0.055f * (300f / Math.max(300, battleTargetCount)));
+                            showLimitFeedback(IS_RUSSIAN ? "Лимит астероидов УВЕЛИЧЕН: " + battleTargetCount + " шт." : "Asteroid Limit INCREASED: " + battleTargetCount + " rocks", Color.GREEN);
+                        } else if (shiftHeld && (key == Keyboard.KEY_MINUS || key == Keyboard.KEY_SUBTRACT)) {
+                            event.consume();
+                            battleTargetCount = Math.max(25, battleTargetCount - 50);
+                            maxBackgroundRocks = Math.max(12, battleTargetCount / 2);
+                            backgroundSpawnInterval = Math.max(0.005f, 0.055f * (300f / Math.max(300, battleTargetCount)));
+                            showLimitFeedback(IS_RUSSIAN ? "Лимит астероидов УМЕНЬШЕН: " + battleTargetCount + " шт." : "Asteroid Limit DECREASED: " + battleTargetCount + " rocks", Color.YELLOW);
+                        } else if (ctrlHeld && (key == Keyboard.KEY_EQUALS || key == Keyboard.KEY_ADD)) {
+                            event.consume();
+                            setStreamSpeed(Math.min(5000f, streamSpeed + 100f));
+                            showLimitFeedback(IS_RUSSIAN ? ("Скорость потока УВЕЛИЧЕНА: " + (int)streamSpeed + " ед/с") : ("Stream Speed INCREASED: " + (int)streamSpeed + " u/s"), Color.CYAN);
+                        } else if (ctrlHeld && (key == Keyboard.KEY_MINUS || key == Keyboard.KEY_SUBTRACT)) {
+                            event.consume();
+                            setStreamSpeed(Math.max(100f, streamSpeed - 100f));
+                            showLimitFeedback(IS_RUSSIAN ? ("Скорость потока УМЕНЬШЕНА: " + (int)streamSpeed + " ед/с") : ("Stream Speed DECREASED: " + (int)streamSpeed + " u/s"), Color.YELLOW);
+                        }
+                    }
+                }
+            }
+
+            if (!summonTriggered && summonKeyCooldown <= 0f) {
+                if (Keyboard.isKeyDown(Keyboard.KEY_APOSTROPHE) || Keyboard.isKeyDown(Keyboard.KEY_GRAVE)) {
+                    summonTriggered = true;
+                }
+            }
+            if (!summonContainerTriggered && summonContainerKeyCooldown <= 0f) {
+                if (Keyboard.isKeyDown(Keyboard.KEY_SEMICOLON)) {
+                    summonContainerTriggered = true;
+                }
+            }
+
+            if (summonTriggered) {
+                summonKeyCooldown = 0.5f;
+                summonDerelictNearPlayer();
+            }
+            if (summonContainerTriggered) {
+                summonContainerKeyCooldown = 0.5f;
+                summonContainerNearPlayer();
+            }
         }
-
-
 
         // Show simulation one-time hint
 
@@ -3363,7 +3254,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
     public void summonDerelictNearPlayer() {
 
-        if (engine == null) return;
+        if (engine == null || !engine.isSimulation()) return;
 
 
 
@@ -3449,7 +3340,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
     public void summonContainerNearPlayer() {
 
-        if (engine == null) return;
+        if (engine == null || !engine.isSimulation()) return;
 
 
 

@@ -17,8 +17,8 @@ Direct download links for the latest version. Both editions contain all 5 live p
 
 | Edition | Language | Highlights & Features | Direct Download |
 | :--- | :---: | :--- | :--- |
-| **Russian Edition (RU)** | 🇷🇺 Русский | Полная русская локализация (интерфейс, LunaLib, боевые тревоги), эвакуация остовов, сбор пасхалок щитами, пресеты | [**`DynamicAsteroids_RU_FixMagneto_v2.0.6.zip`**](https://github.com/keltuze/DynamicAsteroids/releases/download/v2.0.6/DynamicAsteroids_RU_FixMagneto_v2.0.6.zip)<br>*(Зеркало: [`DynamicAsteroids_RU_v2.0.6.zip`](https://github.com/keltuze/DynamicAsteroids/releases/download/v2.0.6/DynamicAsteroids_RU_v2.0.6.zip))* |
-| **Standard Edition (EN)** | 🇬🇧 English | Full English edition, directional shield tractor beam, derelict recovery, Domain caches, smart PD whitelist | [**`DynamicAsteroids_FixMagneto_v2.0.6.zip`**](https://github.com/keltuze/DynamicAsteroids/releases/download/v2.0.6/DynamicAsteroids_FixMagneto_v2.0.6.zip)<br>*(Mirror: [`DynamicAsteroids_v2.0.6.zip`](https://github.com/keltuze/DynamicAsteroids/releases/download/v2.0.6/DynamicAsteroids_v2.0.6.zip))* |
+| **Russian Edition (RU)** | 🇷🇺 Русский | Полная русская локализация (интерфейс, LunaLib, боевые тревоги), эвакуация остовов, сбор пасхалок щитами, пресеты | [**`DynamicAsteroids_RU_v2.0.6.zip`**](https://github.com/keltuze/DynamicAsteroids/releases/download/v2.0.6/DynamicAsteroids_RU_v2.0.6.zip) |
+| **Standard Edition (EN)** | 🇬🇧 English | Full English edition, directional shield tractor beam, derelict recovery, Domain caches, smart PD whitelist | [**`DynamicAsteroids_v2.0.6.zip`**](https://github.com/keltuze/DynamicAsteroids/releases/download/v2.0.6/DynamicAsteroids_v2.0.6.zip) |
 
 > 🔗 All release assets and past versions are available on the [**GitHub Releases Page**](https://github.com/keltuze/DynamicAsteroids/releases).
 
@@ -68,7 +68,7 @@ Test and experiment safely in the simulator:
 
 ## 🛠️ Installation
 
-1. Download [`DynamicAsteroids_RU_FixMagneto_v2.0.6.zip`](https://github.com/keltuze/DynamicAsteroids/releases/download/v2.0.6/DynamicAsteroids_RU_FixMagneto_v2.0.6.zip) (Russian) or [`DynamicAsteroids_FixMagneto_v2.0.6.zip`](https://github.com/keltuze/DynamicAsteroids/releases/download/v2.0.6/DynamicAsteroids_FixMagneto_v2.0.6.zip) (English).
+1. Download [`DynamicAsteroids_RU_v2.0.6.zip`](https://github.com/keltuze/DynamicAsteroids/releases/download/v2.0.6/DynamicAsteroids_RU_v2.0.6.zip) (Russian) or [`DynamicAsteroids_v2.0.6.zip`](https://github.com/keltuze/DynamicAsteroids/releases/download/v2.0.6/DynamicAsteroids_v2.0.6.zip) (English).
 2. Extract the archive into your `Starsector/mods/` directory.
 3. Ensure **LunaLib** is installed and enabled.
 4. Activate **Dynamic Asteroids** in the Starsector launcher.

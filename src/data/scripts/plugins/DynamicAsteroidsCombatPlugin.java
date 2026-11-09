@@ -366,7 +366,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
     // Simulation toggle state (persistent across encounters in same session)
 
-    private static boolean simulationEnabled = true;
+    private boolean simulationEnabled = true;
 
     private boolean simulationHintShown = false;
 
@@ -819,19 +819,16 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
 
         // If simulation is active and disabled in settings
-
-        if (engine.isSimulation() && !enableInSimulation) {
-
-            simulationEnabled = false;
-
+        if (engine.isSimulation()) {
+            simulationEnabled = enableInSimulation;
+            if (!simulationEnabled) {
+                activeStreams.clear();
+                clearAllAsteroids(false);
+            }
         }
 
-
-
         // 4. RULE 1: Baseline avalanche flows in ONE CONSTANT DIRECTION throughout the whole battle
-
         int dirChoice = random.nextInt(4);
-
         switch (dirChoice) {
 
             case 0: avalancheDirection = StreamDirection.RIGHT_TO_LEFT; break;
@@ -1570,6 +1567,21 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
                 if (srVal != null) enableShieldReaction = srVal.booleanValue();
 
+                Boolean simRefVal = getLunaBoolean("da_enableInSimulation");
+                if (simRefVal != null) {
+                    boolean newSim = simRefVal.booleanValue();
+                    if (newSim != enableInSimulation) {
+                        enableInSimulation = newSim;
+                        if (engine.isSimulation()) {
+                            simulationEnabled = newSim;
+                            if (!simulationEnabled) {
+                                activeStreams.clear();
+                                clearAllAsteroids(true);
+                            }
+                        }
+                    }
+                }
+
 
 
                 Integer nPreset = getLunaInt("da_activePreset");
@@ -2254,7 +2266,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
                             if (engine.getCombatUI() != null) {
 
-                                engine.getCombatUI().addMessage(1, IS_RUSSIAN ? "Dynamic Asteroids: Поток ОТКЛЮЧЕН (Нажмите [/] для включения)" : "Dynamic Asteroids: Stream DISABLED (Press [/] to enable)", Color.YELLOW);
+                                engine.getCombatUI().addMessage(1, IS_RUSSIAN ? "Dynamic Asteroids: Поток астероидов ОТКЛЮЧЕН (Нажмите [/] для включения)" : "Dynamic Asteroids: Stream DISABLED (Press [/] to enable)", Color.YELLOW);
 
                             }
 
@@ -2262,7 +2274,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
                             if (engine.getCombatUI() != null) {
 
-                                engine.getCombatUI().addMessage(1, IS_RUSSIAN ? "Dynamic Asteroids: Поток ВКЛЮЧЕН (Нажмите [/] для отключения)" : "Dynamic Asteroids: Stream ENABLED (Press [/] to disable)", Color.GREEN);
+                                engine.getCombatUI().addMessage(1, IS_RUSSIAN ? "Dynamic Asteroids: Поток астероидов ВКЛЮЧЕН (Нажмите [/] для отключения)" : "Dynamic Asteroids: Stream ENABLED (Press [/] to disable)", Color.GREEN);
 
                             }
 
@@ -2520,18 +2532,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
 
 
-        // Simulation disabled check
-
-        if (engine.isSimulation() && !simulationEnabled) {
-
-            clearAllAsteroids(false);
-
-            return;
-
-        }
-
-
-
+        // Simulation stream control handled dynamically in spawner loop
         // Visible boundaries and strict despawn margins
 
         float focalCX = 0f;
@@ -2824,7 +2825,14 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
 
 
-        // =========================================================================
+        // Dynamic Asteroids stream spawner governor: when disabled in simulator, skip stream rock generation
+        boolean allowStreamSpawning = true;
+        if (engine.isSimulation() && !simulationEnabled) {
+            allowStreamSpawning = false;
+        }
+
+        if (allowStreamSpawning) {
+// =========================================================================
 
         // OPEN SPACE SPAWN LOGIC (Quiet, rare solitary stray meteors)
 
@@ -2967,6 +2975,9 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
         }
 
 
+
+        
+        } // end if (allowStreamSpawning)
 
         // Fleet AI Collision Avoidance & Interception
 

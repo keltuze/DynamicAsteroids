@@ -7292,84 +7292,103 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
         // 1. NON-LINEAR DISTANCE CURVE: [Edge = 10%] -> [10% Path = 20%] -> [Target = 100%]
         // Formula: F(p) = 0.10 + 0.90 * p^k, where k = log10(9) = 0.9542425f
         // =========================================================================
-        float effectiveMaxRange = Math.max(safeHoverDistance + 60f, closestShipRange);
-        float progress = 0f;
-        if (distance > safeHoverDistance && effectiveMaxRange > safeHoverDistance) {
-            progress = (effectiveMaxRange - distance) / (effectiveMaxRange - safeHoverDistance);
-            if (progress < 0f) progress = 0f;
-            else if (progress > 1f) progress = 1f;
-        } else if (distance <= safeHoverDistance) {
-            progress = 1.0f;
-        }
+        float moorDistance = safeHoverDistance + 20f;
+        float effectiveMaxRange = Math.max(moorDistance + 80f, closestShipRange);
 
-        float forceNorm = 0.10f + 0.90f * (float) Math.pow(progress, 0.9542425);
-        if (forceNorm > 1.0f) forceNorm = 1.0f;
-
-        // Base max force from LunaLib/config (default 1400 u/s2)
-        float maxConfigForce = Math.max(400.0f, easterEggMagnetStrength);
-        float currentTractiveForce = maxConfigForce * forceNorm;
-
-        // =========================================================================
-        // 2. DYNAMIC VELOCITY GOVERNOR & ACCELERATION LIMIT (300+ u/s)
-        // Scaled by size difference and distance
-        // =========================================================================
+        // Size contrast factor: larger ship pulling smaller object allows higher closing speed
         float sizeContrast = Math.max(0.70f, Math.min(2.50f, shipEdge / Math.max(25f, targetRadius)));
         float maxClosingSpeed = 300.0f + 60.0f * (sizeContrast - 1.0f); // 300 - 390 u/s
 
-        float desiredClosingSpeed = 0f;
-        if (distance > safeHoverDistance) {
-            desiredClosingSpeed = Math.min(maxClosingSpeed, (distance - safeHoverDistance) * 0.75f);
-        }
+        // Base max force from LunaLib/config (default 1400 u/s2)
+        float maxConfigForce = Math.max(400.0f, easterEggMagnetStrength);
 
-        // Acceleration limit: scales dynamically from 300 u/s2 up to config force (1400+ u/s2)
-        float maxAccelLimit = Math.max(300.0f, currentTractiveForce * Math.max(0.85f, sizeContrast * 0.65f));
+        if (distance > moorDistance) {
+            // =====================================================================
+            // APPROACH PHASE (Outside mooring perimeter):
+            // Smooth non-linear tractor beam pull with velocity governor
+            // =====================================================================
+            float progress = (effectiveMaxRange - distance) / (effectiveMaxRange - moorDistance);
+            if (progress < 0f) progress = 0f;
+            else if (progress > 1f) progress = 1f;
 
-        // Speed deficit to achieve desired closing speed
-        float speedDeficit = desiredClosingSpeed - vRadial;
+            float forceNorm = 0.10f + 0.90f * (float) Math.pow(progress, 0.9542425);
+            if (forceNorm > 1.0f) forceNorm = 1.0f;
 
-        if (speedDeficit > 0f) {
-            // Apply controlled inward closing step
-            float pullStep = Math.min(speedDeficit, maxAccelLimit * amount);
-            // Target accelerates towards ship (+n)
-            eggVelocity.x += nx * (pullStep * massRatioTarget);
-            eggVelocity.y += ny * (pullStep * massRatioTarget);
-            // Ship accelerates towards target (-n)
-            if (shipVel != null) {
-                shipVel.x -= nx * (pullStep * massRatioShip);
-                shipVel.y -= ny * (pullStep * massRatioShip);
+            float currentTractiveForce = maxConfigForce * forceNorm;
+            float maxAccelLimit = Math.max(300.0f, currentTractiveForce * Math.max(0.85f, sizeContrast * 0.65f));
+
+            float desiredClosingSpeed = Math.min(maxClosingSpeed, (distance - moorDistance) * 0.70f);
+            float speedDeficit = desiredClosingSpeed - vRadial;
+
+            if (speedDeficit > 0f) {
+                // Controlled inward closing step
+                float pullStep = Math.min(speedDeficit, maxAccelLimit * amount);
+                eggVelocity.x += nx * (pullStep * massRatioTarget);
+                eggVelocity.y += ny * (pullStep * massRatioTarget);
+                if (shipVel != null) {
+                    shipVel.x -= nx * (pullStep * massRatioShip);
+                    shipVel.y -= ny * (pullStep * massRatioShip);
+                }
+            } else if (vRadial > desiredClosingSpeed + 15.0f) {
+                // Approach braking if closing in faster than desired
+                float brakeStep = Math.min(vRadial - desiredClosingSpeed, maxAccelLimit * 0.65f * amount);
+                eggVelocity.x -= nx * (brakeStep * massRatioTarget);
+                eggVelocity.y -= ny * (brakeStep * massRatioTarget);
+                if (shipVel != null) {
+                    shipVel.x += nx * (brakeStep * massRatioShip);
+                    shipVel.y += ny * (brakeStep * massRatioShip);
+                }
             }
-        } else if (vRadial > desiredClosingSpeed + 20.0f) {
-            // Gentle approach braking if inertia carries object faster than desired closing speed
-            float brakeStep = Math.min(vRadial - desiredClosingSpeed, Math.max(250.0f, maxAccelLimit * 0.70f) * amount);
-            eggVelocity.x -= nx * (brakeStep * massRatioTarget);
-            eggVelocity.y -= ny * (brakeStep * massRatioTarget);
+
+            // Lateral (perpendicular) relative velocity damping
+            float latVx = relVx - (vRadial * nx);
+            float latVy = relVy - (vRadial * ny);
+            float latDamp = Math.min(0.90f, 4.0f * amount);
+
+            eggVelocity.x -= latVx * (latDamp * massRatioTarget);
+            eggVelocity.y -= latVy * (latDamp * massRatioTarget);
             if (shipVel != null) {
-                shipVel.x -= nx * (brakeStep * massRatioShip);
-                shipVel.y -= ny * (brakeStep * massRatioShip);
+                shipVel.x += latVx * (latDamp * massRatioShip);
+                shipVel.y += latVy * (latDamp * massRatioShip);
             }
-        }
+        } else {
+            // =====================================================================
+            // MOORING & DAMPING PHASE (At or inside shield mooring perimeter):
+            // Zero tractor pull! Pure velocity dissipation and speed synchronization.
+            // Eliminates perpetual motion and resonance oscillations completely.
+            // =====================================================================
 
-        // Magnetic cushion buffer: if pushed inside safeHoverDistance, softly separate to prevent clipping
-        if (distance < safeHoverDistance) {
-            float cushion = Math.min(1.0f, (safeHoverDistance - distance) / Math.max(1f, safeHoverDistance)) * 400.0f * amount;
-            eggVelocity.x -= nx * (cushion * massRatioTarget);
-            eggVelocity.y -= ny * (cushion * massRatioTarget);
-            if (shipVel != null) {
-                shipVel.x += nx * (cushion * massRatioShip);
-                shipVel.y += ny * (cushion * massRatioShip);
+            // 1. Synchronize relative velocity to match ship flight path
+            float syncDamp = Math.min(1.0f, 6.0f * amount);
+            eggVelocity.x -= relVx * (syncDamp * massRatioTarget);
+            eggVelocity.y -= relVy * (syncDamp * massRatioTarget);
+
+            // 2. Extinguish any remaining inward closing speed immediately
+            if (vRadial > 0f) {
+                float radialDamp = Math.min(vRadial, 8.0f * vRadial * amount);
+                eggVelocity.x -= nx * (radialDamp * massRatioTarget);
+                eggVelocity.y -= ny * (radialDamp * massRatioTarget);
+                // Ship closing speed is also absorbed
+                if (shipVel != null && massRatioShip > 0.5f) {
+                    shipVel.x += nx * (radialDamp * massRatioShip * 0.5f);
+                    shipVel.y += ny * (radialDamp * massRatioShip * 0.5f);
+                }
             }
-        }
 
-        // Lateral (perpendicular) relative velocity damping: eliminates orbital slingshotting
-        float latVx = relVx - (vRadial * nx);
-        float latVy = relVy - (vRadial * ny);
-        float latDamp = Math.min(0.92f, 4.2f * amount);
+            // 3. Gentle non-recoil boundary buffer (Ship velocity is NEVER boosted forward)
+            if (distance < safeHoverDistance) {
+                float depthRatio = (safeHoverDistance - distance) / Math.max(1f, safeHoverDistance);
+                float softDrift = Math.min(1.0f, depthRatio) * 60.0f * amount;
+                eggVelocity.x -= nx * (softDrift * massRatioTarget);
+                eggVelocity.y -= ny * (softDrift * massRatioTarget);
+            }
 
-        eggVelocity.x -= latVx * (latDamp * massRatioTarget);
-        eggVelocity.y -= latVy * (latDamp * massRatioTarget);
-        if (shipVel != null) {
-            shipVel.x += latVx * (latDamp * massRatioShip);
-            shipVel.y += latVy * (latDamp * massRatioShip);
+            // 4. Perpendicular lateral stabilization
+            float latVx = relVx - (vRadial * nx);
+            float latVy = relVy - (vRadial * ny);
+            float latDamp = Math.min(0.95f, 6.0f * amount);
+            eggVelocity.x -= latVx * (latDamp * massRatioTarget);
+            eggVelocity.y -= latVy * (latDamp * massRatioTarget);
         }
 
         // Visual tractor beam particles along active shield vector

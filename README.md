@@ -3,75 +3,98 @@
 [![Game Version](https://img.shields.io/badge/Starsector-0.98a--RC8%20%7C%200.97a-blue.svg)](https://fractalsoftworks.com/)
 [![Java Compatibility](https://img.shields.io/badge/Java-8%20(Bytecode%2052.0)-green.svg)]()
 [![LunaLib](https://img.shields.io/badge/LunaLib-Required-orange.svg)]()
-[![Latest Release](https://img.shields.io/badge/Release-v2.0.6%20FixMagneto-brightgreen.svg)](https://github.com/keltuze/DynamicAsteroids/releases/tag/v2.0.6)
+[![Latest Release](https://img.shields.io/badge/Release-v2.0.62-brightgreen.svg)](https://github.com/keltuze/DynamicAsteroids/releases/tag/v2.0.62)
 
 > **Breathes life into static asteroid belts and deep space combat!**  
 > In vanilla Starsector, asteroids just hang motionless in space. **Dynamic Asteroids** transforms them into rushing kinetic rivers of space debris, derelict recovery operations, interactive salvage gathering, and tactical survival challenges during combat.  
-> **Version 2.0.6 FixMagneto** expands combat functionality with directional shield tractor beams, derelict ship stabilization, interactive Domain loot caches, volatile explosive canisters, and deep space drift encounters.
+> **Version 2.0.62** brings asteroid shatter loot drops, colossal pushable megaliths, orbital station deflector domes, fleet spawn protection, dense wave formations, and critical sector map fixes.
 
 ---
 
-## 📦 Downloads (v2.0.6 FixMagneto Release)
+## 📦 Downloads (v2.0.62 Release)
 
 Direct download links for the latest version. Both editions contain all 5 live presets (from Cinematic soft drift to hypervelocity Chaos):
 
 | Edition | Language | Highlights & Features | Direct Download |
 | :--- | :---: | :--- | :--- |
-| **Russian Edition (RU)** | 🇷🇺 Русский | Полная русская локализация (интерфейс, LunaLib, боевые тревоги), эвакуация остовов, сбор пасхалок щитами, пресеты | [**`DynamicAsteroids_RU_v2.0.6.zip`**](https://github.com/keltuze/DynamicAsteroids/releases/download/v2.0.6/DynamicAsteroids_RU_v2.0.6.zip) |
-| **Standard Edition (EN)** | 🇬🇧 English | Full English edition, directional shield tractor beam, derelict recovery, Domain caches, smart PD whitelist | [**`DynamicAsteroids_v2.0.6.zip`**](https://github.com/keltuze/DynamicAsteroids/releases/download/v2.0.6/DynamicAsteroids_v2.0.6.zip) |
+| **Russian Edition (RU)** | 🇷🇺 Русский | Полная русская локализация (интерфейс, LunaLib, боевые тревоги), эвакуация остовов, сбор пасхалок щитами, пресеты | [**`DynamicAsteroids_RU_v2.0.62.zip`**](https://github.com/keltuze/DynamicAsteroids/releases/download/v2.0.62/DynamicAsteroids_RU_v2.0.62.zip) |
+| **Standard Edition (EN)** | 🇬🇧 English | Full English edition, directional shield tractor beam, derelict recovery, Domain caches, smart PD whitelist | [**`DynamicAsteroids_v2.0.62.zip`**](https://github.com/keltuze/DynamicAsteroids/releases/download/v2.0.62/DynamicAsteroids_v2.0.62.zip) |
 
 > 🔗 All release assets and past versions are available on the [**GitHub Releases Page**](https://github.com/keltuze/DynamicAsteroids/releases).
 
 ---
 
-## 🚀 Key Features in v2.0.6 FixMagneto
+## 🚀 What's New in v2.0.62
 
-### 🧲 1. Directional Shield Tractor Beam & Pure-Damping Mooring
-* **Directional Shield Vectors:** Active shields act as tractor beam projectors. Directional shields (e.g. 60°–180° arc) only attract targets within their forward shield dome. Omni-directional (360°) shields and phase cloaks pull from all angles!
-* **Non-Linear Attraction Curve:** Follows a calibrated power-law curve:
-  $$F_{\text{norm}}(p) = 0.10 + 0.90 \cdot p^{0.95424}$$
-  Starts at a gentle 10% pull at max range, firmly locks on with 20% force within 10% of the journey, and smoothly scales to 100% force at the mooring perimeter.
-* **Pure Velocity Damping (Zero Perpetual Motion):** At the shield mooring boundary ($D_{\text{safe}} = R_{\text{shield}} + R_{\text{target}} + 45$), tractive pull drops strictly to zero, and relative closing velocity is extinguished. No bouncing, no rubber-banding, and no perpetual self-acceleration!
-* **Newtonian Mass Scaling:** Massive derelicts act as gravitational anchors ($a_{\text{target}} \propto \text{MassRatio}^2$). Light frigates smoothly reel themselves in toward giant hulls, while capital ships easily reel in supply caches without shuddering.
+### 💎 1. Asteroid Shatter Loot Drops
+* **Blasting Rocks Yields Rewards:** Destroying asteroids with ship weapons or fighter wings can now reveal valuable hidden salvage!
+  * **Domain Caches, Probes & Cryopods (0.5% chance):** Supplies, fuel, rare metals, survey data, or cryo-frozen crew.
+  * **Preserved Fighters (0.1% chance):** Rare discovery! An intact fighter craft and its LPC chip are recovered directly into your fleet's cargo hold.
+  * Drop rates can be adjusted via LunaLib settings.
 
-### ⚓ 2. Derelict Ship Rescue Operations
-* Abandoned hulls (including modded hulls!) occasionally drift through the combat zone.
-* A dedicated HUD tracker displays their direction, range, and a 60-second stabilization timer.
-* Protect the drifting ship from incoming asteroids and hostile gunfire until systems stabilize, and it is **guaranteed to appear on the post-battle Salvage Screen** for recovery into your fleet!
+### 🪐 2. Colossal Megaliths & Pushable Physics
+* **Station-Sized Behemoths:** Colossal boulders with diameters over 1100 units now drift into battle, featuring bedrock-level durability.
+* **Interactive Kinetic Shielding:** Ram or shoot megaliths to "untether" them into full Newtonian physics. Bulldoze them with ship thrusters and shields to use as portable planetary cover against enemy torpedo salvos or slam them into enemy formations!
+* **High-Value Shatter Rewards:** Cracking open a giant megalith has a high chance (20%) to drop high-tier Domain caches, LPC chips (1.5%), or even an entombed derelict ship hull (0.1%).
+* **Natural Orbital Arcs:** Megaliths can travel along smooth gravitational curves, mimicking hyperbolic flybys across the battlefield.
 
-### 📦 3. Interactive Containers (Easter Eggs) & Gathering
-* **Domain Caches, Probes & Cryopods:** Valuables drift with the stream. Bumping into them transfers loot (supplies, fuel, metals, rare crew, fighter LPCs) directly into your cargo.
-* **Volatile Fuel Canisters:** Drifting orange fuel containers detonate with massive high-explosive blast waves (1,200 HE damage) upon collision or weapons fire. Use them tactically against enemy squadrons!
-* **Smart Point-Defense Whitelist:** Friendly and allied point-defense turrets shoot down hazardous asteroids while automatically whitelisting and sparing valuable salvage.
+### 🛡️ 3. Station Deflection Domes & Overload Vulnerability
+* **Automated Station Shielding:** Orbital stations project a deflector barrier that smoothly diverts incoming asteroid rivers around the citadel.
+* **Overload Vulnerability Window:** If a defense platform or the station core suffers flux overload (`Overload`), vents flux, or is destroyed, the deflector dome in that sector collapses with EMP arcs, leaving the station exposed to kinetic asteroid bombardment!
 
-### 🌌 4. Deep Space Drift Encounters
-* Easter eggs and rare stray meteors now extend beyond dense asteroid belts into ordinary open space battles.
-* A dedicated LunaLib slider allows you to fine-tune their frequency or disable open space drift entirely.
+### 🚀 4. Fleet Deployment Grace Period
+* **Safe Combat Start:** During the first 7 seconds of battle and within fleet deployment zones, all player and friendly ships are shielded by deflector dampers (0.0x collision damage). No more unfair hull damage before you can even touch the throttle!
 
-### 🎛️ 5. Five Live LunaLib Presets (F2)
-Switch presets on the fly in the **LunaLib (F2)** menu without restarting the game:
-1. **Balanced Standard [Default]:** Stream speed 600 u/s, 200–800 rocks, full AI evasion and PD defense. The sweet spot of intensity and tactical reward.
-2. **Cinematic Soft:** Gentle flow (400 u/s), reduced rock density, fragile debris easily shattered by point defense. Ideal for scenic screenshots.
-3. **Asteroid Storm:** Fast flow (1,200 u/s), up to 1,000 rocks, formations strike every 18 seconds.
-4. **Extreme Chaos:** Hypervelocity stream (3,000 u/s!), extreme density, high ramming damage. High risk, high salvage!
+### 💥 5. Denser Wave Formations
+* **Heavier Strikes:** Formation waves ("Expanding Fan / Shotgun Spray" and "Dual Rails") are packed with +20 to +40 additional asteroids per stream, launched in rapid-fire bursts for a much punchier tactical impact.
+
+### 🛠️ 6. Core Fixes & Map Accuracy
+* **Accurate Campaign Map Triggers:** Battles in empty gaps between planetary rings or fine non-hazardous dust rings no longer trigger asteroid hazards — only physical asteroid belts and direct rock collisions do.
+* **Fixed Left Border Flickering Asteroids:** Eliminated the engine glitch that caused a persistent vertical line of vibrating vanilla asteroids to spawn along the left boundary.
+* **Clean Boundary Despawn:** Asteroids and debris drifting far beyond combat perimeter repellors cleanly despawn after 5 seconds, preserving performance.
+
+---
+
+## 🌟 Core Features
+
+### 🧲 Directional Shield Tractor Beam & Mooring
+* **Directional Shield Vectors:** Active shields act as tractor beams. Directional shields pull within their forward shield arc, while 360° omni-shields and phase cloaks pull from all angles.
+* **Non-Linear Attraction & Mass Ratio:** Pull force scales smoothly as targets draw closer. Heavy capital ships reel in lightweight containers effortlessly, while frigates towing massive derelicts pull themselves toward the hulk!
+* **Pure Velocity Damping:** Targets smoothly lock into formation at your shield perimeter without bouncing, clipping, or rubber-banding.
+
+### ⚓ Derelict Ship Rescue Operations
+* Abandoned hulls occasionally drift through combat. Protect them from incoming meteors and hostile fire for 60 seconds, and they are **guaranteed to appear on the post-battle Salvage Screen** for recovery!
+
+### 📦 Interactive Containers & Hazardous Fuel Tanks
+* **Loot Caches:** Domain survey probes, equipment caches, and cryopods drift through space — fly into them or reel them in with shields to loot cargo.
+* **Volatile Fuel Canisters:** Highly volatile fuel tanks detonate with massive high-explosive blast waves (1,200 HE damage) upon impact or weapon hits — detonate them near enemy clusters!
+* **Smart Point Defense:** Friendly PD turrets automatically shoot down dangerous asteroids while sparing valuable salvage containers.
+
+### 🎛️ Five Live LunaLib Presets (F2)
+Switch presets on the fly in the **LunaLib (F2)** menu without restarting:
+1. **Balanced Standard [Default]:** 600 u/s stream velocity, balanced collisions, full AI evasion and PD defense.
+2. **Cinematic Soft:** Gentle flow (400 u/s), reduced density, fragile debris easily shattered by point defense.
+3. **Asteroid Storm:** Fast flow (1,200 u/s), high density, frequent formation strikes.
+4. **Extreme Chaos:** Hypervelocity stream (3,000 u/s!), high ramming damage. High risk, high salvage!
 5. **Custom:** Complete manual control over every slider.
 
 ### 🎮 Refit Simulator Hotkeys
-Test and experiment safely in the simulator:
+Test features safely in the simulator:
 * `[/]` — Toggle asteroid stream ON / OFF
-* `[']` *(Apostrophe / Tilde)* — Spawn a drifting derelict near your ship
+* `[']` *(Apostrophe)* — Spawn a drifting derelict
 * `[;]` *(Semicolon)* — Spawn a random loot cache / probe / tank
-* `[Shift +]` / `[Shift -]` — Increase or decrease asteroid stream capacity
-* `[Ctrl +]` / `[Ctrl -]` — Increase or decrease asteroid stream velocity
+* `[L]` — Spawn a colossal megalith boulder (orbital arc)
+* `[Shift +]` / `[Shift -]` — Adjust asteroid stream capacity
+* `[Ctrl +]` / `[Ctrl -]` — Adjust asteroid stream velocity
 
 ---
 
 ## 🛠️ Installation
 
-1. Download [`DynamicAsteroids_RU_v2.0.6.zip`](https://github.com/keltuze/DynamicAsteroids/releases/download/v2.0.6/DynamicAsteroids_RU_v2.0.6.zip) (Russian) or [`DynamicAsteroids_v2.0.6.zip`](https://github.com/keltuze/DynamicAsteroids/releases/download/v2.0.6/DynamicAsteroids_v2.0.6.zip) (English).
-2. Extract the archive into your `Starsector/mods/` directory.
+1. Download [`DynamicAsteroids_RU_v2.0.62.zip`](https://github.com/keltuze/DynamicAsteroids/releases/download/v2.0.62/DynamicAsteroids_RU_v2.0.62.zip) (Russian) or [`DynamicAsteroids_v2.0.62.zip`](https://github.com/keltuze/DynamicAsteroids/releases/download/v2.0.62/DynamicAsteroids_v2.0.62.zip) (English).
+2. Extract into your `Starsector/mods/` directory.
 3. Ensure **LunaLib** is installed and enabled.
-4. Activate **Dynamic Asteroids** in the Starsector launcher.
+4. Activate **Dynamic Asteroids** in the launcher.
 5. Save-game compatible: safe to add or remove mid-campaign.
 
 ---

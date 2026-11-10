@@ -7,7 +7,7 @@
 
 > **Breathes life into static asteroid belts and deep space combat!**  
 > In vanilla Starsector, asteroids just hang motionless in space. **Dynamic Asteroids** transforms them into rushing kinetic rivers of space debris, derelict recovery operations, interactive salvage gathering, and tactical survival challenges during combat.  
-> **Version 2.0.62** brings asteroid shatter loot drops, colossal pushable megaliths, orbital station deflector domes, fleet spawn protection, dense wave formations, and critical sector map fixes.
+> **Version 2.0.62** brings colossal pushable megaliths with shatter loot rewards, orbital station deflector domes, fleet spawn protection, dense wave formations, and critical sector map fixes.
 
 ---
 
@@ -26,29 +26,26 @@ Direct download links for the latest version. Both editions contain all 5 live p
 
 ## 🚀 What's New in v2.0.62
 
-### 💎 1. Asteroid Shatter Loot Drops
-* **Blasting Rocks Yields Rewards:** Destroying asteroids with ship weapons or fighter wings can now reveal valuable hidden salvage!
-  * **Domain Caches, Probes & Cryopods (0.5% chance):** Supplies, fuel, rare metals, survey data, or cryo-frozen crew.
-  * **Preserved Fighters (0.1% chance):** Rare discovery! An intact fighter craft and its LPC chip are recovered directly into your fleet's cargo hold.
-  * Drop rates can be adjusted via LunaLib settings.
-
-### 🪐 2. Colossal Megaliths & Pushable Physics
+### 🪐 1. Colossal Megaliths: Pushable Physics & Shatter Loot
 * **Station-Sized Behemoths:** Colossal boulders with diameters over 1100 units now drift into battle, featuring bedrock-level durability.
 * **Interactive Kinetic Shielding:** Ram or shoot megaliths to "untether" them into full Newtonian physics. Bulldoze them with ship thrusters and shields to use as portable planetary cover against enemy torpedo salvos or slam them into enemy formations!
-* **High-Value Shatter Rewards:** Cracking open a giant megalith has a high chance (20%) to drop high-tier Domain caches, LPC chips (1.5%), or even an entombed derelict ship hull (0.1%).
+* **High-Value Shatter Rewards:** Blasting and cracking open a giant megalith breaks loose valuable treasures frozen inside its core:
+  * **Valuable Salvage Containers (20% chance):** High-tier Domain caches, survey probes, or cryopods (supplies, fuel, rare metals, crew).
+  * **Preserved Fighters (1.5% chance):** An intact fighter craft and its LPC chip recovered directly into your fleet's cargo hold.
+  * **Entombed Derelict Vessel (0.1% chance):** An abandoned ship breaks free from the shattered rock with active stabilization tracker for recovery into your fleet!
 * **Natural Orbital Arcs:** Megaliths can travel along smooth gravitational curves, mimicking hyperbolic flybys across the battlefield.
 
-### 🛡️ 3. Station Deflection Domes & Overload Vulnerability
+### 🛡️ 2. Station Deflection Domes & Overload Vulnerability
 * **Automated Station Shielding:** Orbital stations project a deflector barrier that smoothly diverts incoming asteroid rivers around the citadel.
 * **Overload Vulnerability Window:** If a defense platform or the station core suffers flux overload (`Overload`), vents flux, or is destroyed, the deflector dome in that sector collapses with EMP arcs, leaving the station exposed to kinetic asteroid bombardment!
 
-### 🚀 4. Fleet Deployment Grace Period
+### 🚀 3. Fleet Deployment Grace Period
 * **Safe Combat Start:** During the first 7 seconds of battle and within fleet deployment zones, all player and friendly ships are shielded by deflector dampers (0.0x collision damage). No more unfair hull damage before you can even touch the throttle!
 
-### 💥 5. Denser Wave Formations
+### 💥 4. Denser Wave Formations
 * **Heavier Strikes:** Formation waves ("Expanding Fan / Shotgun Spray" and "Dual Rails") are packed with +20 to +40 additional asteroids per stream, launched in rapid-fire bursts for a much punchier tactical impact.
 
-### 🛠️ 6. Core Fixes & Map Accuracy
+### 🛠️ 5. Core Fixes & Map Accuracy
 * **Accurate Campaign Map Triggers:** Battles in empty gaps between planetary rings or fine non-hazardous dust rings no longer trigger asteroid hazards — only physical asteroid belts and direct rock collisions do.
 * **Fixed Left Border Flickering Asteroids:** Eliminated the engine glitch that caused a persistent vertical line of vibrating vanilla asteroids to spawn along the left boundary.
 * **Clean Boundary Despawn:** Asteroids and debris drifting far beyond combat perimeter repellors cleanly despawn after 5 seconds, preserving performance.

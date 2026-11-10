@@ -33,6 +33,9 @@ import com.fs.starfarer.api.campaign.CampaignFleetAPI;
 import com.fs.starfarer.api.campaign.CampaignTerrainAPI;
 
 import com.fs.starfarer.api.campaign.LocationAPI;
+import com.fs.starfarer.api.campaign.SectorEntityToken;
+import com.fs.starfarer.api.impl.campaign.terrain.AsteroidSource;
+import com.fs.starfarer.api.util.Misc;
 
 import com.fs.starfarer.api.combat.BaseEveryFrameCombatPlugin;
 
@@ -278,7 +281,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
     private int minFieldRocks = 200;
 
-    private int maxFieldRocks = 800;
+    private int maxFieldRocks = 650;
 
     private float streamSpeed = DEFAULT_STREAM_SPEED;
 
@@ -308,13 +311,51 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
     // Asteroid Ramming & Easter Eggs Tuning
 
-    private float asteroidCollisionDamageMult = 1.0f;
+    private float asteroidCollisionDamageMult = 1.20f;
+
+    private float playerKillResourceDropChance = 0.005f;
+
+    private float playerKillFighterDropChance = 0.001f;
+
+    // Solitary Giant Megalith Boulders & Arc Flight
+    private boolean enableMegalithBoulders = true;
+    private int maxMegaliths = 20;
+    private int currentMegalithCount = 0;
+    private boolean megalithsPreSeeded = false;
+    private float megalithSpeed = 120.0f;
+    private float megalithMinSpeed = 90.0f;
+    private float megalithMaxSpeed = 140.0f;
+    private float megalithTimer = 12.0f;
+    private float megalithSpawnInterval = 42.0f;
+    private float megalithMinRadius = 125.0f;
+    private float megalithMaxRadius = 550.0f;
+    private boolean enableDeploymentSafety = true;
+    private float deploymentSafetyDuration = 7.0f;
+    private boolean megalithArcFlight = true;
+    private float megalithDerelictDropChance = 0.001f;
+    private float summonMegalithKeyCooldown = 0f;
+
+    // Station Anti-Ramming Protection & Deflection Dome
+    private boolean enableStationAsteroidProtection = true;
+    private float stationAsteroidDamageMult = 0.02f;
+    private boolean enableStationDeflectionDome = true;
+    private float stationDomeMargin = 140.0f;
+    private float stationDomeScanTimer = 0f;
+    private final List<StationDomeData> activeStationDomes = new ArrayList<StationDomeData>();
+
+    public static class StationDomeData {
+        public ShipAPI stationCore;
+        public Vector2f center = new Vector2f();
+        public float domeRadius = 550f;
+        public boolean isOffline = false;
+        public boolean wasOffline = false;
+    }
 
     private float derelictSpawnChance = 0.015f;
 
-    private float debrisEasterEggChance = 0.040f;
+    private float debrisEasterEggChance = 0.160f;
 
-    private float resourceEasterEggChance = 0.020f;
+    private float resourceEasterEggChance = 0.040f;
 
     private float otherEasterEggChance = 0.060f;
 
@@ -382,7 +423,11 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
     private int battleTargetCount = 500;
 
-    private int maxBackgroundRocks = 130;
+    private int maxBackgroundRocks = 250;
+
+    private int activeBackgroundCount = 0;
+
+    private boolean backgroundPreSeeded = false;
 
     private float backgroundSpawnTimer = 0f;
 
@@ -390,17 +435,27 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
 
 
-    // Dynamic Figure Wave timer
+    // Dynamic Asteroid Director (Living Cycles: Torrent -> Wave(s) -> Lull)
+    public enum DirectorState {
+        TORRENT,    // Continuous dense rolling river (26-42s)
+        BURST,      // Brisk medium flow (12-20s)
+        FORMATION,  // Geometrical wave bursts (chained 1-2 waves)
+        LULL        // Serene lull / silence (6-12s, spawning paused)
+    }
 
-    private float figureEventTimer = 0f;
+    private DirectorState currentDirectorState = DirectorState.TORRENT;
+    private float directorStateTimer = 0f;
+    private float directorStateDuration = 32f;
+    private int formationWavesInChain = 0;
+    private int directorCycleMode = 0; // 0 = Living cycles, 1 = Continuous torrent, 2 = Waves & lulls
 
 
 
     // Open Space settings (Quiet, rare solitary stray meteors)
 
-    private int openSpaceMinRocks = 4;
+    private int openSpaceMinRocks = 3;
 
-    private int openSpaceMaxRocks = 10;
+    private int openSpaceMaxRocks = 7;
 
     private float openSpaceMinDelay = 2.0f;
 
@@ -413,6 +468,17 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
     private float openSpaceCurrentDelay = 2.5f;
 
     private float openSpaceEasterEggMult = 0.14f;
+
+    // Open Space megaliths & rare transit swarms
+    private boolean enableOpenSpaceMegaliths = true;
+    private int openSpaceTargetMegaliths = 2; // 1 to 3 boulders
+    private boolean openSpacePreSeeded = false;
+    private float openSpaceMegalithTimer = 0f;
+    private boolean enableOpenSpaceSwarm = true;
+    private float openSpaceSwarmTimer = 0f;
+    private float openSpaceSwarmDelay = 75.0f;
+    private float openSpaceSwarmChance = 0.12f; // Rare chance per interval
+    private float summonSwarmKeyCooldown = 0f;
 
 
 
@@ -464,7 +530,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
     // Asteroid Durability & Point Defense Shatter Bonus
 
-    private float asteroidHealthMult = 0.60f;
+    private float asteroidHealthMult = 0.51f;
 
     private float pdAsteroidDamageMult = 6.0f;
 
@@ -552,8 +618,6 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
         this.backgroundSpawnTimer = 0f;
 
-        this.figureEventTimer = 7.0f; // First figure appears after 7 seconds
-
         this.activeStreams.clear();
 
         this.notifiedPlayer = false;
@@ -563,6 +627,22 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
         this.simulationHintShown = false;
 
         this.trailTickTimer = 0f;
+
+        this.megalithsPreSeeded = false;
+        this.currentMegalithCount = 0;
+        this.openSpacePreSeeded = false;
+        this.openSpaceTargetMegaliths = 1 + random.nextInt(3); // 1, 2, or 3
+        this.openSpaceMegalithTimer = 0f;
+        this.openSpaceSwarmTimer = 0f;
+        this.openSpaceSwarmDelay = 60.0f + random.nextFloat() * 45.0f;
+        this.backgroundPreSeeded = false;
+        this.activeBackgroundCount = 0;
+
+        this.directorCycleMode = 0;
+        this.currentDirectorState = (random.nextFloat() < 0.70f) ? DirectorState.TORRENT : DirectorState.BURST;
+        this.directorStateTimer = 0f;
+        this.directorStateDuration = 25.0f + random.nextFloat() * 15.0f;
+        this.formationWavesInChain = 0;
 
         this.shipStates.clear();
 
@@ -722,8 +802,6 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
                     if (terrains != null) {
 
-                        Vector2f playerLoc = playerFleet.getLocation();
-
                         for (CampaignTerrainAPI terrain : terrains) {
 
                             if (terrain == null) continue;
@@ -736,11 +814,19 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
                             boolean isAsteroidTerrain = false;
 
-                            if (type != null) {
+                            if (terrain.getPlugin() instanceof AsteroidSource) {
 
-                                String tLower = type.toLowerCase();
+                                isAsteroidTerrain = true;
 
-                                if (tLower.contains("asteroid") || tLower.contains("ring")) {
+                            } else {
+
+                                if (type != null && type.toLowerCase().contains("asteroid")) {
+
+                                    isAsteroidTerrain = true;
+
+                                }
+
+                                if (terrainId != null && terrainId.toLowerCase().contains("asteroid")) {
 
                                     isAsteroidTerrain = true;
 
@@ -748,31 +834,49 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
                             }
 
-                            if (terrainId != null) {
-
-                                String idLower = terrainId.toLowerCase();
-
-                                if (idLower.contains("asteroid") || idLower.contains("ring")) {
-
-                                    isAsteroidTerrain = true;
-
-                                }
-
-                            }
 
 
+                            // Strict campaign check: only register true asteroid fields where the ship physically
+
+                            // collides with asteroids on the map (containsEntity without artificial expansion buffers)
 
                             if (isAsteroidTerrain && terrain.getPlugin() != null) {
 
-                                if (terrain.getPlugin().containsEntity(playerFleet) || 
-
-                                    terrain.getPlugin().containsPoint(playerLoc, 600f)) {
+                                if (terrain.getPlugin().containsEntity(playerFleet)) {
 
                                     campaignTerrainHasAsteroids = true;
 
                                     break;
 
                                 }
+
+                            }
+
+                        }
+
+                    }
+
+
+
+                    // Also check direct physical proximity/collision with orbiting campaign asteroids
+
+                    if (!campaignTerrainHasAsteroids && loc.getAsteroids() != null) {
+
+                        Vector2f playerLoc = playerFleet.getLocation();
+
+                        float fleetRadius = playerFleet.getRadius();
+
+                        for (SectorEntityToken astToken : loc.getAsteroids()) {
+
+                            if (astToken == null || astToken.getLocation() == null) continue;
+
+                            float dist = Misc.getDistance(playerLoc, astToken.getLocation());
+
+                            if (dist <= fleetRadius + astToken.getRadius() + 100f) {
+
+                                campaignTerrainHasAsteroids = true;
+
+                                break;
 
                             }
 
@@ -853,7 +957,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
             battleTargetCount = minR + random.nextInt(Math.max(1, maxR - minR + 1));
 
-            maxBackgroundRocks = Math.min(450, battleTargetCount / 2);
+            maxBackgroundRocks = Math.max(160, Math.min(450, (int)(battleTargetCount * 0.60f)));
 
             backgroundSpawnInterval = Math.max(0.015f, 0.055f * (300f / Math.max(300, battleTargetCount)));
 
@@ -885,9 +989,15 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
                 setStreamSpeed(400.0f);
 
-                minFieldRocks = 100;
+                megalithSpeed = 80.0f;
+                megalithMinSpeed = 60.0f;
+                megalithMaxSpeed = 100.0f;
+                megalithMinRadius = 125.0f;
+                megalithMaxRadius = 450.0f;
 
-                maxFieldRocks = 400;
+                minFieldRocks = 120;
+
+                maxFieldRocks = 350;
 
                 asteroidLifespan = 75.0f;
 
@@ -903,17 +1013,17 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
                 pdCriticalThreatsOnly = true;
 
-                asteroidHealthMult = 0.50f;
+                asteroidHealthMult = 0.425f;
 
                 pdAsteroidDamageMult = 7.0f;
 
-                asteroidCollisionDamageMult = 0.35f;
+                asteroidCollisionDamageMult = 0.42f;
 
                 derelictSpawnChance = 0.005f;
 
-                debrisEasterEggChance = 0.015f;
+                debrisEasterEggChance = 0.080f;
 
-                resourceEasterEggChance = 0.010f;
+                resourceEasterEggChance = 0.020f;
 
                 otherEasterEggChance = 0.025f;
 
@@ -926,6 +1036,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                 derelictRescueChance = 1.0f;
 
                 openSpaceEasterEggMult = 0.10f;
+                openSpaceSwarmChance = 0.08f;
 
                 break;
 
@@ -933,9 +1044,15 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
                 setStreamSpeed(600.0f);
 
+                megalithSpeed = 115.0f;
+                megalithMinSpeed = 90.0f;
+                megalithMaxSpeed = 140.0f;
+                megalithMinRadius = 125.0f;
+                megalithMaxRadius = 550.0f;
+
                 minFieldRocks = 200;
 
-                maxFieldRocks = 800;
+                maxFieldRocks = 650;
 
                 asteroidLifespan = 60.0f;
 
@@ -951,17 +1068,17 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
                 pdCriticalThreatsOnly = true;
 
-                asteroidHealthMult = 0.60f;
+                asteroidHealthMult = 0.51f;
 
                 pdAsteroidDamageMult = 6.0f;
 
-                asteroidCollisionDamageMult = 1.0f;
+                asteroidCollisionDamageMult = 1.20f;
 
                 derelictSpawnChance = 0.015f;
 
-                debrisEasterEggChance = 0.040f;
+                debrisEasterEggChance = 0.160f;
 
-                resourceEasterEggChance = 0.020f;
+                resourceEasterEggChance = 0.040f;
 
                 otherEasterEggChance = 0.060f;
 
@@ -974,6 +1091,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                 derelictRescueChance = 1.0f;
 
                 openSpaceEasterEggMult = 0.14f;
+                openSpaceSwarmChance = 0.12f;
 
                 break;
 
@@ -981,9 +1099,15 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
                 setStreamSpeed(1200.0f);
 
+                megalithSpeed = 210.0f;
+                megalithMinSpeed = 160.0f;
+                megalithMaxSpeed = 260.0f;
+                megalithMinRadius = 125.0f;
+                megalithMaxRadius = 550.0f;
+
                 minFieldRocks = 300;
 
-                maxFieldRocks = 1000;
+                maxFieldRocks = 850;
 
                 asteroidLifespan = 45.0f;
 
@@ -999,17 +1123,17 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
                 pdCriticalThreatsOnly = false;
 
-                asteroidHealthMult = 0.70f;
+                asteroidHealthMult = 0.595f;
 
                 pdAsteroidDamageMult = 6.5f;
 
-                asteroidCollisionDamageMult = 1.8f;
+                asteroidCollisionDamageMult = 2.16f;
 
                 derelictSpawnChance = 0.035f;
 
-                debrisEasterEggChance = 0.080f;
+                debrisEasterEggChance = 0.280f;
 
-                resourceEasterEggChance = 0.040f;
+                resourceEasterEggChance = 0.080f;
 
                 otherEasterEggChance = 0.120f;
 
@@ -1022,6 +1146,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                 derelictRescueChance = 1.0f;
 
                 openSpaceEasterEggMult = 0.16f;
+                openSpaceSwarmChance = 0.18f;
 
                 break;
 
@@ -1029,7 +1154,13 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
                 setStreamSpeed(3000.0f);
 
-                minFieldRocks = 500;
+                megalithSpeed = 400.0f;
+                megalithMinSpeed = 300.0f;
+                megalithMaxSpeed = 500.0f;
+                megalithMinRadius = 125.0f;
+                megalithMaxRadius = 550.0f;
+
+                minFieldRocks = 450;
 
                 maxFieldRocks = 1000;
 
@@ -1047,17 +1178,17 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
                 pdCriticalThreatsOnly = false;
 
-                asteroidHealthMult = 0.80f;
+                asteroidHealthMult = 0.68f;
 
                 pdAsteroidDamageMult = 8.0f;
 
-                asteroidCollisionDamageMult = 3.5f;
+                asteroidCollisionDamageMult = 4.20f;
 
                 derelictSpawnChance = 0.070f;
 
-                debrisEasterEggChance = 0.220f;
+                debrisEasterEggChance = 0.450f;
 
-                resourceEasterEggChance = 0.080f;
+                resourceEasterEggChance = 0.160f;
 
                 otherEasterEggChance = 0.250f;
 
@@ -1070,6 +1201,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                 derelictRescueChance = 1.0f;
 
                 openSpaceEasterEggMult = 0.20f;
+                openSpaceSwarmChance = 0.28f;
 
                 break;
 
@@ -1221,6 +1353,27 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
                 asteroidCollisionDamageMult = (float) config.optDouble("asteroidCollisionDamageMult", asteroidCollisionDamageMult);
 
+                playerKillResourceDropChance = (float) config.optDouble("playerKillResourceDropChance", playerKillResourceDropChance);
+
+                playerKillFighterDropChance = (float) config.optDouble("playerKillFighterDropChance", playerKillFighterDropChance);
+
+                enableMegalithBoulders = config.optBoolean("enableMegalithBoulders", enableMegalithBoulders);
+                maxMegaliths = config.optInt("maxMegaliths", maxMegaliths);
+                enableDeploymentSafety = config.optBoolean("enableDeploymentSafety", enableDeploymentSafety);
+                deploymentSafetyDuration = (float) config.optDouble("deploymentSafetyDuration", deploymentSafetyDuration);
+                megalithSpeed = (float) config.optDouble("megalithSpeed", megalithSpeed);
+                megalithMinSpeed = (float) config.optDouble("megalithMinSpeed", megalithMinSpeed);
+                megalithMaxSpeed = (float) config.optDouble("megalithMaxSpeed", megalithMaxSpeed);
+                megalithSpawnInterval = (float) config.optDouble("megalithSpawnInterval", megalithSpawnInterval);
+                megalithMinRadius = (float) config.optDouble("megalithMinRadius", megalithMinRadius);
+                megalithMaxRadius = (float) config.optDouble("megalithMaxRadius", megalithMaxRadius);
+                megalithArcFlight = config.optBoolean("megalithArcFlight", megalithArcFlight);
+                megalithDerelictDropChance = (float) config.optDouble("megalithDerelictDropChance", megalithDerelictDropChance);
+                enableStationAsteroidProtection = config.optBoolean("enableStationAsteroidProtection", enableStationAsteroidProtection);
+                stationAsteroidDamageMult = (float) config.optDouble("stationAsteroidDamageMult", stationAsteroidDamageMult);
+                enableStationDeflectionDome = config.optBoolean("enableStationDeflectionDome", enableStationDeflectionDome);
+                stationDomeMargin = (float) config.optDouble("stationDomeMargin", stationDomeMargin);
+
                 derelictSpawnChance = (float) config.optDouble("derelictSpawnChance", derelictSpawnChance);
 
                 debrisEasterEggChance = (float) config.optDouble("debrisEasterEggChance", debrisEasterEggChance);
@@ -1273,7 +1426,8 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
                 }
 
-                loadLunaSettingNumber("da_minFieldRocks", minFieldRocks);
+                loadLunaSettingNumber("da_directorCycleMode", directorCycleMode);
+        loadLunaSettingNumber("da_minFieldRocks", minFieldRocks);
 
                 loadLunaSettingNumber("da_maxFieldRocks", maxFieldRocks);
 
@@ -1296,6 +1450,11 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                 loadLunaSettingNumber("da_openSpaceMaxDelay", openSpaceMaxDelay);
 
                 loadLunaSettingNumber("da_openSpaceEasterEggMult", openSpaceEasterEggMult);
+                Boolean bOpenMeg = getLunaBoolean("da_enableOpenSpaceMegaliths");
+                if (bOpenMeg != null) enableOpenSpaceMegaliths = bOpenMeg.booleanValue();
+                Boolean bOpenSwarm = getLunaBoolean("da_enableOpenSpaceSwarm");
+                if (bOpenSwarm != null) enableOpenSpaceSwarm = bOpenSwarm.booleanValue();
+                loadLunaSettingNumber("da_openSpaceSwarmChance", openSpaceSwarmChance);
 
 
 
@@ -1349,6 +1508,33 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
                 loadLunaSettingNumber("da_asteroidCollisionDamageMult", asteroidCollisionDamageMult);
 
+                loadLunaSettingNumber("da_playerKillResourceDropChance", playerKillResourceDropChance);
+
+                loadLunaSettingNumber("da_playerKillFighterDropChance", playerKillFighterDropChance);
+
+                Boolean bMegalith = getLunaBoolean("da_enableMegalithBoulders");
+                if (bMegalith != null) enableMegalithBoulders = bMegalith.booleanValue();
+                Boolean bArc = getLunaBoolean("da_megalithArcFlight");
+                if (bArc != null) megalithArcFlight = bArc.booleanValue();
+                Integer nMaxMeg = getLunaInt("da_maxMegaliths");
+                if (nMaxMeg != null) maxMegaliths = nMaxMeg.intValue();
+                Boolean bDepSafe = getLunaBoolean("da_enableDeploymentSafety");
+                if (bDepSafe != null) enableDeploymentSafety = bDepSafe.booleanValue();
+                loadLunaSettingNumber("da_deploymentSafetyDuration", deploymentSafetyDuration);
+                loadLunaSettingNumber("da_megalithMinSpeed", megalithMinSpeed);
+                loadLunaSettingNumber("da_megalithMaxSpeed", megalithMaxSpeed);
+                loadLunaSettingNumber("da_megalithSpeed", megalithSpeed);
+                loadLunaSettingNumber("da_megalithSpawnInterval", megalithSpawnInterval);
+                loadLunaSettingNumber("da_megalithMinRadius", megalithMinRadius);
+                loadLunaSettingNumber("da_megalithMaxRadius", megalithMaxRadius);
+                loadLunaSettingNumber("da_megalithDerelictDropChance", megalithDerelictDropChance);
+                loadLunaSettingNumber("da_stationAsteroidDamageMult", stationAsteroidDamageMult);
+                Boolean bStnProt = getLunaBoolean("da_enableStationAsteroidProtection");
+                if (bStnProt != null) enableStationAsteroidProtection = bStnProt.booleanValue();
+                Boolean bStnDome = getLunaBoolean("da_enableStationDeflectionDome");
+                if (bStnDome != null) enableStationDeflectionDome = bStnDome.booleanValue();
+                loadLunaSettingNumber("da_stationDomeMargin", stationDomeMargin);
+
                 loadLunaSettingNumber("da_derelictSpawnChance", derelictSpawnChance);
 
                 loadLunaSettingNumber("da_otherEasterEggChance", otherEasterEggChance);
@@ -1389,7 +1575,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
         // Clamping (Defaults 200 to 300)
 
-        if (minFieldRocks < 20) minFieldRocks = 100;
+        if (minFieldRocks < 20) minFieldRocks = 50;
 
         if (maxFieldRocks < minFieldRocks) maxFieldRocks = minFieldRocks + 100;
 
@@ -1426,6 +1612,28 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
         if (asteroidHealthMult < 0.1f) asteroidHealthMult = 0.1f;
 
         if (asteroidHealthMult > 5.0f) asteroidHealthMult = 5.0f;
+
+        if (playerKillResourceDropChance < 0f) playerKillResourceDropChance = 0f;
+
+        if (playerKillResourceDropChance > 1f) playerKillResourceDropChance = 1f;
+
+        if (playerKillFighterDropChance < 0f) playerKillFighterDropChance = 0f;
+
+        if (playerKillFighterDropChance > 1f) playerKillFighterDropChance = 1f;
+
+        if (megalithMinRadius < 30f) megalithMinRadius = 80f;
+        if (megalithMaxRadius < megalithMinRadius) megalithMaxRadius = megalithMinRadius + 50f;
+        if (megalithSpawnInterval < 5f) megalithSpawnInterval = 20f;
+        if (maxMegaliths < 1) maxMegaliths = 1;
+        if (maxMegaliths > 60) maxMegaliths = 60;
+        if (megalithMinSpeed < 10f) megalithMinSpeed = 60f;
+        if (megalithMaxSpeed < megalithMinSpeed) megalithMaxSpeed = megalithMinSpeed + 20f;
+        if (megalithSpeed < 20f) megalithSpeed = 120f;
+        if (megalithDerelictDropChance < 0f) megalithDerelictDropChance = 0f;
+        if (megalithDerelictDropChance > 0.05f) megalithDerelictDropChance = 0.05f;
+        if (stationAsteroidDamageMult < 0f) stationAsteroidDamageMult = 0f;
+        if (stationAsteroidDamageMult > 1f) stationAsteroidDamageMult = 1f;
+        if (stationDomeMargin < 40f) stationDomeMargin = 140f;
 
         if (pdAsteroidDamageMult < 1.0f) pdAsteroidDamageMult = 1.0f;
 
@@ -1479,7 +1687,8 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
         if (num == null) return;
 
-        if (fieldId.equals("da_minFieldRocks")) minFieldRocks = num.intValue();
+        if (fieldId.equals("da_directorCycleMode")) directorCycleMode = num.intValue();
+        else if (fieldId.equals("da_minFieldRocks")) minFieldRocks = num.intValue();
 
         else if (fieldId.equals("da_maxFieldRocks")) maxFieldRocks = num.intValue();
 
@@ -1506,6 +1715,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
         else if (fieldId.equals("da_openSpaceMaxDelay")) openSpaceMaxDelay = num.floatValue();
 
         else if (fieldId.equals("da_openSpaceEasterEggMult")) openSpaceEasterEggMult = num.floatValue();
+        else if (fieldId.equals("da_openSpaceSwarmChance")) openSpaceSwarmChance = num.floatValue();
 
         else if (fieldId.equals("da_activePreset")) activePreset = num.intValue();
 
@@ -1516,6 +1726,18 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
         else if (fieldId.equals("da_pdAsteroidDamageMult")) pdAsteroidDamageMult = num.floatValue();
 
         else if (fieldId.equals("da_asteroidCollisionDamageMult")) asteroidCollisionDamageMult = num.floatValue();
+
+        else if (fieldId.equals("da_playerKillResourceDropChance")) playerKillResourceDropChance = num.floatValue();
+
+        else if (fieldId.equals("da_playerKillFighterDropChance")) playerKillFighterDropChance = num.floatValue();
+        else if (fieldId.equals("da_maxMegaliths")) maxMegaliths = num.intValue();
+        else if (fieldId.equals("da_megalithSpeed")) megalithSpeed = num.floatValue();
+        else if (fieldId.equals("da_megalithSpawnInterval")) megalithSpawnInterval = num.floatValue();
+        else if (fieldId.equals("da_megalithMinRadius")) megalithMinRadius = num.floatValue();
+        else if (fieldId.equals("da_megalithMaxRadius")) megalithMaxRadius = num.floatValue();
+        else if (fieldId.equals("da_megalithDerelictDropChance")) megalithDerelictDropChance = num.floatValue();
+        else if (fieldId.equals("da_stationAsteroidDamageMult")) stationAsteroidDamageMult = num.floatValue();
+        else if (fieldId.equals("da_stationDomeMargin")) stationDomeMargin = num.floatValue();
 
         else if (fieldId.equals("da_derelictSpawnChance")) derelictSpawnChance = num.floatValue();
 
@@ -1604,27 +1826,15 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
                             battleTargetCount = minR + random.nextInt(Math.max(1, maxR - minR + 1));
 
-                            maxBackgroundRocks = Math.min(450, battleTargetCount / 2);
+                            maxBackgroundRocks = Math.max(160, Math.min(450, (int)(battleTargetCount * 0.60f)));
 
                             backgroundSpawnInterval = Math.max(0.015f, 0.055f * (300f / Math.max(300, battleTargetCount)));
 
-                            if (engine != null && engine.getCombatUI() != null) {
-
-                                String presetLabel = getPresetName();
-
-                                String msg = IS_RUSSIAN ? 
-
-                                    ("Dynamic Asteroids: Переключен профиль на [" + presetLabel + "] (" + (int)streamSpeed + " ед/с, " + minR + " - " + maxR + " камней, таран x" + asteroidCollisionDamageMult + ")") :
-
-                                    ("Dynamic Asteroids: Profile switched to [" + presetLabel + "] (" + (int)streamSpeed + " u/s, " + minR + " - " + maxR + " rocks, ram x" + asteroidCollisionDamageMult + ")");
-
-                                engine.getCombatUI().addMessage(1, msg, Color.CYAN);
-
-                            }
+                            // Silenced preset switch message in simulation
 
                         } else {
 
-                            if (engine != null && engine.getCombatUI() != null) {
+                            if (engine != null && engine.getCombatUI() != null && engine.isSimulation()) {
 
                                 String msg = IS_RUSSIAN ? 
 
@@ -1668,6 +1878,54 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
 
 
+                Number nPkRes = getLunaNumber("da_playerKillResourceDropChance");
+
+                if (nPkRes != null) playerKillResourceDropChance = nPkRes.floatValue();
+
+                Number nPkFighter = getLunaNumber("da_playerKillFighterDropChance");
+                if (nPkFighter != null) playerKillFighterDropChance = nPkFighter.floatValue();
+
+                Boolean bMegalith = getLunaBoolean("da_enableMegalithBoulders");
+                if (bMegalith != null) enableMegalithBoulders = bMegalith.booleanValue();
+                Boolean bArc = getLunaBoolean("da_megalithArcFlight");
+                if (bArc != null) megalithArcFlight = bArc.booleanValue();
+                Number nInt = getLunaNumber("da_megalithSpawnInterval");
+                if (nInt != null) megalithSpawnInterval = nInt.floatValue();
+                Boolean bDepSafe = getLunaBoolean("da_enableDeploymentSafety");
+                if (bDepSafe != null) enableDeploymentSafety = bDepSafe.booleanValue();
+                Number nDepDur = getLunaNumber("da_deploymentSafetyDuration");
+                if (nDepDur != null) deploymentSafetyDuration = nDepDur.floatValue();
+                Number nMinSpd = getLunaNumber("da_megalithMinSpeed");
+                if (nMinSpd != null) megalithMinSpeed = nMinSpd.floatValue();
+                Number nMaxSpd = getLunaNumber("da_megalithMaxSpeed");
+                if (nMaxSpd != null) megalithMaxSpeed = nMaxSpd.floatValue();
+                Number nMinR = getLunaNumber("da_megalithMinRadius");
+                if (nMinR != null) megalithMinRadius = nMinR.floatValue();
+                Number nMaxR = getLunaNumber("da_megalithMaxRadius");
+                if (nMaxR != null) megalithMaxRadius = nMaxR.floatValue();
+                Integer nMaxMeg = getLunaInt("da_maxMegaliths");
+                if (nMaxMeg != null) maxMegaliths = nMaxMeg.intValue();
+                Number nMgSpd = getLunaNumber("da_megalithSpeed");
+                if (nMgSpd != null) megalithSpeed = nMgSpd.floatValue();
+                Number nMgDer = getLunaNumber("da_megalithDerelictDropChance");
+                if (nMgDer != null) megalithDerelictDropChance = nMgDer.floatValue();
+                Boolean bOpenMeg = getLunaBoolean("da_enableOpenSpaceMegaliths");
+                if (bOpenMeg != null) enableOpenSpaceMegaliths = bOpenMeg.booleanValue();
+                Boolean bOpenSwarm = getLunaBoolean("da_enableOpenSpaceSwarm");
+                if (bOpenSwarm != null) enableOpenSpaceSwarm = bOpenSwarm.booleanValue();
+                Number nSwarmChance = getLunaNumber("da_openSpaceSwarmChance");
+                if (nSwarmChance != null) openSpaceSwarmChance = nSwarmChance.floatValue();
+                Number nStnMult = getLunaNumber("da_stationAsteroidDamageMult");
+                if (nStnMult != null) stationAsteroidDamageMult = nStnMult.floatValue();
+                Boolean bStnProt = getLunaBoolean("da_enableStationAsteroidProtection");
+                if (bStnProt != null) enableStationAsteroidProtection = bStnProt.booleanValue();
+                Boolean bStnDome = getLunaBoolean("da_enableStationDeflectionDome");
+                if (bStnDome != null) enableStationDeflectionDome = bStnDome.booleanValue();
+                Number nStnMargin = getLunaNumber("da_stationDomeMargin");
+                if (nStnMargin != null) stationDomeMargin = nStnMargin.floatValue();
+
+                if (nPkFighter != null) playerKillFighterDropChance = nPkFighter.floatValue();
+
                 if (activePreset == 0) {
 
                     // Preset 0 = Custom mode: user manually tunes individual sliders!
@@ -1688,7 +1946,9 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
 
 
-                    Number nMinRocks = getLunaNumber("da_minFieldRocks");
+                    Number nDirectorMode = getLunaNumber("da_directorCycleMode");
+if (nDirectorMode != null) directorCycleMode = nDirectorMode.intValue();
+Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
                     if (nMinRocks != null) minFieldRocks = nMinRocks.intValue();
 
@@ -2002,13 +2262,27 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
                         f.setAccessible(true);
 
-                        Type gt = f.getGenericType();
+                        // Do NOT call f.getGenericType()! In obfuscated game it throws ClassFormatError: Illegal field name
+                        // The vanilla asteroid field generator list in com.fs.starfarer.combat.A.B is field "for"
+                        List<?> list = (List<?>) f.get(combatMap);
 
-                        if (gt != null && gt.toString().contains(".combat.A.E")) {
+                        if (list != null) {
 
-                            List<?> list = (List<?>) f.get(combatMap);
+                            boolean isAsteroidFieldList = "for".equals(f.getName());
 
-                            if (list != null) {
+                            if (!isAsteroidFieldList && !list.isEmpty()) {
+
+                                Object first = list.get(0);
+
+                                if (first != null && first.getClass().getName().endsWith(".combat.A.E")) {
+
+                                    isAsteroidFieldList = true;
+
+                                }
+
+                            }
+
+                            if (isAsteroidFieldList) {
 
                                 list.clear();
 
@@ -2120,6 +2394,8 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
         advanceDetectionSound(amount);
 
+        updateStationDomes(amount);
+
 
 
         lunaCheckTimer += amount;
@@ -2141,9 +2417,17 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
             if (summonContainerKeyCooldown > 0f) {
                 summonContainerKeyCooldown -= amount;
             }
+            if (summonMegalithKeyCooldown > 0f) {
+                summonMegalithKeyCooldown -= amount;
+            }
+            if (summonSwarmKeyCooldown > 0f) {
+                summonSwarmKeyCooldown -= amount;
+            }
 
             boolean summonTriggered = false;
             boolean summonContainerTriggered = false;
+            boolean summonMegalithTriggered = false;
+            boolean summonSwarmTriggered = false;
 
             if (events != null) {
                 boolean shiftHeld = Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) || Keyboard.isKeyDown(Keyboard.KEY_RSHIFT);
@@ -2160,6 +2444,14 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                         } else if (key == Keyboard.KEY_SEMICOLON) {
                             event.consume();
                             if (summonContainerKeyCooldown <= 0f) summonContainerTriggered = true;
+                            break;
+                        } else if (key == Keyboard.KEY_L) {
+                            event.consume();
+                            if (summonMegalithKeyCooldown <= 0f) summonMegalithTriggered = true;
+                            break;
+                        } else if (key == Keyboard.KEY_K) {
+                            event.consume();
+                            if (summonSwarmKeyCooldown <= 0f) summonSwarmTriggered = true;
                             break;
                         } else if (key == Keyboard.KEY_SLASH) {
                             event.consume();
@@ -2178,13 +2470,13 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                         } else if (shiftHeld && (key == Keyboard.KEY_EQUALS || key == Keyboard.KEY_ADD)) {
                             event.consume();
                             battleTargetCount = Math.min(10000, battleTargetCount + 50);
-                            maxBackgroundRocks = battleTargetCount / 2;
+                            maxBackgroundRocks = Math.max(160, Math.min(1500, (int)(battleTargetCount * 0.60f)));
                             backgroundSpawnInterval = Math.max(0.005f, 0.055f * (300f / Math.max(300, battleTargetCount)));
                             showLimitFeedback(IS_RUSSIAN ? "Лимит астероидов УВЕЛИЧЕН: " + battleTargetCount + " шт." : "Asteroid Limit INCREASED: " + battleTargetCount + " rocks", Color.GREEN);
                         } else if (shiftHeld && (key == Keyboard.KEY_MINUS || key == Keyboard.KEY_SUBTRACT)) {
                             event.consume();
-                            battleTargetCount = Math.max(25, battleTargetCount - 50);
-                            maxBackgroundRocks = Math.max(12, battleTargetCount / 2);
+                            battleTargetCount = Math.max(50, battleTargetCount - 50);
+                            maxBackgroundRocks = Math.max(50, Math.min(1500, (int)(battleTargetCount * 0.60f)));
                             backgroundSpawnInterval = Math.max(0.005f, 0.055f * (300f / Math.max(300, battleTargetCount)));
                             showLimitFeedback(IS_RUSSIAN ? "Лимит астероидов УМЕНЬШЕН: " + battleTargetCount + " шт." : "Asteroid Limit DECREASED: " + battleTargetCount + " rocks", Color.YELLOW);
                         } else if (ctrlHeld && (key == Keyboard.KEY_EQUALS || key == Keyboard.KEY_ADD)) {
@@ -2210,6 +2502,16 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                     summonContainerTriggered = true;
                 }
             }
+            if (!summonMegalithTriggered && summonMegalithKeyCooldown <= 0f) {
+                if (Keyboard.isKeyDown(Keyboard.KEY_L)) {
+                    summonMegalithTriggered = true;
+                }
+            }
+            if (!summonSwarmTriggered && summonSwarmKeyCooldown <= 0f) {
+                if (Keyboard.isKeyDown(Keyboard.KEY_K)) {
+                    summonSwarmTriggered = true;
+                }
+            }
 
             if (summonTriggered) {
                 summonKeyCooldown = 0.5f;
@@ -2219,6 +2521,14 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
                 summonContainerKeyCooldown = 0.5f;
                 summonContainerNearPlayer();
             }
+            if (summonMegalithTriggered) {
+                summonMegalithKeyCooldown = 0.5f;
+                summonMegalithNearPlayer();
+            }
+            if (summonSwarmTriggered) {
+                summonSwarmKeyCooldown = 0.8f;
+                summonTransitSwarmInSimulation();
+            }
         }
 
         // Show simulation one-time hint
@@ -2226,20 +2536,6 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
         if (engine.isSimulation() && !simulationHintShown) {
 
             simulationHintShown = true;
-
-            if (engine.getCombatUI() != null) {
-
-                engine.getCombatUI().addMessage(1, IS_RUSSIAN ? "[Dynamic Asteroids 2.0] [/] Вкл/Выкл | [Shift +/-] Лимит (+-50) | [Ctrl +/-] Скорость (+-100)" : "[Dynamic Asteroids 2.0] [/] Toggle ON/OFF | [Shift +/-] Limit (+-50) | [Ctrl +/-] Speed (+-100)", Color.CYAN);
-
-                String simPresetMsg = IS_RUSSIAN ?
-
-                    ("Dynamic Asteroids: Профиль [" + getPresetName() + "] (Скорость: " + (int)streamSpeed + " ед/с, " + minFieldRocks + " - " + maxFieldRocks + " камней, таран x" + asteroidCollisionDamageMult + ")") :
-
-                    ("Dynamic Asteroids: Profile [" + getPresetName() + "] (Speed: " + (int)streamSpeed + " u/s, " + minFieldRocks + " - " + maxFieldRocks + " rocks, ram x" + asteroidCollisionDamageMult + ")");
-
-                engine.getCombatUI().addMessage(1, simPresetMsg, Color.CYAN);
-
-            }
 
         }
 
@@ -2319,13 +2615,17 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
                     String sub = (IS_RUSSIAN ? "Лавина: " : "Avalanche: ") + getAvalancheDirectionLabel();
 
-                    if (!activeStreams.isEmpty()) {
+                    if (currentDirectorState == DirectorState.LULL) {
+
+                        sub += IS_RUSSIAN ? " | Затишье" : " | Calm Lull";
+
+                    } else if (!activeStreams.isEmpty()) {
 
                         sub += IS_RUSSIAN ? (" | Формаций: " + activeStreams.size()) : (" | Formations: " + activeStreams.size() + " active");
 
                     } else {
 
-                        sub += IS_RUSSIAN ? (" | Вместимость: " + battleTargetCount) : (" | Capacity: " + battleTargetCount + " rocks");
+                        sub += IS_RUSSIAN ? (" | Поток: " + activeBackgroundCount) : (" | Stream: " + activeBackgroundCount + " rocks");
 
                     }
 
@@ -2389,7 +2689,29 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
                 for (CombatEntityAPI ast : list) {
 
-                    if (ast == null || ast.isExpired()) continue;
+                    if (ast == null || ast.isExpired()) {
+
+                    if (ast != null && !ast.getCustomData().containsKey("IS_EASTER_EGG")) {
+
+                        Object lastHitObj = ast.getCustomData().get("DA_LAST_PLAYER_HIT_TIME");
+
+                        if (lastHitObj instanceof Float) {
+
+                            float lastHit = ((Float) lastHitObj).floatValue();
+
+                            if (totalCombatTime - lastHit < 0.45f) {
+
+                                processPlayerAsteroidKill(ast, getPlayerShipSafely());
+
+                            }
+
+                        }
+
+                    }
+
+                    continue;
+
+                }
 
                     Vector2f loc = ast.getLocation();
 
@@ -2462,15 +2784,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
 
 
-        float despawnMargin = isTitleScreen ? 400f : 350f;
-
-        float minX = focalCX - halfW - despawnMargin;
-
-        float maxX = focalCX + halfW + despawnMargin;
-
-        float minY = focalCY - halfH - despawnMargin;
-
-        float maxY = focalCY + halfH + despawnMargin;
+        // Strict border margin (replaced by 5-second out of bounds exit despawn)
 
 
 
@@ -2479,6 +2793,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
         List<CombatEntityAPI> asteroids = engine.getAsteroids();
 
         int activeCount = 0;
+        activeBackgroundCount = 0;
 
 
 
@@ -2487,6 +2802,8 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
             List<CombatEntityAPI> toRemove = null;
 
             List<CombatEntityAPI> toPoof = null;
+
+            currentMegalithCount = 0;
 
 
 
@@ -2515,62 +2832,156 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
 
                 // Untracked vanilla rock removal
-
                 if (ast.getCustomData().get(TRACKED_KEY) == null) {
 
                     if (toRemove == null) toRemove = new ArrayList<CombatEntityAPI>();
 
                     toRemove.add(ast);
 
-                    continue;
+                    // Re-disable vanilla generators if an untracked rock leaked through
+                    if (!vanillaFieldsDisabled || totalCombatTime < 10.0f) {
 
-                }
-
-
-
-                // Strict out of bounds check
-
-                boolean outOfBounds = (loc.x < minX || loc.x > maxX || loc.y < minY || loc.y > maxY);
-
-                if (outOfBounds) {
-
-                    if (toRemove == null) toRemove = new ArrayList<CombatEntityAPI>();
-
-                    toRemove.add(ast);
-
-                    continue;
-
-                }
-
-
-
-                // Lifespan expiration
-
-                Object birthObj = ast.getCustomData().get(SPAWN_TIME_KEY);
-
-                if (birthObj instanceof Float) {
-
-                    float age = totalCombatTime - ((Float) birthObj).floatValue();
-
-                    if (age >= asteroidLifespan) {
-
-                        if (toPoof == null) toPoof = new ArrayList<CombatEntityAPI>();
-
-                        toPoof.add(ast);
-
-                        continue;
+                        disableVanillaAsteroidFields();
 
                     }
 
+                    continue;
+
+                }
+
+
+
+                boolean isMegalith = ast.getCustomData().containsKey("DA_IS_MEGALITH");
+
+                // Strict map bounds check (borders where repellor forcefields push ships):
+                boolean outside = (loc.x < focalCX - halfW ||
+                                   loc.x > focalCX + halfW ||
+                                   loc.y < focalCY - halfH ||
+                                   loc.y > focalCY + halfH);
+
+                boolean hasEntered = ast.getCustomData().containsKey("DA_ENTERED_MAP");
+
+                if (!hasEntered) {
+                    if (!outside) {
+                        // Asteroid crossed into the playable map area or was pre-seeded inside!
+                        ast.getCustomData().put("DA_ENTERED_MAP", Boolean.TRUE);
+                        ast.getCustomData().remove("DA_OUT_OF_BOUNDS_TIMER");
+                    } else {
+                        // Asteroid is currently outside. Check if it is flying inward into the map bounds:
+                        Vector2f vel = ast.getVelocity();
+                        boolean isHeadingInward = false;
+                        if (vel != null) {
+                            if (loc.x < focalCX - halfW && vel.x > 0f) isHeadingInward = true;
+                            if (loc.x > focalCX + halfW && vel.x < 0f) isHeadingInward = true;
+                            if (loc.y < focalCY - halfH && vel.y > 0f) isHeadingInward = true;
+                            if (loc.y > focalCY + halfH && vel.y < 0f) isHeadingInward = true;
+                            float dx = focalCX - loc.x;
+                            float dy = focalCY - loc.y;
+                            if ((vel.x * dx + vel.y * dy) > 0f) isHeadingInward = true;
+                        }
+
+                        if (!isHeadingInward) {
+                            // Flying away from map or stationary outside: despawn after 5 seconds
+                            Object timerObj = ast.getCustomData().get("DA_OUT_OF_BOUNDS_TIMER");
+                            float timer = (timerObj instanceof Float) ? ((Float) timerObj).floatValue() + amount : amount;
+                            ast.getCustomData().put("DA_OUT_OF_BOUNDS_TIMER", timer);
+                            if (timer >= 5.0f) {
+                                if (toRemove == null) toRemove = new ArrayList<CombatEntityAPI>();
+                                toRemove.add(ast);
+                                continue;
+                            }
+                        } else {
+                            // Flying inward toward the map: let it enter, do not delete!
+                            ast.getCustomData().remove("DA_OUT_OF_BOUNDS_TIMER");
+                            Object birthObj = ast.getCustomData().get(SPAWN_TIME_KEY);
+                            if (birthObj instanceof Float && (totalCombatTime - ((Float) birthObj).floatValue()) > 30.0f) {
+                                if (toRemove == null) toRemove = new ArrayList<CombatEntityAPI>();
+                                toRemove.add(ast);
+                                continue;
+                            }
+                        }
+                    }
+                } else {
+                    // Asteroid has entered the map. If it now flies outside across the border:
+                    if (outside) {
+                        Object timerObj = ast.getCustomData().get("DA_OUT_OF_BOUNDS_TIMER");
+                        float timer = (timerObj instanceof Float) ? ((Float) timerObj).floatValue() + amount : amount;
+                        ast.getCustomData().put("DA_OUT_OF_BOUNDS_TIMER", timer);
+                        if (timer >= 5.0f) {
+                            // 5 seconds past the border -> delete!
+                            if (toRemove == null) toRemove = new ArrayList<CombatEntityAPI>();
+                            toRemove.add(ast);
+                            continue;
+                        }
+                    } else {
+                        ast.getCustomData().remove("DA_OUT_OF_BOUNDS_TIMER");
+                    }
+                }
+
+                // Lifespan expiration:
+                // Megaliths NEVER evaporate or poof from asteroidLifespan! They sail until crossing out of bounds.
+                // 1200s (20 minutes) timeout is kept only as an emergency gc failsafe.
+                Object birthObj = ast.getCustomData().get(SPAWN_TIME_KEY);
+                if (birthObj instanceof Float) {
+                    float age = totalCombatTime - ((Float) birthObj).floatValue();
+                    if (isMegalith) {
+                        if (age >= 1200.0f) {
+                            if (toRemove == null) toRemove = new ArrayList<CombatEntityAPI>();
+                            toRemove.add(ast);
+                            continue;
+                        }
+                    } else {
+                        if (age >= Math.max(asteroidLifespan, 120.0f)) {
+                            if (toPoof == null) toPoof = new ArrayList<CombatEntityAPI>();
+                            toPoof.add(ast);
+                            continue;
+                        }
+                    }
                 }
 
 
 
                 // Kinetic Cruise Control
 
+                // Advance Megalith Arc Trajectory & Station Deflection
+                // If untethered (touched or shot by ships), becomes a 100% free Newtonian body that can be pushed!
+                if (ast.getCustomData().containsKey("DA_IS_MEGALITH")) {
+                    if (!ast.getCustomData().containsKey("DA_NO_MAINTAIN_VELOCITY")) {
+                        Object arcObj = ast.getCustomData().get("DA_ARC_RATE");
+                        if (arcObj instanceof Float) {
+                            float arcRate = ((Float) arcObj).floatValue();
+                            if (Math.abs(arcRate) > 0.00001f) {
+                                Vector2f vel = ast.getVelocity();
+                                if (vel != null) {
+                                    float curAngle = (float) Math.atan2(vel.y, vel.x);
+                                    float newAngle = curAngle + arcRate * amount;
+                                    float curSpeed = vel.length();
+                                    Object origSpdObj = ast.getCustomData().get("DA_MEGALITH_SPEED");
+                                    if (origSpdObj instanceof Float) {
+                                        float origSpd = ((Float) origSpdObj).floatValue();
+                                        if (curSpeed < origSpd * 0.75f) curSpeed = origSpd;
+                                    }
+                                    vel.x = (float) Math.cos(newAngle) * curSpeed;
+                                    vel.y = (float) Math.sin(newAngle) * curSpeed;
+                                    ast.setCustomData(BASE_VX_KEY, Float.valueOf(vel.x));
+                                    ast.setCustomData(BASE_VY_KEY, Float.valueOf(vel.y));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Station Deflection Dome: All asteroids part and flow smoothly around station perimeters
+                applyStationDeflectionToAsteroid(ast, amount);
+
                 maintainVelocity(ast);
 
-
+                if (ast.getCustomData().containsKey("DA_IS_MEGALITH")) {
+                    currentMegalithCount++;
+                }
+                if (ast.getCustomData().containsKey("DA_IS_BACKGROUND")) {
+                    activeBackgroundCount++;
+                }
 
                 activeCount++;
 
@@ -2723,151 +3134,148 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
         }
 
         if (allowStreamSpawning) {
-// =========================================================================
-
-        // OPEN SPACE SPAWN LOGIC (Quiet, rare solitary stray meteors)
-
-        // =========================================================================
-
-        if (!isInAsteroidField && !isTitleScreen) {
-
-            openSpaceTimer += amount;
-
-            if (openSpaceTimer >= openSpaceCurrentDelay) {
-
-                openSpaceTimer = 0f;
-
-                openSpaceCurrentDelay = openSpaceMinDelay + random.nextFloat() * (openSpaceMaxDelay - openSpaceMinDelay);
-
-                if (activeCount < openSpaceTargetCount) {
-
-                    spawnOpenSpaceMeteor(focalCX, focalCY, halfW, halfH);
-
-                }
-
-            }
-
-        } else {
 
             // =========================================================================
-
-            // ASTEROID FIELD SPAWN LOGIC (300 ROCKS CAPACITY):
-
-            // 1. Constant Baseline Avalanche (Steady flow in constant direction)
-
-            // 2. Paced Formation Waves (Every 25-35s: Massive dense shapes, 1-3 angles, 5% Snipe)
-
+            // OPEN SPACE SPAWN LOGIC (Quiet, rare solitary stray meteors, 1-3 boulders, transit swarm)
             // =========================================================================
+            if (!isInAsteroidField && !isTitleScreen) {
 
-
-
-            // 1. Baseline Avalanche Spawner (stays strictly in avalancheDirection across the map)
-
-            backgroundSpawnTimer += amount;
-
-            if (backgroundSpawnTimer >= backgroundSpawnInterval) {
-
-                backgroundSpawnTimer = 0f;
-
-                if (activeCount < maxBackgroundRocks) {
-
-                    spawnBackgroundAsteroid(focalCX, focalCY, halfW, halfH);
-
-                    activeCount++;
-
+                // 1. Initial battle pre-seed: populate open space with 1-2 starting boulders immediately
+                if (!openSpacePreSeeded && enableMegalithBoulders && enableOpenSpaceMegaliths) {
+                    openSpacePreSeeded = true;
+                    int count = Math.min(openSpaceTargetMegaliths, 2);
+                    for (int i = 0; i < count; i++) {
+                        spawnPreSeededMegalith(halfW, halfH);
+                    }
                 }
 
-            }
+                // 2. Solitary stray meteors
+                openSpaceTimer += amount;
+                if (openSpaceTimer >= openSpaceCurrentDelay) {
+                    openSpaceTimer = 0f;
+                    openSpaceCurrentDelay = openSpaceMinDelay + random.nextFloat() * (openSpaceMaxDelay - openSpaceMinDelay);
+                    if (activeCount < openSpaceTargetCount) {
+                        spawnOpenSpaceMeteor(focalCX, focalCY, halfW, halfH);
+                    }
+                }
 
+                // 3. Maintain 1-3 colossal boulders in open space
+                if (enableMegalithBoulders && enableOpenSpaceMegaliths) {
+                    openSpaceMegalithTimer += amount;
+                    if (currentMegalithCount < openSpaceTargetMegaliths && openSpaceMegalithTimer >= 12.0f) {
+                        openSpaceMegalithTimer = 0f;
+                        spawnNaturalMegalith(focalCX, focalCY, halfW, halfH);
+                    }
+                }
 
+                // 4. Rare transit swarm streaking across open space
+                if (enableOpenSpaceSwarm && activeStreams.isEmpty()) {
+                    openSpaceSwarmTimer += amount;
+                    if (openSpaceSwarmTimer >= openSpaceSwarmDelay) {
+                        openSpaceSwarmTimer = 0f;
+                        openSpaceSwarmDelay = 60.0f + random.nextFloat() * 60.0f;
+                        if (random.nextFloat() < openSpaceSwarmChance) {
+                            triggerOpenSpaceTransitSwarm(focalCX, focalCY, halfW, halfH);
+                        }
+                    }
+                }
 
-            // 2. Dynamic Formation Event Spawner (Paced: every 25-35s)
+            } else {
 
-            figureEventTimer += amount;
+                // =========================================================================
+                // ASTEROID FIELD SPAWN LOGIC (300 ROCKS CAPACITY):
+                // 1. Constant Baseline Avalanche (Steady flow in constant direction)
+                // 2. Paced Formation Waves (Every 25-35s: Massive dense shapes, 1-3 angles, 5% Snipe)
+                // =========================================================================
 
-            if (figureEventTimer >= figureEventInterval && activeStreams.isEmpty()) {
+                // Initial battle pre-seed: populate sector with starting baseline avalanche rocks immediately
+                if (!backgroundPreSeeded && isInAsteroidField) {
+                    backgroundPreSeeded = true;
+                    int initialCount = Math.min(maxBackgroundRocks, 90);
+                    for (int bi = 0; bi < initialCount; bi++) {
+                        spawnPreSeededBackgroundRock(focalCX, focalCY, halfW, halfH);
+                    }
+                }
 
-                figureEventTimer = 0f;
+                // 1. Dynamic Director: Orchestrates living cycles (Torrent -> Wave(s) -> Lull)
+                advanceDirector(amount, focalCX, focalCY, halfW, halfH);
 
-                figureEventInterval = 25.0f + random.nextFloat() * 10.0f;
+                // 1.2. Baseline Avalanche Spawner (active during TORRENT & BURST, paused during LULL & FORMATION)
+                boolean allowBaselineSpawn = (currentDirectorState == DirectorState.TORRENT || currentDirectorState == DirectorState.BURST);
+                if (directorCycleMode == 1) {
+                    allowBaselineSpawn = true; // Mode 1: Always continuous
+                } else if (directorCycleMode == 2) {
+                    allowBaselineSpawn = false; // Mode 2: Only waves & lulls
+                }
 
-                triggerMultiAngleFormationWave(focalCX, focalCY, halfW, halfH);
+                if (allowBaselineSpawn) {
+                    backgroundSpawnTimer += amount;
 
-            }
+                    if (backgroundSpawnTimer >= backgroundSpawnInterval) {
+                        backgroundSpawnTimer = 0f;
+                        if (activeBackgroundCount < maxBackgroundRocks) {
+                            spawnBackgroundAsteroid(focalCX, focalCY, halfW, halfH);
+                            activeBackgroundCount++;
+                            activeCount++;
+                        }
+                    }
+                }
 
+                // 1.5. Colossal Megalith Spawner (Maintains up to maxMegaliths, sailing steadily across all phases)
+                if (enableMegalithBoulders) {
+                    // Initial battle pre-seed: populate sector with starting megaliths immediately
+                    if (!megalithsPreSeeded && isInAsteroidField) {
+                        megalithsPreSeeded = true;
+                        int initialCount = Math.min(maxMegaliths, 10);
+                        for (int mi = 0; mi < initialCount; mi++) {
+                            spawnPreSeededMegalith(halfW, halfH);
+                        }
+                    }
 
+                    megalithTimer += amount;
+                    float interval = (currentMegalithCount < 8) ? 1.5f : ((currentMegalithCount < maxMegaliths) ? 3.5f : 15.0f);
+                    if (currentMegalithCount < maxMegaliths && megalithTimer >= interval) {
+                        megalithTimer = 0f;
+                        spawnNaturalMegalith(focalCX, focalCY, halfW, halfH);
+                    }
+                }
 
-            // 3. Process Active Formation Streams (Dense heavy bursts across 1, 2, or 3 concurrent angles)
+            } // End of else (Asteroid Field & Title screen)
 
+            // 3. Process Active Formation Streams (Dense heavy bursts across 1, 2, or 3 concurrent angles, or open space transit swarms)
             if (!activeStreams.isEmpty()) {
-
                 List<ActiveFigureStream> finishedStreams = null;
 
-
-
                 for (int i = 0; i < activeStreams.size(); i++) {
-
                     ActiveFigureStream stream = activeStreams.get(i);
-
                     if (stream == null) continue;
 
-
-
                     stream.timeElapsed += amount;
-
                     stream.lifetime -= amount;
-
                     if (stream.lifetime <= 0f && stream.rocksRemaining <= 0) {
-
                         if (finishedStreams == null) finishedStreams = new ArrayList<ActiveFigureStream>();
-
                         finishedStreams.add(stream);
-
                         continue;
-
                     }
-
-
 
                     if (stream.rocksRemaining > 0) {
-
                         stream.burstTimer += amount;
-
                         if (stream.burstTimer >= stream.burstInterval) {
-
                             stream.burstTimer = 0f;
-
-                            if (activeCount < battleTargetCount) {
-
+                            if (activeCount < battleTargetCount + 80) {
                                 spawnStreamAsteroid(stream);
-
                                 activeCount++;
-
                             }
-
                             stream.rocksRemaining--;
-
                         }
-
                     }
-
                 }
-
-
 
                 if (finishedStreams != null) {
-
                     activeStreams.removeAll(finishedStreams);
-
                 }
-
             }
 
-        }
-
-
-
-        
         } // end if (allowStreamSpawning)
 
         // Fleet AI Collision Avoidance & Interception
@@ -2877,6 +3285,10 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
 
         // Advance Easter Eggs (Derelicts, Caches, Probes, Tanks)
+
+        checkPlayerDestroyedAsteroids();
+
+
 
         if (activeEasterEggEntities != null && !activeEasterEggEntities.isEmpty()) {
 
@@ -3530,6 +3942,67 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
      */
 
+    private void triggerOpenSpaceTransitSwarm(float focalCX, float focalCY, float halfW, float halfH) {
+        if (engine == null) return;
+
+        // Rare transit swarm streaking across open deep space
+        ActiveFigureStream stream = new ActiveFigureStream();
+        // 65% Comet swarm (cyan glowing comets) or 35% Lance beam (golden cosmic spark trail)
+        stream.type = (random.nextFloat() < 0.65f) ? FigureType.COMET_SWARM : FigureType.LANCE_BEAM;
+        int count = 18 + random.nextInt(12); // 18 to 29 rocks
+        stream.rocksRemaining = count;
+        stream.burstInterval = (stream.type == FigureType.COMET_SWARM) ? 0.010f : 0.018f;
+        stream.beamSpread = 450f + random.nextFloat() * 150f;
+        stream.timeElapsed = 0f;
+        stream.totalSpawnDuration = (count * stream.burstInterval) + 1.2f;
+
+        float swarmSpeed = Math.max(600f, streamSpeed * 1.15f);
+        stream.lifetime = (18000f / swarmSpeed) + stream.totalSpawnDuration + 5f;
+
+        // Random entry angle across the boundary
+        float entryAngle = random.nextFloat() * (float) (Math.PI * 2.0);
+        Vector2f startPt = getRectangleBoundaryPoint(focalCX, focalCY, halfW, halfH, entryAngle);
+        stream.origin.set(startPt.x, startPt.y);
+
+        // Transit trajectory passing across the sector towards opposite side
+        float exitAngle = entryAngle + (float) Math.PI + (random.nextFloat() - 0.5f) * 0.5f;
+        Vector2f endPt = getRectangleBoundaryPoint(focalCX, focalCY, halfW, halfH, exitAngle);
+
+        float dx = endPt.x - startPt.x;
+        float dy = endPt.y - startPt.y;
+        float dist = (float) Math.sqrt(dx * dx + dy * dy);
+        if (dist > 0.001f) {
+            stream.velocity.set((dx / dist) * swarmSpeed, (dy / dist) * swarmSpeed);
+        } else {
+            stream.velocity.set(-swarmSpeed, 0f);
+        }
+
+        float vx = stream.velocity.x;
+        float vy = stream.velocity.y;
+        float norm = (float) Math.sqrt(vx * vx + vy * vy);
+        if (norm > 0.001f) {
+            stream.perp.set(-vy / norm, vx / norm);
+        } else {
+            stream.perp.set(0f, 1f);
+        }
+
+        activeStreams.add(stream);
+    }
+
+    public void summonTransitSwarmInSimulation() {
+        if (engine == null || !engine.isSimulation()) return;
+        ShipAPI playerShip = getPlayerShipSafely();
+        if (playerShip == null || playerShip.getLocation() == null) return;
+
+        float halfW = engine.getMapWidth() * 0.5f;
+        float halfH = engine.getMapHeight() * 0.5f;
+        float focalCX = 0f;
+        float focalCY = 0f;
+
+        triggerOpenSpaceTransitSwarm(focalCX, focalCY, halfW, halfH);
+        showLimitFeedback(IS_RUSSIAN ? "ТЕСТ: Запущен транзитный рой!" : "TEST: Transit swarm launched!", Color.CYAN);
+    }
+
     private void spawnOpenSpaceMeteor(float focalCX, float focalCY, float halfW, float halfH) {
 
         float speed = Math.min(streamSpeed, 400.0f) * (0.8f + random.nextFloat() * 0.4f);
@@ -3678,10 +4151,42 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
 
 
+        // Natural space debris and ship wreckage tumbling among the flowing asteroids
+        if (debrisEasterEggChance > 0f && random.nextFloat() < (debrisEasterEggChance * 0.12f)) {
+            spawnOtherEasterEgg(spawnX, spawnY, vx, vy, false);
+            return;
+        }
+
         int type = rollAsteroidType(false);
 
-        spawnSingleAsteroidEntity(type, spawnX, spawnY, vx, vy, 0);
+        CombatEntityAPI ast = spawnSingleAsteroidEntity(type, spawnX, spawnY, vx, vy, 0);
+        if (ast != null) {
+            ast.setCustomData("DA_IS_BACKGROUND", Boolean.TRUE);
+        }
 
+    }
+
+    public void spawnPreSeededBackgroundRock(float focalCX, float focalCY, float halfW, float halfH) {
+        if (engine == null) return;
+
+        float spawnX = focalCX + (random.nextFloat() - 0.5f) * (halfW * 1.8f);
+        float spawnY = focalCY + (random.nextFloat() - 0.5f) * (halfH * 1.8f);
+
+        float vx = 0f;
+        float vy = 0f;
+        switch (avalancheDirection) {
+            case RIGHT_TO_LEFT: vx = -streamSpeed; vy = (random.nextFloat() - 0.5f) * 40f; break;
+            case LEFT_TO_RIGHT: vx = streamSpeed; vy = (random.nextFloat() - 0.5f) * 40f; break;
+            case BOTTOM_TO_TOP: vx = (random.nextFloat() - 0.5f) * 40f; vy = streamSpeed; break;
+            case TOP_TO_BOTTOM:
+            default: vx = (random.nextFloat() - 0.5f) * 40f; vy = -streamSpeed; break;
+        }
+
+        int type = rollAsteroidType(false);
+        CombatEntityAPI ast = spawnSingleAsteroidEntity(type, spawnX, spawnY, vx, vy, 0);
+        if (ast != null) {
+            ast.setCustomData("DA_IS_BACKGROUND", Boolean.TRUE);
+        }
     }
 
 
@@ -3693,6 +4198,185 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
      * Places spawn coordinates directly along the border rectangle (120 units offscreen).
 
      */
+
+
+    // =========================================================================
+    // COLOSSAL MEGALITH BOULDERS & GRAVITATIONAL ARC TRAJECTORY
+    // =========================================================================
+
+    public CombatEntityAPI spawnMegalithBoulder(float spawnX, float spawnY, float vx, float vy, float radius, float arcRateDeg) {
+        if (engine == null) return null;
+
+        String[] bigSprites = new String[] {
+            "graphics/asteroids/asteroid_big00.png",
+            "graphics/asteroids/asteroid_big01.png",
+            "graphics/asteroids/asteroid_big02.png"
+        };
+        String spritePath = bigSprites[random.nextInt(bigSprites.length)];
+        try {
+            Global.getSettings().loadTexture(spritePath);
+        } catch (Throwable t) {}
+
+        CombatEntityAPI entity = null;
+        try {
+            entity = engine.spawnAsteroid(spritePath, spawnX, spawnY, vx, vy, false);
+        } catch (Throwable t) {
+            try {
+                entity = engine.spawnAsteroid(3, spawnX, spawnY, vx, vy);
+            } catch (Throwable t2) {}
+        }
+        if (entity == null) return null;
+
+        if (entity instanceof CombatAsteroidAPI) {
+            try {
+                CombatAsteroidAPI ast = (CombatAsteroidAPI) entity;
+                SpriteAPI s = ast.getSpriteAPI();
+                if (s != null && isValidSprite(s)) {
+                    float maxDim = Math.max(s.getTextureWidth(), s.getTextureHeight());
+                    if (maxDim > 0f) {
+                        float scale = (radius * 2.2f) / maxDim;
+                        s.setSize(s.getTextureWidth() * scale, s.getTextureHeight() * scale);
+                    } else {
+                        s.setSize(radius * 2.2f, radius * 2.2f);
+                    }
+                    s.setColor(new Color(225, 220, 215, 255));
+                }
+            } catch (Throwable t) {}
+        }
+
+        entity.setCollisionRadius(radius);
+        // Mass scales with radius squared: original heavy planetary bedrock inertia!
+        float mass = (radius * radius) * 0.14f + 600f;
+        entity.setMass(mass);
+
+        // Durability: Colossal bedrock fortress (+500% base HP pool)!
+        // Massive planetary bedrock: ~30,000 to ~52,000 HP! Immune to normal asteroid collisions.
+        float baseHp = (9000f + radius * 120f) * 1.5f;
+        entity.setHitpoints(baseHp);
+
+        entity.setFacing(random.nextFloat() * 360f);
+        entity.setAngularVelocity((random.nextFloat() - 0.5f) * 12.0f); // majestic slow tumble
+
+        entity.setCustomData(TRACKED_KEY, Boolean.TRUE);
+        entity.setCustomData(SPAWN_TIME_KEY, Float.valueOf(totalCombatTime));
+        entity.setCustomData(BASE_VX_KEY, Float.valueOf(vx));
+        entity.setCustomData(BASE_VY_KEY, Float.valueOf(vy));
+        entity.setCustomData("DA_IS_MEGALITH", Boolean.TRUE);
+        entity.setCustomData("DA_MEGALITH_SPEED", Float.valueOf((float) Math.sqrt(vx * vx + vy * vy)));
+        entity.setCustomData("DA_ARC_RATE", Float.valueOf((float) Math.toRadians(arcRateDeg)));
+
+        return entity;
+    }
+
+    public void spawnPreSeededMegalith(float halfW, float halfH) {
+        if (engine == null) return;
+
+        float radius = megalithMinRadius + random.nextFloat() * (megalithMaxRadius - megalithMinRadius);
+        float speed = megalithMinSpeed + random.nextFloat() * (megalithMaxSpeed - megalithMinSpeed);
+
+        float spawnX = (random.nextFloat() - 0.5f) * (halfW * 1.8f);
+        float spawnY = (random.nextFloat() - 0.5f) * (halfH * 1.8f);
+
+        float vx = 0f;
+        float vy = 0f;
+
+        switch (avalancheDirection) {
+            case RIGHT_TO_LEFT: vx = -speed; vy = (random.nextFloat() - 0.5f) * 60f; break;
+            case LEFT_TO_RIGHT: vx = speed; vy = (random.nextFloat() - 0.5f) * 60f; break;
+            case BOTTOM_TO_TOP: vx = (random.nextFloat() - 0.5f) * 60f; vy = speed; break;
+            case TOP_TO_BOTTOM:
+            default: vx = (random.nextFloat() - 0.5f) * 60f; vy = -speed; break;
+        }
+
+        float arcRate = 0f;
+        if (megalithArcFlight) {
+            arcRate = (random.nextBoolean() ? 1f : -1f) * (1.2f + random.nextFloat() * 1.6f);
+        }
+
+        spawnMegalithBoulder(spawnX, spawnY, vx, vy, radius, arcRate);
+    }
+
+    public void spawnNaturalMegalith(float focalCX, float focalCY, float halfW, float halfH) {
+        if (engine == null) return;
+
+        float radius = megalithMinRadius + random.nextFloat() * (megalithMaxRadius - megalithMinRadius);
+        float speed = megalithMinSpeed + random.nextFloat() * (megalithMaxSpeed - megalithMinSpeed);
+
+        float off = radius + 250f;
+        float spawnX = 0f;
+        float spawnY = 0f;
+        float vx = 0f;
+        float vy = 0f;
+
+        switch (avalancheDirection) {
+            case RIGHT_TO_LEFT:
+                spawnX = focalCX + halfW + off;
+                spawnY = focalCY + (random.nextFloat() - 0.5f) * (halfH * 1.6f);
+                vx = -speed;
+                vy = (random.nextFloat() - 0.5f) * 60f;
+                break;
+            case LEFT_TO_RIGHT:
+                spawnX = focalCX - halfW - off;
+                spawnY = focalCY + (random.nextFloat() - 0.5f) * (halfH * 1.6f);
+                vx = speed;
+                vy = (random.nextFloat() - 0.5f) * 60f;
+                break;
+            case BOTTOM_TO_TOP:
+                spawnX = focalCX + (random.nextFloat() - 0.5f) * (halfW * 1.6f);
+                spawnY = focalCY - halfH - off;
+                vx = (random.nextFloat() - 0.5f) * 60f;
+                vy = speed;
+                break;
+            case TOP_TO_BOTTOM:
+            default:
+                spawnX = focalCX + (random.nextFloat() - 0.5f) * (halfW * 1.6f);
+                spawnY = focalCY + halfH + off;
+                vx = (random.nextFloat() - 0.5f) * 60f;
+                vy = -speed;
+                break;
+        }
+
+        float arcRate = 0f;
+        if (megalithArcFlight) {
+            // Gentle gravitational arc: 1.2 to 2.8 degrees per second
+            arcRate = (random.nextBoolean() ? 1f : -1f) * (1.2f + random.nextFloat() * 1.6f);
+        }
+
+        spawnMegalithBoulder(spawnX, spawnY, vx, vy, radius, arcRate);
+    }
+
+    public void summonMegalithNearPlayer() {
+        if (engine == null || !engine.isSimulation()) return;
+        ShipAPI playerShip = getPlayerShipSafely();
+        if (playerShip == null || playerShip.getLocation() == null) return;
+
+        float playerFacingRad = (float) Math.toRadians(playerShip.getFacing());
+        float dist = 800f + random.nextFloat() * 250f;
+        float spawnAngle = playerFacingRad + (random.nextFloat() - 0.5f) * 0.4f;
+
+        float spawnX = playerShip.getLocation().x + (float) Math.cos(spawnAngle) * dist;
+        float spawnY = playerShip.getLocation().y + (float) Math.sin(spawnAngle) * dist;
+
+        float moveAngle = spawnAngle + 3.14159f + (random.nextFloat() - 0.5f) * 0.6f;
+        float speed = megalithMinSpeed + random.nextFloat() * (megalithMaxSpeed - megalithMinSpeed);
+        float vx = (float) Math.cos(moveAngle) * speed;
+        float vy = (float) Math.sin(moveAngle) * speed;
+
+        float radius = megalithMinRadius + random.nextFloat() * (megalithMaxRadius - megalithMinRadius);
+        float arcRate = (random.nextBoolean() ? 1f : -1f) * (1.4f + random.nextFloat() * 1.6f);
+
+        CombatEntityAPI megalith = spawnMegalithBoulder(spawnX, spawnY, vx, vy, radius, arcRate);
+        if (megalith != null && engine.getCombatUI() != null) {
+            try {
+                Global.getSoundPlayer().playUISound("ui_radar_detect_vessel", 0.9f, 0.7f);
+            } catch (Throwable t) {}
+            float arcDisplay = ((int)(Math.abs(arcRate) * 10)) / 10.0f;
+            String msg = IS_RUSSIAN ?
+                ("СИМУЛЯТОР: Создан колоссальный мегалит (Радиус: " + (int)radius + " ед, дуга: " + arcDisplay + " град/с)!") :
+                ("SIMULATOR: Spawned colossal megalith (Radius: " + (int)radius + " u, arc: " + arcDisplay + " deg/s)!");
+            engine.getCombatUI().addMessage(1, msg, new Color(240, 180, 80));
+        }
+    }
 
     private void spawnBackgroundAsteroid(float focalCX, float focalCY, float halfW, float halfH) {
 
@@ -3894,6 +4578,113 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
 
 
+
+    // =========================================================================
+    // DYNAMIC ASTEROID DIRECTOR: LIVING CYCLES
+    // =========================================================================
+
+    private void advanceDirector(float amount, float focalCX, float focalCY, float halfW, float halfH) {
+        if (!isInAsteroidField) return;
+
+        directorStateTimer += amount;
+
+        if (directorCycleMode == 1) {
+            currentDirectorState = DirectorState.TORRENT;
+            return;
+        }
+
+        switch (currentDirectorState) {
+            case TORRENT:
+                // Spawner runs at full continuous capacity ("будто не кончается")
+                if (directorStateTimer >= directorStateDuration) {
+                    directorStateTimer = 0f;
+                    float roll = random.nextFloat();
+                    if (roll < 0.45f) {
+                        transitionToDirectorState(DirectorState.FORMATION, focalCX, focalCY, halfW, halfH);
+                    } else if (roll < 0.85f) {
+                        transitionToDirectorState(DirectorState.LULL, focalCX, focalCY, halfW, halfH);
+                    } else {
+                        transitionToDirectorState(DirectorState.BURST, focalCX, focalCY, halfW, halfH);
+                    }
+                }
+                break;
+
+            case BURST:
+                // Fast brisk wave
+                if (directorStateTimer >= directorStateDuration) {
+                    directorStateTimer = 0f;
+                    if (random.nextFloat() < 0.55f) {
+                        transitionToDirectorState(DirectorState.LULL, focalCX, focalCY, halfW, halfH);
+                    } else {
+                        transitionToDirectorState(DirectorState.FORMATION, focalCX, focalCY, halfW, halfH);
+                    }
+                }
+                break;
+
+            case FORMATION:
+                // Geometric formation wave is active
+                if (activeStreams.isEmpty()) {
+                    // Chaining chance ("волна, волна"): 42% chance to immediately spawn a second wave!
+                    if (formationWavesInChain < 1 && random.nextFloat() < 0.42f) {
+                        formationWavesInChain++;
+                        triggerMultiAngleFormationWave(focalCX, focalCY, halfW, halfH);
+                    } else if (directorStateTimer >= 3.5f) {
+                        directorStateTimer = 0f;
+                        if (directorCycleMode == 2) {
+                            transitionToDirectorState(DirectorState.LULL, focalCX, focalCY, halfW, halfH);
+                        } else {
+                            // After wave(s): 60% lull / silence, 40% seamless return to torrent
+                            if (random.nextFloat() < 0.60f) {
+                                transitionToDirectorState(DirectorState.LULL, focalCX, focalCY, halfW, halfH);
+                            } else {
+                                transitionToDirectorState(DirectorState.TORRENT, focalCX, focalCY, halfW, halfH);
+                            }
+                        }
+                    }
+                }
+                break;
+
+            case LULL:
+                // Spawner paused: old rocks clear out, pure silence / calm reigns (only megaliths drift by)
+                if (directorStateTimer >= directorStateDuration) {
+                    directorStateTimer = 0f;
+                    if (directorCycleMode == 2) {
+                        transitionToDirectorState(DirectorState.FORMATION, focalCX, focalCY, halfW, halfH);
+                    } else {
+                        // After lull: 65% long rolling torrent, 35% sudden formation wave
+                        if (random.nextFloat() < 0.65f) {
+                            transitionToDirectorState(DirectorState.TORRENT, focalCX, focalCY, halfW, halfH);
+                        } else {
+                            transitionToDirectorState(DirectorState.FORMATION, focalCX, focalCY, halfW, halfH);
+                        }
+                    }
+                }
+                break;
+        }
+    }
+
+    private void transitionToDirectorState(DirectorState newState, float focalCX, float focalCY, float halfW, float halfH) {
+        currentDirectorState = newState;
+        directorStateTimer = 0f;
+
+        switch (newState) {
+            case TORRENT:
+                directorStateDuration = 26.0f + random.nextFloat() * 16.0f; // 26 - 42 seconds
+                break;
+            case BURST:
+                directorStateDuration = 12.0f + random.nextFloat() * 8.0f;  // 12 - 20 seconds
+                break;
+            case LULL:
+                directorStateDuration = 6.0f + random.nextFloat() * 6.0f;   // 6 - 12 seconds of serene calm
+                break;
+            case FORMATION:
+                directorStateDuration = 4.0f;
+                formationWavesInChain = 0;
+                triggerMultiAngleFormationWave(focalCX, focalCY, halfW, halfH);
+                break;
+        }
+    }
+
     private void triggerMultiAngleFormationWave(float focalCX, float focalCY, float halfW, float halfH) {
 
         // Roll number of concurrent streams/angles:
@@ -3915,24 +4706,6 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
             streamCount = 3; // Triple cross from 3 angles
 
         }
-
-
-
-        // Heavy rock budget for 300-capacity battles:
-
-        // 1 stream  -> 70 rocks (massive continuous torrent / cloud)
-
-        // 2 streams -> 40 rocks each (total 80)
-
-        // 3 streams -> 28 rocks each (total 84)
-
-        float capScale = Math.max(1.0f, battleTargetCount / 300.0f);
-
-        int rocksPerStream = Math.round(70 * capScale);
-
-        if (streamCount == 2) rocksPerStream = Math.round(40 * capScale);
-
-        else if (streamCount == 3) rocksPerStream = Math.round(28 * capScale);
 
 
 
@@ -4016,7 +4789,19 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
         FigureType waveFigureType = allFigures[random.nextInt(allFigures.length)];
 
+        // Heavy rock budget for 300-capacity battles:
+        // 1 stream  -> 90 rocks (massive continuous torrent / cloud)
+        // 2 streams -> 60 rocks each (total 120)
+        // 3 streams -> 45 rocks each (total 135)
+        float capScale = Math.max(1.0f, battleTargetCount / 300.0f);
+        int rocksPerStream = Math.round(90 * capScale);
+        if (streamCount == 2) rocksPerStream = Math.round(60 * capScale);
+        else if (streamCount == 3) rocksPerStream = Math.round(45 * capScale);
 
+        // Boost rock count for split (Dual Rails) or wide spreading (Expanding Fan) formations by +20 rocks
+        if (waveFigureType == FigureType.DUAL_RAILS || waveFigureType == FigureType.EXPANDING_FAN) {
+            rocksPerStream += Math.round(20 * capScale);
+        }
 
         // Query eligible alive ships for 5% targeted snipe roll
 
@@ -4052,7 +4837,13 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
             stream.rocksRemaining = rocksPerStream;
 
-            stream.burstInterval = (waveFigureType == FigureType.COMET_SWARM) ? 0.008f : 0.016f;
+            float bInterval = 0.016f;
+            if (waveFigureType == FigureType.COMET_SWARM) {
+                bInterval = 0.008f;
+            } else if (waveFigureType == FigureType.DUAL_RAILS || waveFigureType == FigureType.EXPANDING_FAN) {
+                bInterval = 0.012f; // Dense rapid salvo for dual pillars and shotgun blast
+            }
+            stream.burstInterval = bInterval;
 
             stream.beamSpread = beamWidth;
 
@@ -4362,13 +5153,16 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
 
 
-        spawnSingleAsteroidEntity(type, spawnX, spawnY, vx, vy, trailType);
+        CombatEntityAPI ast = spawnSingleAsteroidEntity(type, spawnX, spawnY, vx, vy, trailType);
+        if (ast != null) {
+            ast.setCustomData("DA_IS_STREAM", Boolean.TRUE);
+        }
 
     }
 
 
 
-    private void spawnSingleAsteroidEntity(int type, float x, float y, float vx, float vy, int trailType) {
+    private CombatEntityAPI spawnSingleAsteroidEntity(int type, float x, float y, float vx, float vy, int trailType) {
 
         CombatEntityAPI ast = engine.spawnAsteroid(type, x, y, vx, vy);
 
@@ -4414,6 +5208,8 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
         }
 
+        return ast;
+
     }
 
 
@@ -4437,6 +5233,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
 
     private void showInitialNotification(ShipAPI player) {
+        if (engine == null || !engine.isSimulation()) return;
 
         try {
 
@@ -4460,32 +5257,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
                 );
 
-                if (engine.getCombatUI() != null) {
-
-                    engine.getCombatUI().addMessage(1, (IS_RUSSIAN ? "ОПАСНОСТЬ: Астероидный пояс (" : "HAZARD: Asteroid Belt active (") + battleTargetCount + (IS_RUSSIAN ? " макс). Поток: " : " max). Baseline flow: ") + getAvalancheDirectionLabel());
-
-                    if (!engine.isSimulation()) {
-
-                        String presetMsg = IS_RUSSIAN ?
-
-                            ("Dynamic Asteroids: Профиль [" + getPresetName() + "] (Скорость: " + (int)streamSpeed + " ед/с, " + minFieldRocks + " - " + maxFieldRocks + " камней, таран x" + asteroidCollisionDamageMult + ")") :
-
-                            ("Dynamic Asteroids: Profile [" + getPresetName() + "] (Speed: " + (int)streamSpeed + " u/s, " + minFieldRocks + " - " + maxFieldRocks + " rocks, ram x" + asteroidCollisionDamageMult + ")");
-
-                        engine.getCombatUI().addMessage(1, presetMsg, Color.CYAN);
-
-                    }
-
-                }
-
-            } else {
-
-                if (engine.getCombatUI() != null) {
-
-                    engine.getCombatUI().addMessage(1, IS_RUSSIAN ? "Dynamic Asteroids: Открытый космос - редкие метеоры" : "Dynamic Asteroids: Deep space - sporadic stray meteors");
-
-                }
-
+                // Silenced: only floating text is shown above ship, matching normal campaign behavior
             }
 
         } catch (Throwable t) {
@@ -4497,19 +5269,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
 
     private void notifyWaveIncoming(String text) {
-
-        try {
-
-            if (engine.getCombatUI() != null && !isTitleScreen) {
-
-                engine.getCombatUI().addMessage(1, text, new Color(255, 175, 50));
-
-            }
-
-        } catch (Throwable t) {
-
-        }
-
+        // Silenced: no extra clutter messages during combat
     }
 
 
@@ -4566,157 +5326,47 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
             boolean isPlayer = (engine != null && ship == engine.getPlayerShip());
 
-            boolean isSim = (engine != null && engine.isSimulation());
-
 
 
             if (isPlayer) {
 
-                if (isSim) {
+                engine.addFloatingText(
 
-                    engine.addFloatingText(
+                    ship.getLocation(),
 
-                        ship.getLocation(),
+                    IS_RUSSIAN ? "ОПАСНОСТЬ: МЕТЕОРИТНЫЙ ШКВАЛ ПО КУРСУ!" : "COLLISION ALERT: METEOR BARRAGE ON COURSE!",
 
-                        IS_RUSSIAN ? "[СИМУЛЯЦИЯ] ВЕКТОРНЫЙ ШКВАЛ ПО ФЛАГМАНУ!" : "[SIMULATION] VECTOR BARRAGE ON FLAGSHIP!",
+                    26f,
 
-                        24f,
+                    new Color(255, 40, 40),
 
-                        new Color(255, 60, 60),
+                    ship,
 
-                        ship,
+                    0.35f,
 
-                        0.35f,
+                    4.0f
 
-                        3.5f
-
-                    );
-
-                    if (engine.getCombatUI() != null) {
-
-                        engine.getCombatUI().addMessage(1, IS_RUSSIAN ?
-
-                            "[СИМУЛЯЦИЯ] Проверка прочности: по курсу флагмана симулирован встречный шквал астероидов!" :
-
-                            "[SIMULATION] Stress Test: Simulated meteor barrage spawned along flagship course!",
-
-                            new Color(255, 70, 70)
-
-                        );
-
-                    }
-
-                } else {
-
-                    engine.addFloatingText(
-
-                        ship.getLocation(),
-
-                        IS_RUSSIAN ? "ОПАСНОСТЬ: МЕТЕОРИТНЫЙ ШКВАЛ ПО КУРСУ!" : "COLLISION ALERT: METEOR BARRAGE ON COURSE!",
-
-                        26f,
-
-                        new Color(255, 40, 40),
-
-                        ship,
-
-                        0.35f,
-
-                        4.0f
-
-                    );
-
-                    if (engine.getCombatUI() != null) {
-
-                        engine.getCombatUI().addMessage(1, IS_RUSSIAN ?
-
-                            "ОПАСНОСТЬ СТОЛКНОВЕНИЯ: Прямо по курсу флагмана зафиксирован плотный град астероидов!" :
-
-                            "COLLISION WARNING: Dense swarm of high-speed asteroids detected along flagship course!",
-
-                            new Color(255, 50, 50)
-
-                        );
-
-                    }
-
-                }
+                );
 
             } else {
 
-                String shipName = ship.getName();
+                engine.addFloatingText(
 
-                String hullName = (ship.getHullSpec() != null) ? ship.getHullSpec().getHullName() : (IS_RUSSIAN ? "Корабль" : "Ship");
+                    ship.getLocation(),
 
-                if (isSim) {
+                    IS_RUSSIAN ? "ОПАСНОЕ СБЛИЖЕНИЕ: ГРАД АСТЕРОИДОВ!" : "HAZARD: METEOR STREAM ON COURSE!",
 
-                    engine.addFloatingText(
+                    20f,
 
-                        ship.getLocation(),
+                    new Color(255, 90, 50),
 
-                        IS_RUSSIAN ? "[СИМУЛЯЦИЯ] ВЕКТОРНЫЙ ПОТОК ПО КОРАБЛЮ" : "[SIMULATION] VECTOR STREAM ON SHIP",
+                    ship,
 
-                        20f,
+                    0.35f,
 
-                        new Color(255, 100, 50),
+                    3.0f
 
-                        ship,
-
-                        0.35f,
-
-                        3.0f
-
-                    );
-
-                    if (engine.getCombatUI() != null) {
-
-                        engine.getCombatUI().addMessage(1, (IS_RUSSIAN ?
-
-                            ("[СИМУЛЯЦИЯ] Симулирован встречный поток астероидов по курсу " + shipName + " (" + hullName + ")") :
-
-                            ("[SIMULATION] Simulated meteor stream along " + shipName + " (" + hullName + ") course")),
-
-                            new Color(255, 120, 50)
-
-                        );
-
-                    }
-
-                } else {
-
-                    engine.addFloatingText(
-
-                        ship.getLocation(),
-
-                        IS_RUSSIAN ? "ОПАСНОЕ СБЛИЖЕНИЕ: ГРАД АСТЕРОИДОВ!" : "HAZARD: METEOR STREAM ON COURSE!",
-
-                        20f,
-
-                        new Color(255, 90, 50),
-
-                        ship,
-
-                        0.35f,
-
-                        3.0f
-
-                    );
-
-                    if (engine.getCombatUI() != null) {
-
-                        engine.getCombatUI().addMessage(1, (IS_RUSSIAN ?
-
-                            ("ВНИМАНИЕ: По курсу корабля " + shipName + " (" + hullName + ") движется встречный град астероидов!") :
-
-                            ("WARNING: High-density meteor stream heading towards " + shipName + " (" + hullName + ")!")),
-
-                            new Color(255, 110, 50)
-
-                        );
-
-                    }
-
-                }
+                );
 
             }
 
@@ -5972,11 +6622,51 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
             if (target instanceof ShipAPI && paramObject instanceof CombatEntityAPI) {
 
+                ShipAPI targetShip = (ShipAPI) target;
                 CombatEntityAPI source = (CombatEntityAPI) paramObject;
 
                 if (source.getCollisionClass() == CollisionClass.ASTEROID || source.getCustomData().containsKey(TRACKED_KEY)) {
 
+                    if (source.getCustomData().containsKey("DA_IS_MEGALITH")) {
+                        // Ship collided with megalith: untether from scripted rails so the player can push it!
+                        source.getCustomData().put("DA_NO_MAINTAIN_VELOCITY", Boolean.TRUE);
+                    }
+
                     if (!source.getCustomData().containsKey("IS_EASTER_EGG")) {
+
+                        // Deployment Safety & Grace Period:
+                        // Protect ships from unfair collision damage at the start of battle (first 7 seconds)
+                        // and within fleet deployment/reinforcement staging bands near map borders!
+                        if (instance != null && instance.enableDeploymentSafety) {
+                            float mapHalfH = (instance.engine != null) ? instance.engine.getMapHeight() * 0.5f : 10000f;
+                            boolean inDeploymentZone = targetShip.getLocation() != null && Math.abs(targetShip.getLocation().y) > mapHalfH * 0.70f;
+                            if (instance.totalCombatTime < instance.deploymentSafetyDuration || inDeploymentZone) {
+                                damage.getModifier().modifyMult("da_deployment_safety", 0.0f);
+                                if (instance.engine != null && point != null) {
+                                    instance.engine.addHitParticle(point, new Vector2f(0f, 0f), 70f, 0.6f, 0.4f, new Color(100, 220, 255, 200));
+                                }
+                                return "da_deployment_safety";
+                            }
+                        }
+
+                        // Anti-Cheese: Station protection from asteroid collisions
+                        boolean isStation = targetShip.isStation() || targetShip.isStationModule() || targetShip.getParentStation() != null;
+                        if (isStation && instance != null && instance.enableStationAsteroidProtection) {
+                            if (instance.isStationDomeOffline(targetShip)) {
+                                // Overloaded section: dome collapsed, take substantial asteroid collision damage!
+                                damage.getModifier().modifyMult("da_station_asteroid_defense", 0.65f);
+                                return "da_station_asteroid_defense";
+                            }
+                            damage.getModifier().modifyMult("da_station_asteroid_defense", instance.stationAsteroidDamageMult);
+                            if (source.getCustomData().containsKey("DA_IS_MEGALITH")) {
+                                source.setHitpoints(0f);
+                                if (instance.engine != null && point != null) {
+                                    instance.engine.addSmoothParticle(point, new Vector2f(0f, 0f), 220f, 1.2f, 1.6f, new Color(240, 200, 140, 240));
+                                    instance.engine.addHitParticle(point, new Vector2f(0f, 0f), 160f, 0.8f, 0.6f, new Color(255, 230, 180, 255));
+                                }
+                            }
+                            return "da_station_asteroid_defense";
+                        }
 
                         float mult = getAsteroidCollisionDamageMult();
 
@@ -6015,6 +6705,22 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
             }
 
 
+
+            // 1.5. Megalith Asteroid Immunity & Interactive Physical Untethering
+            if (target.getCustomData().containsKey("DA_IS_MEGALITH")) {
+                if (paramObject instanceof CombatEntityAPI) {
+                    CombatEntityAPI source = (CombatEntityAPI) paramObject;
+                    if (source.getCollisionClass() == CollisionClass.ASTEROID || source.getCustomData().containsKey(TRACKED_KEY)) {
+                        damage.getModifier().modifyMult("da_megalith_asteroid_immunity", 0.0f);
+                        return "da_megalith_asteroid_immunity";
+                    }
+                }
+                // Untether megalith from scripted velocity when pushed or shot by ships/weapons!
+                if (paramObject instanceof ShipAPI || paramObject instanceof DamagingProjectileAPI || 
+                    paramObject instanceof BeamAPI || paramObject instanceof MissileAPI) {
+                    target.getCustomData().put("DA_NO_MAINTAIN_VELOCITY", Boolean.TRUE);
+                }
+            }
 
             // 2. Arrival protection and interaction triggers for Easter Eggs & Derelicts
 
@@ -6116,7 +6822,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
             if (target.getCollisionClass() == CollisionClass.ASTEROID || target.getCustomData().containsKey(TRACKED_KEY)) {
 
-                if (!target.getCustomData().containsKey("IS_EASTER_EGG") && isPDSource(paramObject)) {
+                if (!target.getCustomData().containsKey("IS_EASTER_EGG") && !target.getCustomData().containsKey("DA_IS_MEGALITH") && isPDSource(paramObject)) {
 
                     float mult = getPDAsteroidDamageMult();
 
@@ -7426,17 +8132,62 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
 
 
-        // No soft boundary reflection / blocking: if they drift beyond the map edge,
+        float focalCX = 0f;
+        float focalCY = 0f;
+        if (isTitleScreen) {
+            ViewportAPI vp = engine.getViewport();
+            if (vp != null && vp.getCenter() != null) {
+                focalCX = vp.getCenter().x;
+                focalCY = vp.getCenter().y;
+            }
+            float vw = (vp != null) ? vp.getVisibleWidth() : 2500f;
+            float vh = (vp != null) ? vp.getVisibleHeight() : 1500f;
+            halfW = vw * 0.5f;
+            halfH = vh * 0.5f;
+        }
 
-        // it is the player's fault for losing them.
+        boolean outside = (loc.x < focalCX - halfW ||
+                           loc.x > focalCX + halfW ||
+                           loc.y < focalCY - halfH ||
+                           loc.y > focalCY + halfH);
 
-        // Deep space loss: if an easter egg drifts far beyond the sector boundaries (4000+ units), it is lost forever.
+        boolean hasEntered = entity.getCustomData().containsKey("DA_ENTERED_MAP");
+        boolean shouldDespawn = false;
 
-        float maxBoundaryX = halfW + 4000f;
+        if (!hasEntered) {
+            if (!outside) {
+                entity.getCustomData().put("DA_ENTERED_MAP", Boolean.TRUE);
+                entity.getCustomData().remove("DA_OUT_OF_BOUNDS_TIMER");
+            } else {
+                Vector2f vel = entity.getVelocity();
+                float dx = focalCX - loc.x;
+                float dy = focalCY - loc.y;
+                float dot = (vel != null) ? (vel.x * dx + vel.y * dy) : 0f;
+                if (dot <= 0f) {
+                    Object timerObj = entity.getCustomData().get("DA_OUT_OF_BOUNDS_TIMER");
+                    float timer = (timerObj instanceof Float) ? ((Float) timerObj).floatValue() + amount : amount;
+                    entity.getCustomData().put("DA_OUT_OF_BOUNDS_TIMER", timer);
+                    if (timer >= 5.0f) {
+                        shouldDespawn = true;
+                    }
+                } else {
+                    entity.getCustomData().remove("DA_OUT_OF_BOUNDS_TIMER");
+                }
+            }
+        } else {
+            if (outside) {
+                Object timerObj = entity.getCustomData().get("DA_OUT_OF_BOUNDS_TIMER");
+                float timer = (timerObj instanceof Float) ? ((Float) timerObj).floatValue() + amount : amount;
+                entity.getCustomData().put("DA_OUT_OF_BOUNDS_TIMER", timer);
+                if (timer >= 5.0f) {
+                    shouldDespawn = true;
+                }
+            } else {
+                entity.getCustomData().remove("DA_OUT_OF_BOUNDS_TIMER");
+            }
+        }
 
-        float maxBoundaryY = halfH + 4000f;
-
-        if (Math.abs(loc.x) > maxBoundaryX || Math.abs(loc.y) > maxBoundaryY) {
+        if (shouldDespawn) {
 
             Boolean wasRescued = (Boolean) entity.getCustomData().get("DERELICT_RESCUED");
 
@@ -8460,6 +9211,39 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
             radius = 38f; mass = 160f; hp = 1800f; spin = 10f;
 
+        } else if ("DEBRIS_LRG".equals(specificType)) {
+
+            String[] lrg = new String[] { "graphics/debris/debris_lrg0.png", "graphics/debris/debris_lrg1.png" };
+            spritePath = lrg[random.nextInt(lrg.length)];
+            eggType = "DEBRIS";
+            radius = 48f; mass = 220f; hp = 1800f; spin = 12f;
+
+        } else if ("DEBRIS_MED".equals(specificType)) {
+
+            String[] med = new String[] { "graphics/debris/debris_med0.png", "graphics/debris/debris_med1.png", "graphics/debris/debris_med2.png" };
+            spritePath = med[random.nextInt(med.length)];
+            eggType = "DEBRIS";
+            radius = 32f; mass = 120f; hp = 1200f; spin = 16f;
+
+        } else if ("DEBRIS_SML".equals(specificType)) {
+
+            String[] sml = new String[] { "graphics/debris/debris_sml0.png", "graphics/debris/debris_sml1.png", "graphics/debris/debris_sml2.png", "graphics/debris/debris_sml3.png" };
+            spritePath = sml[random.nextInt(sml.length)];
+            eggType = "DEBRIS";
+            radius = 20f; mass = 50f; hp = 600f; spin = 22f;
+
+        } else if ("MOTHERSHIP_POD".equals(specificType)) {
+
+            String[] pods = new String[] {
+                "graphics/ships/derelict/derelict_mothership_pod_m_left.png",
+                "graphics/ships/derelict/derelict_mothership_pod_m_right.png",
+                "graphics/ships/derelict/derelict_mothership_pod_s_right.png",
+                "graphics/ships/derelict/derelict_mothership_bow_module.png"
+            };
+            spritePath = pods[random.nextInt(pods.length)];
+            eggType = "DEBRIS";
+            radius = 52f; mass = 260f; hp = 2400f; spin = 10f;
+
         } else if ("MOTHERSHIP_ENGINE".equals(specificType) || "DEBRIS".equals(specificType)) {
 
             spritePath = "graphics/ships/derelict/derelict_mothership_pod_engine_left.png";
@@ -8718,38 +9502,9 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
                     } catch (Throwable t) {}
 
-                    if (engine.getCombatUI() != null && !isTitleScreen) {
-
-                        String alert = IS_RUSSIAN ?
-
-                            ("СЕНСОРЫ: В потоке астероидов замечен дрейфующий истребитель (" + (fighterWingName != null ? fighterWingName : "Крыло") + ")!") :
-
-                            ("SENSORS: Drifting fighter detected in asteroid stream (" + (fighterWingName != null ? fighterWingName : "Wing") + ")!");
-
-                        engine.getCombatUI().addMessage(1, alert, new Color(100, 240, 255));
-
-                    }
-
+                    // Silenced: only derelict ships show sensor alerts
                 } else if ("EXPLOSIVE_TANK".equals(eggType)) {
-
-                    try {
-
-                        Global.getSoundPlayer().playUISound("ui_radar_detect_vessel", 1.2f, 0.7f);
-
-                    } catch (Throwable t) {}
-
-                    if (engine.getCombatUI() != null && !isTitleScreen) {
-
-                        String alert = IS_RUSSIAN ?
-
-                            "СЕНСОРЫ: Внимание! В потоке обнаружен взрывоопасный бак с горючим!" :
-
-                            "SENSORS: Warning! Explosive fuel canister detected in the asteroid stream!";
-
-                        engine.getCombatUI().addMessage(1, alert, new Color(255, 140, 40));
-
-                    }
-
+                    // Silenced
                 }
 
                 return entity;
@@ -8764,6 +9519,184 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
 
 
+
+    // =========================================================================
+    // PLAYER ASTEROID KILL REWARD SYSTEM (Easter Egg & Fighter Drops)
+    // =========================================================================
+
+    private void checkPlayerDestroyedAsteroids() {
+        if (engine == null || isTitleScreen) return;
+        ShipAPI playerShip = getPlayerShipSafely();
+        if (playerShip == null || !playerShip.isAlive()) return;
+
+        // 1. Projectiles (Ballistic, Energy, Plasma, Flak, etc.)
+        List<DamagingProjectileAPI> projs = engine.getProjectiles();
+        if (projs != null && !projs.isEmpty()) {
+            for (int i = 0; i < projs.size(); i++) {
+                DamagingProjectileAPI proj = projs.get(i);
+                if (proj == null) continue;
+                if (!proj.didDamage()) continue;
+                if (proj.getCustomData().containsKey("DA_HIT_PROCESSED")) continue;
+                proj.getCustomData().put("DA_HIT_PROCESSED", Boolean.TRUE);
+
+                ShipAPI sourceShip = extractShipFromSource(proj);
+                if (!isPlayerOrPlayerFighter(sourceShip, playerShip)) continue;
+
+                CombatEntityAPI target = proj.getDamageTarget();
+                if (isValidAsteroidTarget(target)) {
+                    target.getCustomData().put("DA_LAST_PLAYER_HIT_TIME", totalCombatTime);
+                    if (target.getHitpoints() <= 0f || target.isExpired()) {
+                        processPlayerAsteroidKill(target, playerShip);
+                    }
+                }
+            }
+        }
+
+        // 2. Missiles & Torpedoes
+        List<MissileAPI> missiles = engine.getMissiles();
+        if (missiles != null && !missiles.isEmpty()) {
+            for (int i = 0; i < missiles.size(); i++) {
+                MissileAPI m = missiles.get(i);
+                if (m == null) continue;
+                if (!m.didDamage()) continue;
+                if (m.getCustomData().containsKey("DA_HIT_PROCESSED")) continue;
+                m.getCustomData().put("DA_HIT_PROCESSED", Boolean.TRUE);
+
+                ShipAPI sourceShip = extractShipFromSource(m);
+                if (!isPlayerOrPlayerFighter(sourceShip, playerShip)) continue;
+
+                CombatEntityAPI target = m.getDamageTarget();
+                if (isValidAsteroidTarget(target)) {
+                    target.getCustomData().put("DA_LAST_PLAYER_HIT_TIME", totalCombatTime);
+                    if (target.getHitpoints() <= 0f || target.isExpired()) {
+                        processPlayerAsteroidKill(target, playerShip);
+                    }
+                }
+            }
+        }
+
+        // 3. Continuous Beams (Mining Lasers, Phase Lances, Tachyon Lances, etc.)
+        List<BeamAPI> beams = engine.getBeams();
+        if (beams != null && !beams.isEmpty()) {
+            for (int i = 0; i < beams.size(); i++) {
+                BeamAPI beam = beams.get(i);
+                if (beam == null) continue;
+                if (!beam.didDamageThisFrame()) continue;
+
+                ShipAPI sourceShip = beam.getSource();
+                if (!isPlayerOrPlayerFighter(sourceShip, playerShip)) continue;
+
+                CombatEntityAPI target = beam.getDamageTarget();
+                if (isValidAsteroidTarget(target)) {
+                    target.getCustomData().put("DA_LAST_PLAYER_HIT_TIME", totalCombatTime);
+                    if (target.getHitpoints() <= 0f || target.isExpired()) {
+                        processPlayerAsteroidKill(target, playerShip);
+                    }
+                }
+            }
+        }
+    }
+
+    private boolean isPlayerOrPlayerFighter(ShipAPI ship, ShipAPI playerShip) {
+        if (ship == null || playerShip == null) return false;
+        if (ship == playerShip) return true;
+        if (ship.isFighter() && ship.getWing() != null && ship.getWing().getSourceShip() == playerShip) {
+            return true;
+        }
+        return false;
+    }
+
+    private boolean isValidAsteroidTarget(CombatEntityAPI target) {
+        if (target == null) return false;
+        if (target.getCustomData().containsKey("IS_EASTER_EGG")) return false;
+        if (target.getCollisionClass() == CollisionClass.ASTEROID || target instanceof CombatAsteroidAPI || target.getCustomData().containsKey(TRACKED_KEY)) {
+            return true;
+        }
+        return false;
+    }
+
+    private void processPlayerAsteroidKill(CombatEntityAPI target, ShipAPI playerShip) {
+        if (target == null) return;
+        if (target.getCustomData().containsKey("DA_KILL_LOOT_PROCESSED")) return;
+        target.getCustomData().put("DA_KILL_LOOT_PROCESSED", Boolean.TRUE);
+
+        Vector2f loc = target.getLocation();
+        if (loc == null) return;
+
+        Vector2f vel = target.getVelocity();
+        float vx = vel != null ? vel.x * 0.7f : 0f;
+        float vy = vel != null ? vel.y * 0.7f : 0f;
+
+        boolean isMegalith = target.getCustomData().containsKey("DA_IS_MEGALITH");
+        float derelictChance = isMegalith ? megalithDerelictDropChance : 0f;
+        float fighterChance = isMegalith ? 0.015f : playerKillFighterDropChance;
+        float resourceChance = isMegalith ? 0.200f : playerKillResourceDropChance;
+
+        // 1. Derelict ship drop (Megalith exclusive! Independent roll)
+        boolean derelictAlreadyInPlay = (activeDerelictEntity != null && !activeDerelictEntity.isExpired() && engine.isEntityInPlay(activeDerelictEntity));
+        if (isMegalith && !derelictAlreadyInPlay && derelictChance > 0f) {
+            float rollDerelict = random.nextFloat();
+            if (rollDerelict < derelictChance) {
+                CombatEntityAPI derelict = spawnDerelictAtLocation(loc.x, loc.y, vx, vy);
+                if (derelict != null) {
+                    String dName = (String) derelict.getCustomData().get("DERELICT_NAME");
+                    if (dName == null) dName = IS_RUSSIAN ? "Заброшенный корабль" : "Derelict Vessel";
+                    try {
+                        Global.getSoundPlayer().playUISound("ui_rep_raise", 1.0f, 1.0f);
+                    } catch (Throwable t) {}
+                    String alert = IS_RUSSIAN ?
+                        ("ИЗ НЕДР МЕГАЛИТА: В обломках найден замурованный остов (" + dName + ")! Защитите его для эвакуации!") :
+                        ("FROM MEGALITH INTERIOR: Entombing rock shattered, revealing derelict vessel (" + dName + ")! Protect it for salvage!");
+                    if (engine.getCombatUI() != null && !isTitleScreen) {
+                        engine.getCombatUI().addMessage(1, alert, new Color(255, 215, 60));
+                    }
+                    engine.addFloatingText(loc, IS_RUSSIAN ? ("ОСТОВ: " + dName) : ("DERELICT: " + dName), 24f, new Color(255, 215, 60), derelict, 0.4f, 4.0f);
+                    engine.addSmoothParticle(loc, new Vector2f(vx, vy), 350f, 1.2f, 2.0f, new Color(255, 220, 100, 255));
+                }
+            }
+        }
+
+        // 2. Fighter LPC drop (Independent roll)
+        float rollFighter = random.nextFloat();
+        if (rollFighter < fighterChance) {
+            CombatEntityAPI egg = spawnOtherEasterEggAtLocation(loc.x + (random.nextFloat() - 0.5f) * 60f, loc.y + (random.nextFloat() - 0.5f) * 60f, vx, vy, "FIGHTER");
+            if (egg != null) {
+                String fName = (String) egg.getCustomData().get("FIGHTER_WING_NAME");
+                if (fName == null) fName = IS_RUSSIAN ? "Истребитель" : "Fighter";
+                String alert = IS_RUSSIAN ?
+                    ("ИЗ ОБЛОМКОВ АСТЕРОИДА: Найден дрейфующий истребитель (" + fName + ")!") :
+                    ("FROM ASTEROID DEBRIS: Drifting fighter discovered (" + fName + ")!");
+                if (engine.getCombatUI() != null && !isTitleScreen) {
+                    engine.getCombatUI().addMessage(1, alert, new Color(100, 240, 255));
+                }
+                engine.addFloatingText(egg.getLocation(), IS_RUSSIAN ? ("ИСТРЕБИТЕЛЬ: " + fName) : ("FIGHTER: " + fName), 22f, new Color(100, 240, 255), egg, 0.3f, 3.5f);
+            }
+        }
+
+        // 3. Resource Easter Egg (Independent roll)
+        float rollResource = random.nextFloat();
+        if (rollResource < resourceChance) {
+            String[] resPool = new String[] { "CACHE", "PROBE", "CRYO_POD", "NAV_BUOY" };
+            String specificType = resPool[random.nextInt(resPool.length)];
+            CombatEntityAPI egg = spawnOtherEasterEggAtLocation(loc.x + (random.nextFloat() - 0.5f) * 60f, loc.y + (random.nextFloat() - 0.5f) * 60f, vx, vy, specificType);
+            if (egg != null) {
+                String nameRu = "Тайник Домена";
+                String nameEn = "Domain Cache";
+                if ("PROBE".equals(specificType)) { nameRu = "Зонд Домена"; nameEn = "Survey Probe"; }
+                else if ("CRYO_POD".equals(specificType)) { nameRu = "Криокапсула"; nameEn = "Cryo Pod"; }
+                else if ("NAV_BUOY".equals(specificType)) { nameRu = "Навигационный буй"; nameEn = "Nav Buoy"; }
+
+                String alert = IS_RUSSIAN ?
+                    ("ИЗ ОБЛОМКОВ АСТЕРОИДА: Выбит ценный контейнер (" + nameRu + ")!") :
+                    ("FROM ASTEROID DEBRIS: Valuable salvage container dropped (" + nameEn + ")!");
+                if (engine.getCombatUI() != null && !isTitleScreen) {
+                    engine.getCombatUI().addMessage(1, alert, new Color(255, 215, 60));
+                }
+                engine.addFloatingText(egg.getLocation(), IS_RUSSIAN ? ("НАХОДКА: " + nameRu) : ("SALVAGE: " + nameEn), 22f, new Color(255, 215, 60), egg, 0.3f, 3.0f);
+            }
+        }
+    }
+
     private void spawnOtherEasterEgg(float spawnX, float spawnY, float vx, float vy, boolean isResource) {
 
         String specificType = null;
@@ -8776,7 +9709,10 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
         } else {
 
-            String[] debrisPool = new String[] { "MOTHERSHIP_ENGINE", "DEBRIS", "EXPLOSIVE_TANK" };
+            String[] debrisPool = new String[] {
+                "DEBRIS_LRG", "DEBRIS_MED", "DEBRIS_SML",
+                "MOTHERSHIP_POD", "MOTHERSHIP_ENGINE", "DEBRIS", "EXPLOSIVE_TANK"
+            };
 
             specificType = debrisPool[random.nextInt(debrisPool.length)];
 
@@ -8824,8 +9760,268 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
 
 
-    @Override
+    // =========================================================================
+    // STATION DEFLECTION DOME: LAMINAR FLOW & VISUAL DEFLECTOR BARRIER
+    // =========================================================================
 
+    private void updateStationDomes(float amount) {
+        if (!enableStationDeflectionDome || engine == null) {
+            activeStationDomes.clear();
+            return;
+        }
+
+        stationDomeScanTimer += amount;
+        if (stationDomeScanTimer < 0.35f && !activeStationDomes.isEmpty()) {
+            for (int i = 0; i < activeStationDomes.size(); i++) {
+                StationDomeData d = activeStationDomes.get(i);
+                if (d.stationCore != null && d.stationCore.getLocation() != null) {
+                    d.center.set(d.stationCore.getLocation());
+                }
+            }
+            return;
+        }
+        stationDomeScanTimer = 0f;
+        activeStationDomes.clear();
+
+        List<ShipAPI> ships = engine.getShips();
+        if (ships == null) return;
+        for (int i = 0; i < ships.size(); i++) {
+            ShipAPI ship = ships.get(i);
+            if (ship == null || !ship.isAlive()) continue;
+
+            if (ship.isStation() && ship.getParentStation() == null) {
+                StationDomeData dome = new StationDomeData();
+                dome.stationCore = ship;
+                dome.center.set(ship.getLocation());
+
+                float maxModuleDist = ship.getCollisionRadius();
+                List<ShipAPI> childModules = ship.getChildModulesCopy();
+                if (childModules != null) {
+                    for (int m = 0; m < childModules.size(); m++) {
+                        ShipAPI mod = childModules.get(m);
+                        if (mod == null || mod.getLocation() == null) continue;
+                        float dist = (float) Math.hypot(mod.getLocation().x - ship.getLocation().x, mod.getLocation().y - ship.getLocation().y);
+                        float totalR = dist + mod.getCollisionRadius();
+                        if (totalR > maxModuleDist) maxModuleDist = totalR;
+                    }
+                }
+                dome.domeRadius = maxModuleDist + stationDomeMargin;
+                activeStationDomes.add(dome);
+            }
+        }
+
+        // Section Overload Detection & Emergency Circuit Breaker
+        for (int i = 0; i < activeStationDomes.size(); i++) {
+            StationDomeData dome = activeStationDomes.get(i);
+            if (dome.stationCore == null || !dome.stationCore.isAlive()) continue;
+
+            boolean hasSectionFailure = false;
+            ShipAPI failedSection = null;
+
+            if (dome.stationCore.getFluxTracker() != null && 
+                (dome.stationCore.getFluxTracker().isOverloaded() || dome.stationCore.getFluxTracker().isVenting())) {
+                hasSectionFailure = true;
+                failedSection = dome.stationCore;
+            } else {
+                List<ShipAPI> childModules = dome.stationCore.getChildModulesCopy();
+                if (childModules != null) {
+                    for (int m = 0; m < childModules.size(); m++) {
+                        ShipAPI mod = childModules.get(m);
+                        if (mod == null) continue;
+                        if (!mod.isAlive()) {
+                            hasSectionFailure = true;
+                            failedSection = mod;
+                            break;
+                        }
+                        if (mod.getFluxTracker() != null && 
+                            (mod.getFluxTracker().isOverloaded() || mod.getFluxTracker().isVenting())) {
+                            hasSectionFailure = true;
+                            failedSection = mod;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (hasSectionFailure) {
+                if (!dome.wasOffline) {
+                    dome.wasOffline = true;
+                    dome.isOffline = true;
+                    if (engine != null && failedSection != null && failedSection.getLocation() != null) {
+                        Vector2f fLoc = failedSection.getLocation();
+                        engine.addHitParticle(fLoc, new Vector2f(0f, 0f), 280f, 1.2f, 1.8f, new Color(120, 220, 255, 240));
+                        engine.addNegativeParticle(fLoc, new Vector2f(0f, 0f), 220f, 0.8f, 1.5f, new Color(80, 160, 255, 200));
+                        engine.addFloatingText(fLoc, IS_RUSSIAN ? "СБОЙ СЕКЦИИ: КУПОЛ ОТКЛЮЧЕН!" : "SECTION FAILURE: DEFLECTION DOME OFFLINE!", 24f, new Color(255, 120, 60), failedSection, 0.4f, 3.5f);
+                        try {
+                            Global.getSoundPlayer().playUISound("ui_rep_drop", 1.0f, 0.9f);
+                        } catch (Throwable t) {}
+                    }
+                }
+                dome.isOffline = true;
+                if (engine != null && random.nextFloat() < 0.12f) {
+                    float randAngle = random.nextFloat() * 6.283f;
+                    Vector2f sparkLoc = new Vector2f(dome.center.x + (float) Math.cos(randAngle) * dome.domeRadius, dome.center.y + (float) Math.sin(randAngle) * dome.domeRadius);
+                    engine.addHitParticle(sparkLoc, new Vector2f(0f, 0f), 45f, 0.5f, 0.25f, new Color(255, 140, 60, 200));
+                }
+            } else {
+                if (dome.wasOffline) {
+                    dome.wasOffline = false;
+                    dome.isOffline = false;
+                    if (engine != null) {
+                        engine.addSmoothParticle(dome.center, new Vector2f(0f, 0f), dome.domeRadius * 1.5f, 1.2f, 2.0f, new Color(80, 200, 255, 180));
+                        engine.addFloatingText(dome.center, IS_RUSSIAN ? "СИСТЕМЫ ВОССТАНОВЛЕНЫ: КУПОЛ АКТИВЕН" : "SYSTEMS RESTORED: DOME ONLINE", 24f, new Color(80, 230, 255), dome.stationCore, 0.4f, 3.0f);
+                        try {
+                            Global.getSoundPlayer().playUISound("ui_rep_raise", 1.0f, 1.0f);
+                        } catch (Throwable t) {}
+                    }
+                }
+                dome.isOffline = false;
+            }
+        }
+    }
+
+    public boolean isStationDomeOffline(ShipAPI ship) {
+        if (ship == null || activeStationDomes == null) return false;
+        ShipAPI core = (ship.isStation() && ship.getParentStation() == null) ? ship : ship.getParentStation();
+        if (core == null) return false;
+        for (int i = 0; i < activeStationDomes.size(); i++) {
+            StationDomeData d = activeStationDomes.get(i);
+            if (d.stationCore == core) {
+                return d.isOffline;
+            }
+        }
+        return false;
+    }
+
+    private void applyStationDeflectionToAsteroid(CombatEntityAPI ast, float amount) {
+        if (!enableStationDeflectionDome || activeStationDomes == null || activeStationDomes.isEmpty()) return;
+        Vector2f aLoc = ast.getLocation();
+        Vector2f aVel = ast.getVelocity();
+        if (aLoc == null || aVel == null) return;
+
+        float aSpeed = aVel.length();
+        if (aSpeed < 1.0f) return;
+
+        float astRadius = ast.getCollisionRadius();
+
+        for (int i = 0; i < activeStationDomes.size(); i++) {
+            StationDomeData dome = activeStationDomes.get(i);
+            if (dome.isOffline) continue; // Section failure: dome offline, asteroids penetrate!
+            float dx = aLoc.x - dome.center.x;
+            float dy = aLoc.y - dome.center.y;
+            float distSq = dx * dx + dy * dy;
+
+            float influenceDist = dome.domeRadius + astRadius + 350f;
+            if (distSq > influenceDist * influenceDist || distSq < 1f) continue;
+
+            float dist = (float) Math.sqrt(distSq);
+            float nx = dx / dist;
+            float ny = dy / dist;
+
+            // Dot product: closing rate towards station center
+            float closingRate = -(aVel.x * nx + aVel.y * ny);
+            if (closingRate <= -20f && dist > dome.domeRadius) {
+                // Moving away from station into downstream wake
+                continue;
+            }
+
+            // Cross product to choose optimal slip direction around the perimeter
+            float cross = dx * aVel.y - dy * aVel.x;
+            float sign = (cross >= 0f) ? 1.0f : -1.0f;
+            float tx = -ny * sign;
+            float ty = nx * sign;
+
+            // Normalized penetration depth: 0 at outer boundary, 1 at dome boundary
+            float p = (influenceDist - dist) / 350f;
+            if (p < 0f) p = 0f;
+            if (p > 1.8f) p = 1.8f;
+
+            // Blend velocity towards tangential laminar flow
+            float blend = Math.min(1.0f, (p * 2.8f + 0.4f) * amount);
+            aVel.x = aVel.x * (1.0f - blend) + tx * aSpeed * blend;
+            aVel.y = aVel.y * (1.0f - blend) + ty * aSpeed * blend;
+
+            // Outward repulsive force if approaching dome surface
+            float surfaceDist = dome.domeRadius + astRadius + 40f;
+            if (dist < surfaceDist) {
+                float pushForce = (surfaceDist - dist) * 7.5f * amount;
+                aVel.x += nx * pushForce;
+                aVel.y += ny * pushForce;
+
+                // Visual contact sparks on dome surface
+                if (random.nextFloat() < 0.18f && engine != null) {
+                    Vector2f sparkLoc = new Vector2f(dome.center.x + nx * (dome.domeRadius + 10f), dome.center.y + ny * (dome.domeRadius + 10f));
+                    engine.addHitParticle(sparkLoc, new Vector2f(tx * 80f, ty * 80f), 35f + random.nextFloat() * 25f, 0.4f, 0.25f, new Color(100, 210, 255, 230));
+                    engine.addSmoothParticle(sparkLoc, new Vector2f(0f, 0f), 70f, 0.6f, 0.4f, new Color(80, 160, 255, 120));
+                }
+            }
+
+            // Conserve kinetic speed magnitude
+            float newSpeed = aVel.length();
+            if (newSpeed > 0.001f) {
+                aVel.x = (aVel.x / newSpeed) * aSpeed;
+                aVel.y = (aVel.y / newSpeed) * aSpeed;
+            }
+
+            ast.setCustomData(BASE_VX_KEY, Float.valueOf(aVel.x));
+            ast.setCustomData(BASE_VY_KEY, Float.valueOf(aVel.y));
+        }
+    }
+
+    @Override
+    public void renderInWorldCoords(ViewportAPI viewport) {
+        if (engine == null || viewport == null) return;
+        if (!enableStationDeflectionDome || activeStationDomes == null || activeStationDomes.isEmpty()) return;
+
+        float totalTime = engine.getTotalElapsedTime(false);
+
+        for (int i = 0; i < activeStationDomes.size(); i++) {
+            StationDomeData dome = activeStationDomes.get(i);
+            if (dome.stationCore == null || !dome.stationCore.isAlive()) continue;
+            if (dome.isOffline) continue; // Section failure: collapsed dome does not render active barrier!
+
+            float cx = dome.center.x;
+            float cy = dome.center.y;
+
+            if (!viewport.isNearViewport(dome.center, dome.domeRadius + 250f)) continue;
+
+            float diameter = dome.domeRadius * 2.0f;
+            float pulse = (float) (0.5 + 0.5 * Math.sin(totalTime * 1.8f));
+            float alpha = 0.22f + 0.08f * pulse;
+
+            // 1. Outer shimmering deflector ring
+            SpriteAPI ring = getCachedSprite(null, null, "graphics/fx/shields256ring.png");
+            if (ring != null && isValidSprite(ring)) {
+                ring.setSize(diameter, diameter);
+                ring.setColor(new Color(70, 175, 255, (int)(alpha * 255)));
+                ring.setAdditiveBlend();
+                ring.setAngle(totalTime * 4.0f);
+                ring.renderAtCenter(cx, cy);
+            }
+
+            // 2. Counter-rotating inner energy lattice
+            SpriteAPI ring2 = getCachedSprite(null, null, "graphics/fx/shields256ringb.png");
+            if (ring2 != null && isValidSprite(ring2)) {
+                float d2 = diameter * 0.96f;
+                ring2.setSize(d2, d2);
+                ring2.setColor(new Color(50, 140, 240, (int)((alpha * 0.7f) * 255)));
+                ring2.setAdditiveBlend();
+                ring2.setAngle(-totalTime * 6.0f);
+                ring2.renderAtCenter(cx, cy);
+            }
+
+            // 3. Faint ambient translucent protective shield disc
+            SpriteAPI disc = getCachedSprite(null, null, "graphics/fx/shields256.png");
+            if (disc != null && isValidSprite(disc)) {
+                disc.setSize(diameter * 0.98f, diameter * 0.98f);
+                disc.setColor(new Color(40, 110, 220, (int)(0.06f * 255)));
+                disc.setAdditiveBlend();
+                disc.renderAtCenter(cx, cy);
+            }
+        }
+    }
+
+    @Override
     public void renderInUICoords(ViewportAPI viewport) {
 
         if (engine == null || viewport == null) return;
@@ -9042,126 +10238,10 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
                     }
 
-                } else if ("CACHE".equals(eggType) || "PROBE".equals(eggType) || "CRYO_POD".equals(eggType) || "NAV_BUOY".equals(eggType) || "MOTHERSHIP_ENGINE".equals(eggType) || "FIGHTER".equals(eggType)) {
-
-                    // Resource containers ONLY show when on-screen (no off-screen HUD arrows to avoid screen clutter!)
-
-                    if (onScreen) {
-
-                        Color cCol = new Color(255, 205, 55);
-
-                        if ("PROBE".equals(eggType)) cCol = new Color(60, 230, 255);
-
-                        else if ("CRYO_POD".equals(eggType)) cCol = new Color(60, 255, 140);
-
-                        else if ("NAV_BUOY".equals(eggType)) cCol = new Color(195, 130, 255);
-
-                        else if ("FIGHTER".equals(eggType)) cCol = new Color(90, 215, 255);
-
-                        else if ("MOTHERSHIP_ENGINE".equals(eggType)) cCol = new Color(190, 215, 235);
-
-
-
-                        boolean isFighter = "FIGHTER".equals(eggType);
-
-
-
-                        SpriteAPI ring = getCachedSprite("systemMap", "radar_circle", "graphics/icons/radar_circle.png");
-
-                        if (ring != null && isValidSprite(ring)) {
-
-                            float ringSize = isTacticalMap ? 22f : 36f + 14f * pulse;
-
-                            ring.setSize(ringSize, ringSize);
-
-                            ring.setColor(new Color(cCol.getRed(), cCol.getGreen(), cCol.getBlue(), (int)(isTacticalMap ? 210 : 130 + 85 * pulse)));
-
-                            ring.setAdditiveBlend();
-
-                            ring.renderAtCenter(sx, sy);
-
-                        }
-
-
-
-                        SpriteAPI icon = null;
-
-                        if (isFighter) {
-
-                            icon = getCachedSprite("ui", "cargoFighterChip", "graphics/icons/cargo/fighter_lpc.png");
-
-                            if (icon == null || !isValidSprite(icon)) icon = getCachedSprite("codex", "fighters", "graphics/icons/codex/fighters.png");
-
-                            if (icon == null || !isValidSprite(icon)) icon = getCachedSprite("systemMap", "icon_fighter", "graphics/icons/fleet_triangle.png");
-
-                        } else {
-
-                            icon = getCachedSprite(null, null, "graphics/icons/debris_field_icon.png");
-
-                        }
-
-
-
-                        if (icon != null && isValidSprite(icon)) {
-
-                            float iconSize = isTacticalMap ? 16f : 22f;
-
-                            icon.setSize(iconSize, iconSize);
-
-                            icon.setColor(new Color(cCol.getRed(), cCol.getGreen(), cCol.getBlue(), 245));
-
-                            icon.renderAtCenter(sx, sy);
-
-                        }
-
-                    }
-
-                } else if ("EXPLOSIVE_TANK".equals(eggType)) {
-
-                    // Explosive tank ONLY shows when on-screen (no off-screen HUD arrows to avoid screen clutter!)
-
-                    if (onScreen) {
-
-                        Color dangerCol = new Color(255, 95, 25);
-
-                        SpriteAPI danger = getCachedSprite(null, null, "graphics/icons/danger3.png");
-
-                        if (danger != null && isValidSprite(danger)) {
-
-                            float dSize = isTacticalMap ? 18f : (24f + 5f * pulse);
-
-                            danger.setSize(dSize, dSize);
-
-                            danger.setColor(new Color(dangerCol.getRed(), dangerCol.getGreen(), dangerCol.getBlue(), (int)(180 + 75 * pulse)));
-
-                            danger.renderAtCenter(sx, sy);
-
-                        }
-
-                    }
-
                 } else {
-
-                    // Regular debris ONLY when on-screen
-
-                    if (onScreen) {
-
-                        SpriteAPI icon = getCachedSprite(null, null, "graphics/icons/debris_field_icon.png");
-
-                        if (icon != null && isValidSprite(icon)) {
-
-                            float iconSize = isTacticalMap ? 14f : 18f;
-
-                            icon.setSize(iconSize, iconSize);
-
-                            icon.setColor(new Color(130, 210, 255, 190));
-
-                            icon.renderAtCenter(sx, sy);
-
-                        }
-
-                    }
-
+                    // Resource easter eggs, explosive tanks and debris float naturally as physical objects in space
+                    // without glowing radar rings or UI overlay markers
+                    continue;
                 }
 
             } catch (Throwable t) {}

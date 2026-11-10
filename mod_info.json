@@ -1,10 +1,10 @@
 {
   "id": "dynamic_asteroids",
-  "name": "Dynamic Asteroids 2.0.6 FixMagneto (Cyclone) [EN]",
+  "name": "Dynamic Asteroids 2.0.62 [EN]",
   "author": "keltuze",
   "utility": "false",
-  "version": "2.0.6 FixMagneto",
-  "description": "Dynamic Asteroids 2.0.6 FixMagneto: Interactive Easter Egg salvage, derelict vessel recovery via shield tractor beams, kinetic asteroid avalanches, and deep space encounters.",
+  "version": "2.0.62",
+  "description": "Dynamic Asteroids 2.0.62: Active kinetic asteroid streams, collision presets, colossal pushable megaliths with shatter loot, station deflection domes, and derelict rescue operations.",
   "gameVersion": "0.98a-RC8",
   "jars": [
     "jars/DynamicAsteroids.jar"

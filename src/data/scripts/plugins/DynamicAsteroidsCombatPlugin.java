@@ -5786,11 +5786,7 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
                 }
 
-                if (state.activeTurnCommand != null && state.cooldown > 0f) {
-
-                    ship.giveCommand(state.activeTurnCommand, null, 0);
-
-                }
+                // Do NOT forcefully turn ships: heading must remain under AI/autopilot control!
 
 
 
@@ -5932,39 +5928,13 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
 
 
-        // For Cruisers and Capitals: turn towards escape heading to engage main propulsion thrusters
-
-        if (ship.isCruiser() || ship.isCapital()) {
-
-            float desiredEscapeAngle = (float) Math.toDegrees(Math.atan2(escapeWorldY, escapeWorldX));
-
-            float angleDiff = getShortestRotation(ship.getFacing(), desiredEscapeAngle);
-
-            if (Math.abs(angleDiff) > 15f && Math.abs(angleDiff) < 140f) {
-
-                ShipCommand turnCmd = (angleDiff > 0f) ? ShipCommand.TURN_LEFT : ShipCommand.TURN_RIGHT;
-
-                state.activeTurnCommand = turnCmd;
-
-                ship.giveCommand(turnCmd, null, 0);
-
-            } else {
-
-                state.activeTurnCommand = null;
-
-            }
-
-        }
-
-
+        // Ships only use translational thrusters (strafe/throttle) to dodge, NEVER hijacking heading!
+        state.activeTurnCommand = null;
 
         ShipwideAIFlags flags = ship.getAIFlags();
-
         if (flags != null) {
-
-            flags.setFlag(AIFlags.RUN_QUICKLY, duration);
-
-            flags.setFlag(AIFlags.HAS_INCOMING_DAMAGE, duration);
+            // Do NOT set RUN_QUICKLY (which causes AI to abandon pursuit/attack orders and flee)
+            flags.setFlag(AIFlags.HAS_INCOMING_DAMAGE, Math.min(0.35f, duration));
 
         }
 
@@ -6126,7 +6096,8 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
                 } else {
 
-                    updateFixedShieldFacingCommand(ship, state);
+                    // Rock approaching outside front shield arc (flank/rear). Never turn the ship towards the stream!
+                    state.activeTurnCommand = null;
 
                 }
 
@@ -7007,27 +6978,8 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
 
     private static void updateFixedShieldFacingCommand(ShipAPI ship, ShipAvoidanceState state) {
-
-        if (ship == null || state == null) return;
-
-        float angleDiff = getShortestRotation(ship.getFacing(), state.targetAngle);
-
-        if (Math.abs(angleDiff) > 3f) {
-
-            state.activeTurnCommand = angleDiff > 0f ? ShipCommand.TURN_LEFT : ShipCommand.TURN_RIGHT;
-
-            ship.giveCommand(state.activeTurnCommand, null, 0);
-
-        } else {
-
-            state.activeTurnCommand = null;
-
-        }
-
+        if (state != null) state.activeTurnCommand = null;
     }
-
-
-
     private static float normalizeAngle(float angle) {
 
         angle = angle % 360f;

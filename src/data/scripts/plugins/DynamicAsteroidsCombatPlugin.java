@@ -133,7 +133,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
     // Configurable compilation flags
 
-    private static final boolean IS_RUSSIAN = false;
+    private static final boolean IS_RUSSIAN = true;
 
     private static final float DEFAULT_STREAM_SPEED = 600.0f;
 
@@ -322,9 +322,9 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
     private int maxMegaliths = 20;
     private int currentMegalithCount = 0;
     private boolean megalithsPreSeeded = false;
-    private float megalithSpeed = 120.0f;
-    private float megalithMinSpeed = 90.0f;
-    private float megalithMaxSpeed = 140.0f;
+    private float megalithSpeed = 90.0f;
+    private float megalithMinSpeed = 60.0f;
+    private float megalithMaxSpeed = 120.0f;
     private float megalithTimer = 12.0f;
     private float megalithSpawnInterval = 42.0f;
     private float megalithMinRadius = 125.0f;
@@ -989,9 +989,9 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
                 setStreamSpeed(400.0f);
 
-                megalithSpeed = 80.0f;
-                megalithMinSpeed = 60.0f;
-                megalithMaxSpeed = 100.0f;
+                megalithSpeed = 70.0f;
+                megalithMinSpeed = 50.0f;
+                megalithMaxSpeed = 90.0f;
                 megalithMinRadius = 125.0f;
                 megalithMaxRadius = 450.0f;
 
@@ -1044,9 +1044,9 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
                 setStreamSpeed(600.0f);
 
-                megalithSpeed = 115.0f;
-                megalithMinSpeed = 90.0f;
-                megalithMaxSpeed = 140.0f;
+                megalithSpeed = 90.0f;
+                megalithMinSpeed = 60.0f;
+                megalithMaxSpeed = 120.0f;
                 megalithMinRadius = 125.0f;
                 megalithMaxRadius = 550.0f;
 
@@ -1099,9 +1099,9 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
                 setStreamSpeed(1200.0f);
 
-                megalithSpeed = 210.0f;
-                megalithMinSpeed = 160.0f;
-                megalithMaxSpeed = 260.0f;
+                megalithSpeed = 110.0f;
+                megalithMinSpeed = 80.0f;
+                megalithMaxSpeed = 135.0f;
                 megalithMinRadius = 125.0f;
                 megalithMaxRadius = 550.0f;
 
@@ -1154,9 +1154,9 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
 
                 setStreamSpeed(3000.0f);
 
-                megalithSpeed = 400.0f;
-                megalithMinSpeed = 300.0f;
-                megalithMaxSpeed = 500.0f;
+                megalithSpeed = 120.0f;
+                megalithMinSpeed = 90.0f;
+                megalithMaxSpeed = 150.0f;
                 megalithMinRadius = 125.0f;
                 megalithMaxRadius = 550.0f;
 
@@ -1628,7 +1628,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin {
         if (maxMegaliths > 60) maxMegaliths = 60;
         if (megalithMinSpeed < 10f) megalithMinSpeed = 60f;
         if (megalithMaxSpeed < megalithMinSpeed) megalithMaxSpeed = megalithMinSpeed + 20f;
-        if (megalithSpeed < 20f) megalithSpeed = 120f;
+        if (megalithSpeed < 20f) megalithSpeed = 90f;
         if (megalithDerelictDropChance < 0f) megalithDerelictDropChance = 0f;
         if (megalithDerelictDropChance > 0.05f) megalithDerelictDropChance = 0.05f;
         if (stationAsteroidDamageMult < 0f) stationAsteroidDamageMult = 0f;
@@ -4103,7 +4103,7 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
                 float dLen = (float) Math.sqrt(dx * dx + dy * dy);
 
-                float spd = 250.0f; // Derelict cruising speed
+                float spd = 75.0f; // Derelict cruising speed (gentle 60-100 u/s drift)
 
                 float evx = (dLen > 0.001f) ? (dx / dLen) * spd : -spd;
 
@@ -4227,6 +4227,8 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         }
         if (entity == null) return null;
 
+        float dispW = radius * 2.0f;
+        float dispH = radius * 2.0f;
         if (entity instanceof CombatAsteroidAPI) {
             try {
                 CombatAsteroidAPI ast = (CombatAsteroidAPI) entity;
@@ -4235,7 +4237,9 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                     float maxDim = Math.max(s.getTextureWidth(), s.getTextureHeight());
                     if (maxDim > 0f) {
                         float scale = (radius * 2.2f) / maxDim;
-                        s.setSize(s.getTextureWidth() * scale, s.getTextureHeight() * scale);
+                        dispW = s.getTextureWidth() * scale;
+                        dispH = s.getTextureHeight() * scale;
+                        s.setSize(dispW, dispH);
                     } else {
                         s.setSize(radius * 2.2f, radius * 2.2f);
                     }
@@ -4244,7 +4248,10 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
             } catch (Throwable t) {}
         }
 
-        entity.setCollisionRadius(radius);
+        // Tight megalith hitbox: ensure collision circle never protrudes beyond the boulder's narrowest visual edge
+        float minDim = Math.min(dispW, dispH);
+        float tightMegalithRadius = Math.max(35f, Math.min(radius * 0.85f, minDim * 0.47f));
+        entity.setCollisionRadius(tightMegalithRadius);
         // Mass scales with radius squared: original heavy planetary bedrock inertia!
         float mass = (radius * radius) * 0.14f + 600f;
         entity.setMass(mass);
@@ -4729,7 +4736,7 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
             float dLen = (float) Math.sqrt(dx * dx + dy * dy);
 
-            float spd = 250.0f; // Derelict cruising speed
+            float spd = 75.0f; // Derelict cruising speed (gentle 60-100 u/s drift)
 
             float vx = (dLen > 0.001f) ? (dx / dLen) * spd : -spd;
 
@@ -5464,6 +5471,13 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
         }
 
+        // Gentle contour avoidance for colossal megaliths and derelict hulks
+        if (enableMicroDodge) {
+
+            advanceColossalObstacleAvoidance(amount);
+
+        }
+
 
 
         // Advance imminent threats TTL
@@ -6117,6 +6131,184 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
      */
 
+
+    private void advanceColossalObstacleAvoidance(float amount) {
+        if (engine == null || engine.isPaused()) return;
+
+        List<CombatEntityAPI> asteroids = engine.getAsteroids();
+        if (asteroids == null || asteroids.isEmpty()) return;
+
+        List<CombatEntityAPI> colossals = null;
+        for (int i = 0; i < asteroids.size(); i++) {
+            CombatEntityAPI ast = asteroids.get(i);
+            if (ast == null || ast.isExpired() || !engine.isEntityInPlay(ast)) continue;
+            boolean isMegalith = ast.getCustomData().containsKey("DA_IS_MEGALITH");
+            boolean isDerelict = "DERELICT".equals(ast.getCustomData().get("EASTER_EGG_TYPE"));
+            if (isMegalith || isDerelict) {
+                if (colossals == null) colossals = new ArrayList<CombatEntityAPI>();
+                colossals.add(ast);
+            }
+        }
+
+        if (colossals == null || colossals.isEmpty()) return;
+
+        List<ShipAPI> ships = engine.getShips();
+        if (ships == null || ships.isEmpty()) return;
+
+        for (int sIdx = 0; sIdx < ships.size(); sIdx++) {
+            ShipAPI ship = ships.get(sIdx);
+            if (ship == null || !ship.isAlive() || ship.isHulk()) continue;
+
+            // Never hijack direct manual control of the player ship
+            if (isShipManualPlayerControlled(ship)) continue;
+
+            ShipAvoidanceState state = shipStates.get(ship);
+            if (state != null && state.cooldown > 0.08f) continue;
+
+            Vector2f shipLoc = ship.getLocation();
+            Vector2f shipVel = ship.getVelocity();
+            if (shipLoc == null || shipVel == null) continue;
+
+            float shipRadius = ship.getCollisionRadius();
+
+            CombatEntityAPI closestColossal = null;
+            float bestSteerX = 0f;
+            float bestSteerY = 0f;
+            float lowestTimeToImpact = Float.MAX_VALUE;
+            boolean isProximityEscape = false;
+
+            for (int cIdx = 0; cIdx < colossals.size(); cIdx++) {
+                CombatEntityAPI obs = colossals.get(cIdx);
+                Vector2f obsLoc = obs.getLocation();
+                if (obsLoc == null) continue;
+
+                float obsRadius = obs.getCollisionRadius();
+                float dx = obsLoc.x - shipLoc.x;
+                float dy = obsLoc.y - shipLoc.y;
+                float distSq = dx * dx + dy * dy;
+
+                // Generous safety contour buffer: ship radius + obstacle radius + 180 units
+                float safeDist = shipRadius + obsRadius + 180f;
+                float safeDistSq = safeDist * safeDist;
+
+                // Proximity safety: ship is already right next to the megalith/derelict
+                if (distSq < safeDistSq) {
+                    float dist = (float) Math.sqrt(distSq);
+                    float awayX = (dist > 0.001f) ? -dx / dist : 1f;
+                    float awayY = (dist > 0.001f) ? -dy / dist : 0f;
+
+                    closestColossal = obs;
+                    bestSteerX = awayX;
+                    bestSteerY = awayY;
+                    lowestTimeToImpact = 0.4f;
+                    isProximityEscape = true;
+                    break;
+                }
+
+                // Lookahead zone: up to 1400 units past safe buffer
+                float maxScanDist = safeDist + 1400f;
+                if (distSq > maxScanDist * maxScanDist) continue;
+
+                Vector2f obsVel = obs.getVelocity();
+                float ovX = (obsVel != null) ? obsVel.x : 0f;
+                float ovY = (obsVel != null) ? obsVel.y : 0f;
+
+                float rvx = ovX - shipVel.x;
+                float rvy = ovY - shipVel.y;
+                float relSpdSq = rvx * rvx + rvy * rvy;
+                if (relSpdSq < 64f) continue; // Relative speed < 8 u/s, effectively static
+
+                float dot = dx * rvx + dy * rvy;
+                if (dot >= 0f) continue; // Diverging / moving away
+
+                float tCpa = -dot / relSpdSq;
+                if (tCpa <= 0.02f || tCpa > 4.5f) continue; // Beyond 4.5s lookahead window
+
+                float cpaX = dx + rvx * tCpa;
+                float cpaY = dy + rvy * tCpa;
+                float cpaDistSq = cpaX * cpaX + cpaY * cpaY;
+
+                if (cpaDistSq < safeDistSq) {
+                    if (tCpa < lowestTimeToImpact) {
+                        lowestTimeToImpact = tCpa;
+                        closestColossal = obs;
+
+                        float rSpd = (float) Math.sqrt(relSpdSq);
+                        float uX = rvx / rSpd;
+                        float uY = rvy / rSpd;
+                        float perpX = -uY;
+                        float perpY = uX;
+
+                        float signedLat = dx * perpX + dy * perpY;
+                        float steerSign = (signedLat >= 0f) ? 1.0f : -1.0f;
+                        bestSteerX = perpX * steerSign;
+                        bestSteerY = perpY * steerSign;
+                    }
+                }
+            }
+
+            if (closestColossal != null) {
+                float duration = isProximityEscape ? 0.45f : Math.max(0.40f, Math.min(0.70f, lowestTimeToImpact * 0.35f));
+                applyColossalGlidingManeuver(ship, bestSteerX, bestSteerY, duration);
+
+                // Omni shield reaction when closing within 400 units
+                if (enableShieldReaction && ship.getShield() != null && ship.getShield().getType() == ShieldType.OMNI) {
+                    Vector2f obsLoc = closestColossal.getLocation();
+                    if (obsLoc != null) {
+                        float angleToObs = computeAngle(shipLoc.x, shipLoc.y, obsLoc.x, obsLoc.y);
+                        if (state == null) {
+                            state = new ShipAvoidanceState();
+                            shipStates.put(ship, state);
+                        }
+                        state.targetAngle = angleToObs;
+                    }
+                }
+            }
+        }
+    }
+
+    private void applyColossalGlidingManeuver(ShipAPI ship, float escapeWorldX, float escapeWorldY, float duration) {
+        if (ship == null || isShipManualPlayerControlled(ship)) return;
+
+        float facingRad = (float) Math.toRadians(ship.getFacing());
+        float fwdX = (float) Math.cos(facingRad);
+        float fwdY = (float) Math.sin(facingRad);
+        float leftX = -fwdY;
+        float leftY = fwdX;
+
+        float dotLeft = escapeWorldX * leftX + escapeWorldY * leftY;
+        float dotFwd = escapeWorldX * fwdX + escapeWorldY * fwdY;
+
+        ShipAvoidanceState state = shipStates.get(ship);
+        if (state == null) {
+            state = new ShipAvoidanceState();
+            shipStates.put(ship, state);
+        }
+        state.cooldown = Math.max(state.cooldown, duration);
+
+        // Lateral thruster burn to gently glide around contour
+        if (Math.abs(dotLeft) >= 0.10f) {
+            ShipCommand strafeCmd = (dotLeft > 0f) ? ShipCommand.STRAFE_LEFT : ShipCommand.STRAFE_RIGHT;
+            state.activeCommand = strafeCmd;
+            ship.giveCommand(strafeCmd, null, 0);
+        } else {
+            state.activeCommand = null;
+        }
+
+        // Longitudinal throttle: decelerate slightly if heading directly towards obstacle
+        if (dotFwd < -0.25f) {
+            state.activeThrustCommand = ShipCommand.DECELERATE;
+            ship.giveCommand(ShipCommand.DECELERATE, null, 0);
+        } else if (dotFwd > 0.45f) {
+            state.activeThrustCommand = ShipCommand.ACCELERATE;
+            ship.giveCommand(ShipCommand.ACCELERATE, null, 0);
+        } else {
+            state.activeThrustCommand = null;
+        }
+
+        state.activeTurnCommand = null; // Do NOT hijack turn! AI keeps aiming at targets
+    }
+
     private void advanceActiveStreamsEvasion(float amount) {
 
         if (!enableEarlySnipeEvasion || activeStreams.isEmpty() || engine == null) return;
@@ -6598,27 +6790,28 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
                 if (source.getCollisionClass() == CollisionClass.ASTEROID || source.getCustomData().containsKey(TRACKED_KEY)) {
 
-                    if (source.getCustomData().containsKey("DA_IS_MEGALITH")) {
-                        // Ship collided with megalith: untether from scripted rails so the player can push it!
+                    if (source.getCustomData().containsKey("DA_IS_MEGALITH") || source.getCustomData().containsKey("IS_EASTER_EGG")) {
+                        // Ship collided with megalith or derelict hulk: untether from scripted rails so it becomes a free physical body!
                         source.getCustomData().put("DA_NO_MAINTAIN_VELOCITY", Boolean.TRUE);
                     }
 
-                    if (!source.getCustomData().containsKey("IS_EASTER_EGG")) {
-
-                        // Deployment Safety & Grace Period:
-                        // Protect ships from unfair collision damage at the start of battle (first 7 seconds)
-                        // and within fleet deployment/reinforcement staging bands near map borders!
-                        if (instance != null && instance.enableDeploymentSafety) {
-                            float mapHalfH = (instance.engine != null) ? instance.engine.getMapHeight() * 0.5f : 10000f;
-                            boolean inDeploymentZone = targetShip.getLocation() != null && Math.abs(targetShip.getLocation().y) > mapHalfH * 0.70f;
-                            if (instance.totalCombatTime < instance.deploymentSafetyDuration || inDeploymentZone) {
-                                damage.getModifier().modifyMult("da_deployment_safety", 0.0f);
-                                if (instance.engine != null && point != null) {
-                                    instance.engine.addHitParticle(point, new Vector2f(0f, 0f), 70f, 0.6f, 0.4f, new Color(100, 220, 255, 200));
-                                }
-                                return "da_deployment_safety";
+                    // Deployment Safety & Grace Period:
+                    // Protect ships from unfair collision damage at the start of battle (first 7 seconds)
+                    // and within fleet deployment/reinforcement staging bands near map borders!
+                    // APPLIES TO ALL ASTEROIDS, MEGALITHS, AND DERELICT HULKS!
+                    if (instance != null && instance.enableDeploymentSafety) {
+                        float mapHalfH = (instance.engine != null) ? instance.engine.getMapHeight() * 0.5f : 10000f;
+                        boolean inDeploymentZone = targetShip.getLocation() != null && Math.abs(targetShip.getLocation().y) > mapHalfH * 0.70f;
+                        if (instance.totalCombatTime < instance.deploymentSafetyDuration || inDeploymentZone) {
+                            damage.getModifier().modifyMult("da_deployment_safety", 0.0f);
+                            if (instance.engine != null && point != null) {
+                                instance.engine.addHitParticle(point, new Vector2f(0f, 0f), 70f, 0.6f, 0.4f, new Color(100, 220, 255, 200));
                             }
+                            return "da_deployment_safety";
                         }
+                    }
+
+                    if (!source.getCustomData().containsKey("IS_EASTER_EGG")) {
 
                         // Anti-Cheese: Station protection from asteroid collisions
                         boolean isStation = targetShip.isStation() || targetShip.isStationModule() || targetShip.getParentStation() != null;
@@ -6652,14 +6845,20 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                     } else {
 
                         // Easter egg collided with a ship! Disable velocity correction permanently
-
                         source.getCustomData().put("DA_NO_MAINTAIN_VELOCITY", Boolean.TRUE);
 
-                        if ("EXPLOSIVE_TANK".equals(source.getCustomData().get("EASTER_EGG_TYPE")) && instance != null) {
+                        String eggType = (String) source.getCustomData().get("EASTER_EGG_TYPE");
+                        if ("EXPLOSIVE_TANK".equals(eggType) && instance != null) {
 
                             instance.triggerTankExplosion(source, (ShipAPI) target);
 
-                        } else if (!"DERELICT".equals(source.getCustomData().get("EASTER_EGG_TYPE")) && instance != null) {
+                        } else if ("DERELICT".equals(eggType)) {
+
+                            // Derelict hulk soft-scrape protection: 90% collision damage reduction so ships don't wreck themselves!
+                            damage.getModifier().modifyMult("da_derelict_scrape", 0.10f);
+                            return "da_derelict_scrape";
+
+                        } else if (instance != null) {
 
                             damage.getModifier().modifyMult("da_salvage_pickup", 0.0f);
 
@@ -8953,7 +9152,8 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
             float baseHp = (spec != null) ? spec.getHitpoints() : 2000f;
 
-            float mass = Math.max(120f, baseHp * 0.16f);
+            // Softened mass for derelicts so collisions gently nudge rather than pulverize friendly ships
+            float mass = Math.max(60f, baseHp * 0.08f);
 
             float hp = Math.max(3200f, baseHp * 2.2f);
 
@@ -8975,13 +9175,12 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
                 entity.setAngularVelocity((random.nextFloat() - 0.5f) * 16f);
 
-                entity.setCollisionRadius(radius);
-
                 entity.setMass(mass);
 
                 entity.setHitpoints(hp);
 
-
+                float dispW = radius * 2.0f;
+                float dispH = radius * 2.0f;
 
                 if (entity instanceof CombatAsteroidAPI) {
 
@@ -8999,7 +9198,9 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
                                 float scale = (radius * 2.25f) / maxDim;
 
-                                s.setSize(s.getTextureWidth() * scale, s.getTextureHeight() * scale);
+                                dispW = s.getTextureWidth() * scale;
+                                dispH = s.getTextureHeight() * scale;
+                                s.setSize(dispW, dispH);
 
                             } else {
 
@@ -9016,6 +9217,13 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                     } catch (Throwable t) {}
 
                 }
+
+                // Tight hitbox: ship hulls are elongated. The collision circle MUST fit snugly inside
+                // the visible hull silhouette and never extend into thin air past the flanks!
+                float minDim = Math.min(dispW, dispH);
+                float maxDimD = Math.max(dispW, dispH);
+                float tightRadius = Math.max(25f, Math.min(minDim * 0.46f, maxDimD * 0.30f));
+                entity.setCollisionRadius(tightRadius);
 
 
 

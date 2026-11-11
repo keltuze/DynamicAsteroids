@@ -1,63 +1,63 @@
-﻿modID,fieldID,fieldName,fieldType,defaultValue,secondaryValue,fieldDescription,minValue,maxValue,tab
-dynamic_asteroids,da_header_sim,Presets & Simulation,Header,Stream parameters and modes,,,,,Asteroid Stream
-dynamic_asteroids,da_activePreset,Active Profile,Int,2,,0=Custom (all sliders manual); 1=Cinematic (70-280 rocks / 400 spd / 0.5 pct derelict / 1.0 pct loot / 80 megalith spd); 2=Balanced [Default] (140-560 rocks / 600 spd / 1.5 pct derelict / 2.0 pct loot / 120 megalith spd); 3=Storm (210-700 rocks / 1200 spd / 3.5 pct derelict / 4.0 pct loot / 220 megalith spd); 4=Chaos [High Risk / High Reward] (350-700 rocks / 3000 spd / 7.0 pct derelict / 8.0 pct loot / 420 megalith spd),0,4,Asteroid Stream
-dynamic_asteroids,da_enableInSimulation,Enable in Simulator,Boolean,true,,Asteroid stream activity in simulator tests ([/] toggle; Shift +/- limit; Ctrl +/- speed; [L] megalith),,,Asteroid Stream
-dynamic_asteroids,da_header_field,Density & Kinetics,Header,Field parameters (applied when Profile is 0: Custom),,,,,Asteroid Stream
-dynamic_asteroids,da_minFieldRocks,Min Asteroids in Belt,Int,140,,Minimum asteroid limit in stream (with Profile 0),50,1000,Asteroid Stream
-dynamic_asteroids,da_maxFieldRocks,Max Asteroids in Belt,Int,560,,Maximum asteroid limit in stream (with Profile 0),100,2000,Asteroid Stream
-dynamic_asteroids,da_fieldSurgeSpeed,Base Stream Speed,Double,600.0,,Asteroid movement speed (units/sec). Speeds above 600 increase ramming danger,300.0,5000.0,Asteroid Stream
-dynamic_asteroids,da_asteroidCollisionDamageMult,Ramming Damage Multiplier,Double,1.2,,Damage multiplier for asteroid collisions with ships (Profiles: 1=0.42x / 2=1.2x / 3=2.16x / 4=4.2x),0.1,5.0,Asteroid Stream
-dynamic_asteroids,da_beamWidth,Corridor Front Width,Double,650.0,,Width of asteroid wave front (units),200.0,1500.0,Asteroid Stream
-dynamic_asteroids,da_asteroidLifespan,Asteroid Lifespan (sec),Double,60.0,,Time before smooth fading of asteroids (sec). In Profiles 1-4 set automatically (Cinematic 75s / Balance 60s / Storm 45s / Chaos 35s). Active in Profile 0: Custom.,5.0,180.0,Asteroid Stream
-dynamic_asteroids,da_header_megaliths,Solitary Megaliths,Header,Colossal boulders and curved arc trajectories,,,,,Asteroid Stream
-dynamic_asteroids,da_enableMegalithBoulders,Enable Solitary Megaliths,Boolean,true,,Spawns colossal asteroid megaliths drifting into combat,,,Asteroid Stream
-dynamic_asteroids,da_maxMegaliths,Max Megaliths in Battle,Int,25,,Maximum simultaneous colossal megaliths in combat (default 25),1,60,Asteroid Stream
-dynamic_asteroids,da_megalithMinSpeed,Min Megalith Speed,Double,90.0,,Lower bound of giant boulder movement speed (default 90 units/sec),30.0,300.0,Asteroid Stream
-dynamic_asteroids,da_megalithMaxSpeed,Max Megalith Speed,Double,140.0,,Upper bound of giant boulder movement speed (default 140 units/sec),50.0,500.0,Asteroid Stream
-dynamic_asteroids,da_megalithSpeed,Base Megalith Speed,Double,120.0,,Base speed of giant boulders (Balanced 120 u/s; Cinematic 80; Storm 220; Chaos 420),30.0,600.0,Asteroid Stream
-dynamic_asteroids,da_megalithSpawnInterval,Megalith Spawn Interval,Double,42.0,,Average interval between incoming giant boulders (30-60 sec),15.0,180.0,Asteroid Stream
-dynamic_asteroids,da_megalithMinRadius,Min Megalith Radius,Double,125.0,,"Minimum boulder radius (units). For comparison, a Cruiser has a radius around 120-140",60.0,300.0,Asteroid Stream
-dynamic_asteroids,da_megalithMaxRadius,Max Megalith Radius,Double,550.0,,Maximum boulder radius (units). Colossal planetoid up to station size (diameter up to 1100 units),200.0,800.0,Asteroid Stream
-dynamic_asteroids,da_enableDeploymentSafety,Spawn Grace Period,Boolean,true,,Complete immunity from asteroid ramming damage during opening battle seconds and deployment corridors,,,Asteroid Stream
-dynamic_asteroids,da_deploymentSafetyDuration,Grace Period Duration (sec),Double,7.0,,Duration of deflector dampers protecting ships during initial fleet deployment,0.0,30.0,Asteroid Stream
-dynamic_asteroids,da_megalithArcFlight,Curved Arc Trajectory,Boolean,true,,Smooth curved trajectory for megaliths (1.5-3 deg/sec) mimicking gravitational slingshots,,,Asteroid Stream
-dynamic_asteroids,da_megalithDerelictDropChance,Megalith Derelict Chance,Double,0.001,,"Chance to reveal an entombed ship hull when personally shattering a megalith (0.001 = 0.1 pct, 1 in 1000)",0.0,0.05,Asteroid Stream
-dynamic_asteroids,da_header_easter_eggs,Easter Eggs & Derelicts,Header,Secret salvageable discoveries in the stream,,,,,Asteroid Stream
-dynamic_asteroids,da_playerKillResourceDropChance,Megalith Resource Chance,Double,0.005,,Chance to drop Domain caches or probes when personally destroying an asteroid (0.005 = 0.5 pct; max 0.05 = 5 pct),0.0,0.05,Asteroid Stream
-dynamic_asteroids,da_playerKillFighterDropChance,Megalith Fighter Chance,Double,0.001,,Chance to recover a preserved fighter when personally destroying an asteroid (0.001 = 0.1 pct; max 0.02 = 2 pct),0.0,0.02,Asteroid Stream
-dynamic_asteroids,da_derelictSpawnChance,Derelict Ship Chance,Double,0.015,,Chance to spawn a drifting derelict per wave (0.015 = 1.5 pct; max 0.15 = 15 pct for atmosphere),0.0,0.15,Asteroid Stream
-dynamic_asteroids,da_debrisEasterEggChance,Debris & Fuel Tanks Chance,Double,0.04,,Chance to spawn ancient engines and explosive fuel canisters (0.04 = 4.0 pct; max 0.40 = 40 pct),0.0,0.40,Asteroid Stream
-dynamic_asteroids,da_resourceEasterEggChance,Valuable Cache Chance,Double,0.02,,"Chance to spawn Domain probes, supply caches, cryopods and fighter LPCs (0.02 = 2.0 pct; max 0.15 = 15 pct)",0.0,0.15,Asteroid Stream
-dynamic_asteroids,da_easterEggSpeed,Salvage Drift Speed,Double,400.0,,Drift speed of salvageable items and derelicts (units/sec). Lower speed makes interception easier,100.0,1500.0,Asteroid Stream
-dynamic_asteroids,da_easterEggMagnetStrength,Shield Tractor Beam Force,Double,3000.0,,Magnetic pull power of active shields on passing loot containers (0 = disabled. 3000 = standard),0.0,8000.0,Asteroid Stream
-dynamic_asteroids,da_derelictRescueHoldTime,Stabilization Time (sec),Double,60.0,,Seconds required to keep shields near the drifting derelict for rescue (60 sec),10.0,180.0,Asteroid Stream
-dynamic_asteroids,da_derelictRescueChance,Stabilization Success Chance,Double,1.0,,Chance to salvage and recover the rescued ship in post-battle menu (1.0 = 100 pct),0.1,1.0,Asteroid Stream
-dynamic_asteroids,da_header_trails,Trails & Particles,Header,Kinetic dust trail effects,,,,,Asteroid Stream
-dynamic_asteroids,da_enableParticleTrails,Enable Asteroid Trails,Boolean,true,,Generates dust trails behind moving asteroids (atmospheric in combat),,,Asteroid Stream
-dynamic_asteroids,da_particleTrailChance,Trail Frequency Chance,Double,0.20,,Fraction of asteroids emitting trails (0.20 = 20 pct),0.0,1.0,Asteroid Stream
-dynamic_asteroids,da_header_space,Open Deep Space,Header,Stray meteor parameters outside asteroid belts,,,,,Asteroid Stream
-dynamic_asteroids,da_openSpaceMinRocks,Min Stray Meteors,Int,3,,Lower limit of meteors outside asteroid belts,1,15,Asteroid Stream
-dynamic_asteroids,da_openSpaceMaxRocks,Max Stray Meteors,Int,7,,Upper limit of meteors outside asteroid belts,2,30,Asteroid Stream
-dynamic_asteroids,da_openSpaceMinDelay,Min Spawn Delay (sec),Double,2.0,,Minimum pause between solitary stray meteors,0.5,10.0,Asteroid Stream
-dynamic_asteroids,da_openSpaceMaxDelay,Max Spawn Delay (sec),Double,5.5,,Maximum pause between solitary stray meteors,1.0,20.0,Asteroid Stream
-dynamic_asteroids,da_openSpaceEasterEggMult,Deep Space Salvage Mult,Double,0.14,,Frequency multiplier for rare salvage in deep space (0.14 = 7x rarer than belts. 0.0 = meteors only),0.0,0.50,Asteroid Stream
-dynamic_asteroids,da_header_stations,Station Defense & Deflection,Header,Deflection dome and ramming protection,,,,,Fleet AI Reaction
-dynamic_asteroids,da_enableStationDeflectionDome,Station Deflection Dome,Boolean,true,,"Holographic deflection dome: asteroids smoothly curve around the station, leaving a calm wake behind",,,Fleet AI Reaction
-dynamic_asteroids,da_stationDomeMargin,Dome Margin (units),Double,140.0,,Protective dome boundary beyond outer station modules (default 140 units),50.0,400.0,Fleet AI Reaction
-dynamic_asteroids,da_enableStationAsteroidProtection,Station Asteroid Shielding,Boolean,true,,Station defense grid: deflects incoming megaliths and reduces ramming damage by 98 pct,,,Fleet AI Reaction
-dynamic_asteroids,da_stationAsteroidDamageMult,Station Asteroid Damage Mult,Double,0.02,,"Asteroid collision damage multiplier on station modules (0.02 = 2 pct damage, 98 pct reduction)",0.0,0.50,Fleet AI Reaction
-dynamic_asteroids,da_header_ai,Fleet Tactics & AI,Header,Fleet reaction to collision threats,,,,,Fleet AI Reaction
-dynamic_asteroids,da_enableMicroDodge,AI Agile Micro-Dodge,Boolean,true,,AI ships perform agile lateral micro-thrusts to avoid head-on collisions. [Effect: High],,,Fleet AI Reaction
-dynamic_asteroids,da_enableShieldReaction,Shield Defense vs Ramming,Boolean,true,,AI raises and rotates shields to brace against unavoidable kinetic impacts. [Effect: High],,,Fleet AI Reaction
-dynamic_asteroids,da_enableEarlySnipeEvasion,Formation Early Evasion,Boolean,true,,AI detects incoming focused asteroid torrents early and clears the kill corridor,,,Fleet AI Reaction
-dynamic_asteroids,da_targetedSnipeChance,Focused Snipe Wave Chance,Double,0.05,,Chance for targeted torrent directed straight at a ship (0.05 = 5 pct),0.0,0.5,Fleet AI Reaction
-dynamic_asteroids,da_header_pd,PD Defense vs Asteroids,Header,Laser and kinetic point defense fire against rocks,,,,,Fleet AI Reaction
-dynamic_asteroids,da_enablePDTargeting,PD Fire at Asteroids,Boolean,true,,Point defense weapons intercept hazardous asteroids. Note: Consumes weapon flux! [Effect: High],,,Fleet AI Reaction
-dynamic_asteroids,da_pdCriticalThreatsOnly,Critical Threats Only,Boolean,true,,PD weapons fire ONLY at asteroids on confirmed collision courses. [Effect: High],,,Fleet AI Reaction
-dynamic_asteroids,da_enablePDFluxSafety,PD Flux Overload Safety,Boolean,true,,Automatically halts PD fire against rocks during heavy flux build-up in combat,,,Fleet AI Reaction
-dynamic_asteroids,da_pdMaxFluxThreshold,PD Cutoff Flux Threshold,Double,0.75,,Fraction of ship flux capacity (0.75 = 75 pct. 1.0 = never stop firing),0.20,1.0,Fleet AI Reaction
-dynamic_asteroids,da_asteroidHealthMult,Asteroid Durability Mult,Double,0.51,,Asteroid hitpoint multiplier (0.51 = 51 pct. Lower values shatter easier),0.1,2.0,Fleet AI Reaction
-dynamic_asteroids,da_pdAsteroidDamageMult,PD Bonus Damage vs Rocks,Double,6.0,,Damage multiplier for Point Defense weapons against asteroids (6.0 = 600 pct damage),1.0,10.0,Fleet AI Reaction
-dynamic_asteroids,da_header_ai_perf,AI Sensor Optimization,Header,Threat scanning and prediction thresholds,,,,,Fleet AI Reaction
-dynamic_asteroids,da_aiMinThreatVelocity,Min Threat Velocity,Double,200.0,,Relative velocity threshold for radar threat detection (units/sec),100.0,600.0,Fleet AI Reaction
-dynamic_asteroids,da_aiLookaheadTime,Collision Prediction (sec),Double,1.25,,Time lookahead horizon for AI trajectory calculation,0.5,2.5,Fleet AI Reaction
+modID,fieldID,fieldName,fieldType,defaultValue,secondaryValue,fieldDescription,minValue,maxValue,tab
+dynamic_asteroids,da_header_sim,Пресеты и Симуляция,Header,Параметры потока и режимы,,,,,Asteroid Stream
+dynamic_asteroids,da_activePreset,Активный профиль,Int,2,,0=Свой (все ползунки вручную); 1=Кинематографичный (70-280 камней / 400 ск / 0.5 проц остов / 1.0 проц лут / 80 ск мегалита); 2=Сбалансированный [По умолчанию] (140-560 камней / 600 ск / 1.5 проц остов / 2.0 проц лут / 90 ск мегалита, диапазон 60-120); 3=Шторм (210-700 камней / 1200 ск / 3.5 проц остов / 4.0 проц лут / 220 ск мегалита); 4=Хаос [Высокий риск / Высокая награда] (350-700 камней / 3000 ск / 7.0 проц остов / 8.0 проц лут / 420 ск мегалита),0,4,Asteroid Stream
+dynamic_asteroids,da_enableInSimulation,Включать в симуляторе,Boolean,true,,Активность потока астероидов в тестах симулятора ([/] переключение; Shift +/- лимит; Ctrl +/- скорость; [L] мегалит),,,Asteroid Stream
+dynamic_asteroids,da_header_field,Плотность и Кинетика,Header,Параметры поля (применяются при Профиле 0: Свой),,,,,Asteroid Stream
+dynamic_asteroids,da_minFieldRocks,Мин. число камней в поясе,Int,140,,Минимальный лимит астероидов в потоке (при Профиле 0),50,1000,Asteroid Stream
+dynamic_asteroids,da_maxFieldRocks,Макс. число камней в поясе,Int,560,,Максимальный лимит астероидов в потоке (при Профиле 0),100,2000,Asteroid Stream
+dynamic_asteroids,da_fieldSurgeSpeed,Базовая скорость потока,Double,600.0,,Скорость движения астероидов (ед/сек). Выше 600 повышает опасность тарана,300.0,5000.0,Asteroid Stream
+dynamic_asteroids,da_asteroidCollisionDamageMult,Множитель урона от тарана,Double,1.2,,Множитель урона при столкновении астероидов с кораблями (в профилях 1=0.42x / 2=1.2x / 3=2.16x / 4=4.2x),0.1,5.0,Asteroid Stream
+dynamic_asteroids,da_beamWidth,Ширина коридора лавины,Double,650.0,,Ширина фронта движения астероидов (ед),200.0,1500.0,Asteroid Stream
+dynamic_asteroids,da_asteroidLifespan,Время жизни астероидов (сек),Double,60.0,,Время до плавного затухания астероида (сек). В профилях 1-4 задается автоматически (Кинематограф 75с / Баланс 60с / Шторм 45с / Хаос 35с). Ползунок активен при Профиле 0: Свой.,5.0,180.0,Asteroid Stream
+dynamic_asteroids,da_header_megaliths,Одиночные Мегалиты,Header,Колоссальные глыбы и дуговой полет,,,,,Asteroid Stream
+dynamic_asteroids,da_enableMegalithBoulders,Включить одиночные мегалиты,Boolean,true,,Спавн колоссальных астероидов-мегалитов (как на скриншоте),,,Asteroid Stream
+dynamic_asteroids,da_maxMegaliths,Макс. число мегалитов в бою,Int,25,,Максимальное число одновременно присутствующих гигантских глыб на поле боя (по умолчанию 25),1,60,Asteroid Stream
+dynamic_asteroids,da_megalithMinSpeed,Мин. скорость мегалита,Double,60.0,,Нижняя граница скорости движения гигантских глыб (по умолчанию 60 ед/сек),30.0,300.0,Asteroid Stream
+dynamic_asteroids,da_megalithMaxSpeed,Макс. скорость мегалита,Double,120.0,,Верхняя граница скорости движения гигантских глыб (по умолчанию 120 ед/сек),50.0,500.0,Asteroid Stream
+dynamic_asteroids,da_megalithSpeed,Базовая скорость мегалита,Double,90.0,,Базовая скорость гигантской глыбы (в баланс-режиме 90 ед/сек; кино 70; шторм 110; хаос 120),30.0,600.0,Asteroid Stream
+dynamic_asteroids,da_megalithSpawnInterval,Интервал мегалитов (сек),Double,42.0,,Средняя пауза между пролетом гигантских глыб (30-60 сек),15.0,180.0,Asteroid Stream
+dynamic_asteroids,da_megalithMinRadius,Мин. радиус мегалита,Double,125.0,,Минимальный радиус глыбы (ед). Для сравнения: крейсер имеет радиус около 120-140,60.0,300.0,Asteroid Stream
+dynamic_asteroids,da_megalithMaxRadius,Макс. радиус мегалита,Double,550.0,,Максимальный радиус глыбы (ед). Колоссальный планетоид размером с космическую станцию (диаметр до 1100 ед),200.0,800.0,Asteroid Stream
+dynamic_asteroids,da_enableDeploymentSafety,Защита при старте боя,Boolean,true,,Полная защита кораблей от таранного урона астероидов в первые секунды боя и в зонах развертывания флота,,,Asteroid Stream
+dynamic_asteroids,da_deploymentSafetyDuration,Длительность защиты старта (сек),Double,7.0,,Время действия защитных дефлекторов при развертывании флота в начале боя,0.0,30.0,Asteroid Stream
+dynamic_asteroids,da_megalithArcFlight,Полет по дуге (гравитация),Boolean,true,,Плавный изгиб траектории мегалита (1.5-3 град/сек) для эффектного обхода сектора,,,Asteroid Stream
+dynamic_asteroids,da_megalithDerelictDropChance,Шанс остова из мегалита,Double,0.001,,"Шанс обнаружить замурованный остов корабля при личном разрушении мегалита игроком (0.001 = 0.1 проц, 1 на 1000)",0.0,0.05,Asteroid Stream
+dynamic_asteroids,da_header_easter_eggs,Пасхалки и Заброшенные объекты,Header,Секретные находки в потоке метеоров,,,,,Asteroid Stream
+dynamic_asteroids,da_playerKillResourceDropChance,Шанс ресурсов при сбитии камня,Double,0.005,,Шанс выпадения тайника Домена или зонда при личном уничтожении астероида кораблем игрока (0.005 = 0.5 проц; макс 0.05 = 5 проц),0.0,0.05,Asteroid Stream
+dynamic_asteroids,da_playerKillFighterDropChance,Шанс истребителя при сбитии камня,Double,0.001,,Шанс обнаружения законсервированного истребителя при личном уничтожении астероида кораблем игрока (0.001 = 0.1 проц; макс 0.02 = 2 проц),0.0,0.02,Asteroid Stream
+dynamic_asteroids,da_derelictSpawnChance,Шанс корабля-остова,Double,0.015,,Шанс спавна дрейфующего остова на волну (0.015 = 1.5 проц; макс 0.15 = 15 проц для сохранения атмосферы. В профилях 1-4 выставляется автоматически),0.0,0.15,Asteroid Stream
+dynamic_asteroids,da_debrisEasterEggChance,Шанс обломков и цистерн,Double,0.04,,Шанс спавна древних двигателей и взрывоопасных цистерн (0.04 = 4.0 проц; макс 0.40 = 40 проц),0.0,0.40,Asteroid Stream
+dynamic_asteroids,da_resourceEasterEggChance,Шанс ценных контейнеров,Double,0.02,,"Шанс спавна зондов Домена, тайников, криокапсул и чипов истребителей (0.02 = 2.0 проц; макс 0.15 = 15 проц)",0.0,0.15,Asteroid Stream
+dynamic_asteroids,da_easterEggSpeed,Скорость дрейфа находок,Double,400.0,,Скорость дрейфа полезных находок и остовов (ед/сек). Меньшая скорость облегчает перехват,100.0,1500.0,Asteroid Stream
+dynamic_asteroids,da_easterEggMagnetStrength,Мощность луча щитов,Double,3000.0,,Ускорение (ед/сек2) притяжения ценных находок активными щитами кораблей игрока (0 = отключено),0.0,8000.0,Asteroid Stream
+dynamic_asteroids,da_derelictRescueHoldTime,Время стабилизации (сек),Double,60.0,,Время удержания щитов вблизи дрейфующего остова для завершения его эвакуации (60 сек),10.0,180.0,Asteroid Stream
+dynamic_asteroids,da_derelictRescueChance,Шанс успешной стабилизации,Double,1.0,,Вероятность передачи спасенного корабля во флот после боя (1.0 = 100 проц),0.1,1.0,Asteroid Stream
+dynamic_asteroids,da_header_trails,Шлейфы и Частицы,Header,Визуальные эффекты пыли,,,,,Asteroid Stream
+dynamic_asteroids,da_enableParticleTrails,Включить шлейфы астероидов,Boolean,true,,Генерация пылевого хвоста за быстрыми астероидами (красиво в бою),,,Asteroid Stream
+dynamic_asteroids,da_particleTrailChance,Шанс шлейфа на астероид,Double,0.20,,Доля астероидов со шлейфом (0.20 = 20 проц),0.0,1.0,Asteroid Stream
+dynamic_asteroids,da_header_space,Открытый Космос,Header,Параметры редких шальных метеоров,,,,,Asteroid Stream
+dynamic_asteroids,da_openSpaceMinRocks,Мин. число шальных камней,Int,3,,Нижний лимит метеоров вне поясов астероидов,1,15,Asteroid Stream
+dynamic_asteroids,da_openSpaceMaxRocks,Макс. число шальных камней,Int,7,,Верхний лимит метеоров вне поясов астероидов,2,30,Asteroid Stream
+dynamic_asteroids,da_openSpaceMinDelay,Мин. задержка спавна (сек),Double,2.0,,Минимальная пауза между одиночными метеорами,0.5,10.0,Asteroid Stream
+dynamic_asteroids,da_openSpaceMaxDelay,Макс. задержка спавна (сек),Double,5.5,,Максимальная пауза между одиночными метеорами,1.0,20.0,Asteroid Stream
+dynamic_asteroids,da_openSpaceEasterEggMult,Шанс находок в чистом космосе,Double,0.14,,Множитель частоты редких находок и остовов вне поясов (0.14 = в 7 раз реже пояса астероидов. 0.0 = только метеоры),0.0,0.50,Asteroid Stream
+dynamic_asteroids,da_header_stations,Оборона Космических Станций,Header,Силовой купол и защита от тарана,,,,,Fleet AI Reaction
+dynamic_asteroids,da_enableStationDeflectionDome,Силовой купол обтекания станции,Boolean,true,,"Голографический дефлекторный купол станций: все астероиды плавно огибают станцию, оставляя тихую зону позади",,,Fleet AI Reaction
+dynamic_asteroids,da_stationDomeMargin,Запас радиуса купола (ед),Double,140.0,,Дистанция защитного купола за пределами крайних модулей станции (по умолчанию 140 ед),50.0,400.0,Fleet AI Reaction
+dynamic_asteroids,da_enableStationAsteroidProtection,Защита станций от астероидов,Boolean,true,,Защитный контур станций: отклоняет приближающиеся мегалиты и снижает урон от столкновений на 98 проц,,,Fleet AI Reaction
+dynamic_asteroids,da_stationAsteroidDamageMult,Множитель урона по станциям,Double,0.02,,"Коэффициент урона от тарана астероидами по модулям космических станций (0.02 = 2 проц урона, 98 проц защита)",0.0,0.50,Fleet AI Reaction
+dynamic_asteroids,da_header_ai,Тактика Флота и ИИ,Header,Реакция флота на угрозы тарана,,,,,Fleet AI Reaction
+dynamic_asteroids,da_enableMicroDodge,Микро-маневры уклонения ИИ,Boolean,true,,Корабли ИИ аккуратно отворачивают в сторону при угрозе лобового тарана астероидом. [Эффект: высокий],,,Fleet AI Reaction
+dynamic_asteroids,da_enableShieldReaction,Подъем щитов против тарана,Boolean,true,,"ИИ поднимает щит, если не успевает уйти от столкновения [Эффект: высокий]",,,Fleet AI Reaction
+dynamic_asteroids,da_enableEarlySnipeEvasion,Упреждающий уход от снайп-волн,Boolean,true,,ИИ заранее реагирует на прицельные астероидные залпы в свою сторону,,,Fleet AI Reaction
+dynamic_asteroids,da_targetedSnipeChance,Шанс прицельной волны в корабль,Double,0.05,,"Шанс того, что поток астероидов будет нацелен прямо в координаты корабля (0.05 = 5 проц)",0.0,0.5,Fleet AI Reaction
+dynamic_asteroids,da_header_pd,ПРО / Оборона против камней,Header,Стрельба лазеров и кинетики по астероидам,,,,,Fleet AI Reaction
+dynamic_asteroids,da_enablePDTargeting,Стрельба ПРО по астероидам,Boolean,true,,Орудия ПРО перехватывают опасные астероиды. Внимание: тратит поток орудий! [Эффект: высокий],,,Fleet AI Reaction
+dynamic_asteroids,da_pdCriticalThreatsOnly,Огонь только по критическим,Boolean,true,,ПРО стреляет только по астероидам на гарантированной траектории удара. [Эффект: высокий],,,Fleet AI Reaction
+dynamic_asteroids,da_enablePDFluxSafety,Защита от перегрузки по флаксу,Boolean,true,,Автоматический запрет огня ПРО по камням при высоком уровне флакса в пылу перестрелки,,,Fleet AI Reaction
+dynamic_asteroids,da_pdMaxFluxThreshold,Порог флакса для отключения ПРО,Double,0.75,,Доля емкости флакса (0.75 = 75 проц. 1.0 = никогда не отключать),0.20,1.0,Fleet AI Reaction
+dynamic_asteroids,da_asteroidHealthMult,Прочность камней (множитель),Double,0.51,,Прочность астероидов (0.51 = 51 проц. Ниже - легче сбивать),0.1,2.0,Fleet AI Reaction
+dynamic_asteroids,da_pdAsteroidDamageMult,Множитель урона ПРО по камням,Double,6.0,,Бонусный урон орудий ПРО по астероидам (6.0 = 600 проц урона),1.0,10.0,Fleet AI Reaction
+dynamic_asteroids,da_header_ai_perf,Оптимизация ИИ,Header,Параметры сканирования угроз,,,,,Fleet AI Reaction
+dynamic_asteroids,da_aiMinThreatVelocity,Мин. скорость опасного камня,Double,200.0,,Порог относительной скорости для тревоги радара (ед/сек),100.0,600.0,Fleet AI Reaction
+dynamic_asteroids,da_aiLookaheadTime,Время прогноза тарана (сек),Double,1.25,,Горизонт времени упреждения столкновения для расчетов ИИ,0.5,2.5,Fleet AI Reaction

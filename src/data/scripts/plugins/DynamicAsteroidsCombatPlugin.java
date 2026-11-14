@@ -54,8 +54,9 @@ import com.fs.starfarer.api.input.InputEventAPI;
 
 
 import java.util.Map;
-
 import java.util.HashMap;
+import java.util.Set;
+import java.util.HashSet;
 
 import com.fs.starfarer.api.combat.ShieldAPI;
 
@@ -348,6 +349,9 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
     private float stationDomeScanTimer = 0f;
     private final List<StationDomeData> activeStationDomes = new ArrayList<StationDomeData>();
     private final List<ShipAPI> activeShipDomes = new ArrayList<ShipAPI>();
+    private final Map<ShipAPI, Float> shipSpawnTimes = new HashMap<ShipAPI, Float>();
+    private final Set<ShipAPI> shipDomesActivated = new HashSet<ShipAPI>();
+    private final Set<ShipAPI> shipDomesDeactivated = new HashSet<ShipAPI>();
 
     public static class StationDomeData {
         public ShipAPI stationCore;
@@ -747,6 +751,9 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
 
         this.activeStationDomes.clear();
         this.activeShipDomes.clear();
+        this.shipSpawnTimes.clear();
+        this.shipDomesActivated.clear();
+        this.shipDomesDeactivated.clear();
 
         if (engine.getListenerManager() != null) {
 
@@ -2395,16 +2402,26 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
 
 
+    private void registerNewShipDeployment(ShipAPI s) {
+        if (s == null || !s.isAlive()) return;
+        if (s.isFighter() && s != engine.getPlayerShip()) return;
+        if (s.isDrone()) return;
+        if (s.isStation() || s.isStationModule() || s.getParentStation() != null) return;
+
+        if (shipSpawnTimes.containsKey(s) || shipDomesActivated.contains(s)) return;
+
+        float spawnTime = totalCombatTime;
+        shipSpawnTimes.put(s, Float.valueOf(spawnTime));
+        shipDomesActivated.add(s);
+        s.setCustomData("DA_SPAWN_TIME", Float.valueOf(spawnTime));
+
+        triggerShipDomeActivation(s);
+    }
+
     @Override
     public void reportFleetMemberDeployed(DeployedFleetMemberAPI member) {
         if (member != null && member.getShip() != null) {
-            ShipAPI s = member.getShip();
-            if (s != null && !s.isFighter() && !s.isDrone() && !s.isStation() && s.getParentStation() == null) {
-                if (!s.getCustomData().containsKey("DA_SPAWN_TIME")) {
-                    s.getCustomData().put("DA_SPAWN_TIME", Float.valueOf(totalCombatTime));
-                    triggerShipDomeActivation(s);
-                }
-            }
+            registerNewShipDeployment(member.getShip());
         }
     }
 
@@ -2424,21 +2441,22 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
             List<ShipAPI> sList = engine.getShips();
             for (int i = 0; i < sList.size(); i++) {
                 ShipAPI s = sList.get(i);
-                if (s == null || !s.isAlive() || (s.isFighter() && s != engine.getPlayerShip()) || s.isDrone()) continue;
+                if (s == null || !s.isAlive()) continue;
+                if (s.isFighter() && s != engine.getPlayerShip()) continue;
+                if (s.isDrone()) continue;
                 if (s.isStation() || s.isStationModule() || s.getParentStation() != null) continue;
 
-                Float spawnTime = (Float) s.getCustomData().get("DA_SPAWN_TIME");
-                if (spawnTime == null) {
-                    spawnTime = Float.valueOf(totalCombatTime);
-                    s.getCustomData().put("DA_SPAWN_TIME", spawnTime);
-                    triggerShipDomeActivation(s);
+                if (!shipSpawnTimes.containsKey(s) && !shipDomesActivated.contains(s)) {
+                    registerNewShipDeployment(s);
                 }
 
-                float timeSinceSpawn = totalCombatTime - spawnTime.floatValue();
+                Float spawnTime = shipSpawnTimes.get(s);
+                float timeSinceSpawn = (spawnTime != null) ? (totalCombatTime - spawnTime.floatValue()) : 0f;
                 if (timeSinceSpawn >= 0f && timeSinceSpawn < deploymentSafetyDuration) {
                     activeShipDomes.add(s);
-                } else if (!s.getCustomData().containsKey("DA_DOME_EXPIRED_NOTIFIED")) {
-                    s.getCustomData().put("DA_DOME_EXPIRED_NOTIFIED", Boolean.TRUE);
+                } else if (!shipDomesDeactivated.contains(s)) {
+                    shipDomesDeactivated.add(s);
+                    s.setCustomData("DA_DOME_EXPIRED_NOTIFIED", Boolean.TRUE);
                     triggerShipDomeDeactivation(s);
                 }
             }
@@ -6993,13 +7011,17 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                     // provide 98% asteroid collision damage protection (0.02f multiplier, matching station dome defense)!
                     boolean isStation = targetShip.isStation() || targetShip.isStationModule() || targetShip.getParentStation() != null;
                     if (!isStation && instance != null && instance.enableDeploymentSafety) {
-                        Float spawnTime = (Float) targetShip.getCustomData().get("DA_SPAWN_TIME");
+                        Float spawnTime = instance.shipSpawnTimes.get(targetShip);
+                        if (spawnTime == null) {
+                            Object sData = targetShip.getCustomData().get("DA_SPAWN_TIME");
+                            if (sData instanceof Float) spawnTime = (Float) sData;
+                        }
                         float timeSinceSpawn = (spawnTime != null) ? (instance.totalCombatTime - spawnTime.floatValue()) : instance.totalCombatTime;
 
                         if (timeSinceSpawn >= 0f && timeSinceSpawn < instance.deploymentSafetyDuration) {
                             damage.getModifier().modifyMult("da_deployment_safety", instance.stationAsteroidDamageMult);
                             if (source != null && source.getCustomData().containsKey("DA_IS_MEGALITH")) {
-                                source.getCustomData().put("DA_NO_MAINTAIN_VELOCITY", Boolean.TRUE);
+                                source.setCustomData("DA_NO_MAINTAIN_VELOCITY", Boolean.TRUE);
                             }
                             if (instance.engine != null && point != null) {
                                 instance.engine.addHitParticle(point, new Vector2f(0f, 0f), 80f, 0.6f, 0.4f, new Color(100, 220, 255, 220));
@@ -10655,7 +10677,11 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                 float fieldRadius = ship.getCollisionRadius() * 1.15f + 15f;
                 if (!viewport.isNearViewport(loc, fieldRadius + 150f)) continue;
 
-                Float spawnTime = (Float) ship.getCustomData().get("DA_SPAWN_TIME");
+                Float spawnTime = shipSpawnTimes.get(ship);
+                if (spawnTime == null) {
+                    Object sData = ship.getCustomData().get("DA_SPAWN_TIME");
+                    if (sData instanceof Float) spawnTime = (Float) sData;
+                }
                 float timeSinceSpawn = (spawnTime != null) ? (totalCombatTime - spawnTime.floatValue()) : 0f;
                 float timeRemaining = deploymentSafetyDuration - timeSinceSpawn;
                 if (timeRemaining <= 0f) continue;

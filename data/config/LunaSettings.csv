@@ -1,6 +1,6 @@
 modID,fieldID,fieldName,fieldType,defaultValue,secondaryValue,fieldDescription,minValue,maxValue,tab
 dynamic_asteroids,da_header_sim,Пресеты и Симуляция,Header,Параметры потока и режимы,,,,,Asteroid Stream
-dynamic_asteroids,da_activePreset,Активный профиль,Int,2,,0=Свой (все ползунки вручную); 1=Кинематографичный (70-280 камней / 400 ск / 0.5 проц остов / 1.0 проц лут / 80 ск мегалита); 2=Сбалансированный [По умолчанию] (140-560 камней / 600 ск / 1.5 проц остов / 2.0 проц лут / 90 ск мегалита, диапазон 60-120); 3=Шторм (210-700 камней / 1200 ск / 3.5 проц остов / 4.0 проц лут / 220 ск мегалита); 4=Хаос [Высокий риск / Высокая награда] (350-700 камней / 3000 ск / 7.0 проц остов / 8.0 проц лут / 420 ск мегалита),0,4,Asteroid Stream
+dynamic_asteroids,da_activePreset,Активный профиль,Int,2,,"0=Свой (все ползунки вручную); 1=Кинематографичный (70-280 камней / 400 ск / 0.5 проц остов / 1.0 проц лут / 80 ск мегалита); 2=Сбалансированный [По умолчанию] (140-560 камней / 600 ск / 1.5 проц остов / 2.0 проц лут / 90 ск мегалита, диапазон 60-120); 3=Шторм (210-700 камней / 1200 ск / 3.5 проц остов / 4.0 проц лут / 220 ск мегалита); 4=Хаос [Высокий риск / Высокая награда] (350-700 камней / 3000 ск / 7.0 проц остов / 8.0 проц лут / 420 ск мегалита)",0,4,Asteroid Stream
 dynamic_asteroids,da_enableInSimulation,Включать в симуляторе,Boolean,true,,Активность потока астероидов в тестах симулятора ([/] переключение; Shift +/- лимит; Ctrl +/- скорость; [L] мегалит),,,Asteroid Stream
 dynamic_asteroids,da_header_field,Плотность и Кинетика,Header,Параметры поля (применяются при Профиле 0: Свой),,,,,Asteroid Stream
 dynamic_asteroids,da_minFieldRocks,Мин. число камней в поясе,Int,140,,Минимальный лимит астероидов в потоке (при Профиле 0),50,1000,Asteroid Stream
@@ -19,7 +19,7 @@ dynamic_asteroids,da_megalithSpawnInterval,Интервал мегалитов (
 dynamic_asteroids,da_megalithMinRadius,Мин. радиус мегалита,Double,125.0,,Минимальный радиус глыбы (ед). Для сравнения: крейсер имеет радиус около 120-140,60.0,300.0,Asteroid Stream
 dynamic_asteroids,da_megalithMaxRadius,Макс. радиус мегалита,Double,550.0,,Максимальный радиус глыбы (ед). Колоссальный планетоид размером с космическую станцию (диаметр до 1100 ед),200.0,800.0,Asteroid Stream
 dynamic_asteroids,da_enableDeploymentSafety,Защита при старте боя,Boolean,true,,Полная защита кораблей от таранного урона астероидов в первые секунды боя и в зонах развертывания флота,,,Asteroid Stream
-dynamic_asteroids,da_deploymentSafetyDuration,Длительность защиты старта (сек),Double,7.0,,Время действия защитных дефлекторов при развертывании флота в начале боя,0.0,30.0,Asteroid Stream
+dynamic_asteroids,da_deploymentSafetyDuration,Длительность защиты старта (сек),Double,14.0,,Время действия защитных дефлекторов при развертывании флота в начале боя,0.0,30.0,Asteroid Stream
 dynamic_asteroids,da_megalithArcFlight,Полет по дуге (гравитация),Boolean,true,,Плавный изгиб траектории мегалита (1.5-3 град/сек) для эффектного обхода сектора,,,Asteroid Stream
 dynamic_asteroids,da_megalithDerelictDropChance,Шанс остова из мегалита,Double,0.001,,"Шанс обнаружить замурованный остов корабля при личном разрушении мегалита игроком (0.001 = 0.1 проц, 1 на 1000)",0.0,0.05,Asteroid Stream
 dynamic_asteroids,da_header_easter_eggs,Пасхалки и Заброшенные объекты,Header,Секретные находки в потоке метеоров,,,,,Asteroid Stream

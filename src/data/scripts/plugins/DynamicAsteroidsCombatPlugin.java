@@ -10594,11 +10594,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         engine.addSmoothParticle(loc, new Vector2f(0f, 0f), r * 1.4f, 0.7f, 1.0f, new Color(100, 220, 255, 190));
         engine.addHitParticle(loc, new Vector2f(0f, 0f), r * 0.8f, 0.5f, 0.6f, new Color(120, 240, 255, 220));
         engine.addFloatingText(loc, IS_RUSSIAN ? "ПОЛЕ ОБТЕКАНИЯ: АКТИВНО (7с)" : "DEFLECTION DOME: ONLINE (7s)", 20f, new Color(90, 215, 255), ship, 0.4f, 2.2f);
-        if (ship == engine.getPlayerShip()) {
-            try {
-                Global.getSoundPlayer().playUISound("ui_rep_raise", 1.0f, 0.95f);
-            } catch (Throwable t) {}
-        }
     }
 
     private void triggerShipDomeDeactivation(ShipAPI ship) {

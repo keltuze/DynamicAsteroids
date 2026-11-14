@@ -1,10 +1,10 @@
 {
   "id": "dynamic_asteroids",
-  "name": "Dynamic Asteroids 2.0.67 [RU]",
+  "name": "Dynamic Asteroids 2.0.68 [RU]",
   "author": "keltuze",
   "utility": "false",
-  "version": "2.0.67",
-  "description": "Dynamic Asteroids 2.0.67: Живые астероидные пояса, кинетический таранный урон по пресетам сложности, колоссальные мегалиты с ценным лутом, купола станций, эвакуация редких остовов.",
+  "version": "2.0.68",
+  "description": "Dynamic Asteroids 2.0.68: Живые астероидные пояса, кинетический таранный урон по пресетам сложности, колоссальные мегалиты с ценным лутом, купола станций, эвакуация редких остовов.",
   "gameVersion": "0.98.5a-RC4",
   "jars": [
     "jars/DynamicAsteroids.jar"

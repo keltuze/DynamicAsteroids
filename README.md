@@ -3,24 +3,41 @@
 [![Game Version](https://img.shields.io/badge/Starsector-0.98.5a--RC4%20%7C%200.98.5a-blue.svg)](https://fractalsoftworks.com/)
 [![Java Compatibility](https://img.shields.io/badge/Java-8%20(Bytecode%2052.0)-green.svg)]()
 [![LunaLib](https://img.shields.io/badge/LunaLib-Required-orange.svg)]()
-[![Latest Release](https://img.shields.io/badge/Release-v2.0.67-brightgreen.svg)](https://github.com/keltuze/DynamicAsteroids/releases/tag/v2.0.67)
+[![Latest Release](https://img.shields.io/badge/Release-v2.0.68-brightgreen.svg)](https://github.com/keltuze/DynamicAsteroids/releases/tag/v2.0.68)
 
 > **Breathes life into static asteroid belts and deep space combat!**  
 > In vanilla Starsector, asteroids just hang motionless in space. **Dynamic Asteroids** transforms them into rushing kinetic rivers of space debris, derelict recovery operations, interactive salvage gathering, and tactical survival challenges during combat.  
-> **Version 2.0.67** introduces station-grade deployment deflection fields for all ships (7 seconds of visible rotating deflector domes with laminar flow and 98% kinetic asteroid protection for opening spawns and reinforcements), fixed station dome circuit breaker recovery, guaranteed post-battle derelict recovery, and full compatibility with Starsector 0.98.5a.
+> **Version 2.0.68** completely overhauls AI obstacle avoidance: ships now actively and vigorously dodge vertical/upward-drifting colossal megaliths, attached derelict ship fragments and easter eggs, and structured asteroid formation waves, with full autopilot and simulator test support and physical thruster propulsion assist.
 
 ---
 
-## 📦 Downloads (v2.0.67 Release)
+## 📦 Downloads (v2.0.68 Release)
 
 Direct download links for the latest version. Both editions contain all 5 live presets (from Cinematic soft drift to hypervelocity Chaos):
 
 | Edition | Language | Highlights & Features | Direct Download |
 | :--- | :---: | :--- | :--- |
-| **Russian Edition (RU)** | 🇷🇺 Русский | Полная русская локализация (интерфейс, LunaLib, боевые тревоги), дефлекторные купола кораблей на старте и подкреплениях, эвакуация остовов, шрифты для LunaLib | [**`DynamicAsteroids_RU_v2.0.67.zip`**](https://github.com/keltuze/DynamicAsteroids/releases/download/v2.0.67/DynamicAsteroids_RU_v2.0.67.zip) |
-| **Standard Edition (EN)** | 🇬🇧 English | Full English edition, ship deployment deflection domes, directional shield tractor beam, derelict recovery, Domain caches, smart PD whitelist | [**`DynamicAsteroids_v2.0.67.zip`**](https://github.com/keltuze/DynamicAsteroids/releases/download/v2.0.67/DynamicAsteroids_v2.0.67.zip) |
+| **Russian Edition (RU)** | 🇷🇺 Русский | Полная русская локализация, уклонение от мегалитов и формаций, дефлекторные купола 7 сек, остовы, шрифты для LunaLib | [**`DynamicAsteroids_RU_v2.0.68.zip`**](https://github.com/keltuze/DynamicAsteroids/releases/download/v2.0.68/DynamicAsteroids_RU_v2.0.68.zip) |
+| **Standard Edition (EN)** | 🇬🇧 English | Full English edition, active AI avoidance for megaliths & formations, ship deployment deflection domes, derelict recovery, smart PD | [**`DynamicAsteroids_v2.0.68.zip`**](https://github.com/keltuze/DynamicAsteroids/releases/download/v2.0.68/DynamicAsteroids_v2.0.68.zip) |
 
 > 🔗 All release assets and past versions are available on the [**GitHub Releases Page**](https://github.com/keltuze/DynamicAsteroids/releases).
+
+---
+
+## 🚀 What's New in v2.0.68
+
+### 🛸 1. Complete AI Evasion Overhaul (Megaliths & Derelict Fragments)
+* **Full Avoidance for Upward & Angled Megaliths:** Fixed obstacle classification and lookahead for colossal megaliths travelling in any direction (including `BOTTOM_TO_TOP` vertical flight). Ships detect impending collisions up to 8 seconds ahead and initiate smooth contour gliding.
+* **Easter Egg & Derelict Collision Awareness:** Fixed bug where easter egg hulls (derelict mothership engines, fighters, salvage pods attached to or preceding boulders) were ignored as collision threats. All heavy fragments and megaliths now trigger urgent avoidance maneuvers.
+* **Low-Speed Hazard Detection:** Reduced minimum closing speed threshold for colossal threats from 200 u/s down to 30 u/s, ensuring slow-drifting boulders and derelicts are properly avoided rather than ignored.
+
+### 🌊 2. Formation Stream & Wave Corridor Clearing
+* **Wave Avoidance (`advanceActiveStreamsEvasion`):** Fixed reaction window and origin boundary checks for structured asteroid formations (Beams, Swarms, Dual Rails, Fans). Ships detect oncoming waves up to 7 seconds before arrival and power out of the hazard corridor.
+* **Smart Front & Omni Shield Reactions:** AI ships now automatically raise front and omni shields to block incoming asteroid clusters and megalith strikes when facing threat vectors.
+
+### 🎮 3. Simulation & Autopilot Avoidance Fix
+* **Autopilot & Simulator Test Support:** Fixed critical logic in `isShipManualPlayerControlled` where player ships with Autopilot engaged ('U' key) or ships tested in Refit Simulator without movement inputs were mistakenly flagged as manual, disabling all avoidance routines. Ships in simulation and under autopilot now actively dodge all asteroid streams and megaliths.
+* **Physical Thruster Propulsion Assist:** Evasion routines now apply genuine thruster momentum in the escape direction proportional to ship acceleration, ensuring destroyers, cruisers, and capital ships briskly and visibly maneuver clear of incoming impacts.
 
 ---
 

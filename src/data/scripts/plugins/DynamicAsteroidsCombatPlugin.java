@@ -577,6 +577,10 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
 
         float targetAngle = 0.0f;
 
+        float escapeDirX = 0.0f;
+
+        float escapeDirY = 0.0f;
+
     }
 
 
@@ -2408,12 +2412,13 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         if (s.isDrone()) return;
         if (s.isStation() || s.isStationModule() || s.getParentStation() != null) return;
 
-        if (shipSpawnTimes.containsKey(s) || shipDomesActivated.contains(s)) return;
+        if (shipSpawnTimes.containsKey(s) || shipDomesActivated.contains(s) || s.getCustomData().containsKey("DA_DOME_ACTIVATED")) return;
 
         float spawnTime = totalCombatTime;
         shipSpawnTimes.put(s, Float.valueOf(spawnTime));
         shipDomesActivated.add(s);
         s.setCustomData("DA_SPAWN_TIME", Float.valueOf(spawnTime));
+        s.setCustomData("DA_DOME_ACTIVATED", Boolean.TRUE);
 
         triggerShipDomeActivation(s);
     }
@@ -2446,7 +2451,7 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                 if (s.isDrone()) continue;
                 if (s.isStation() || s.isStationModule() || s.getParentStation() != null) continue;
 
-                if (!shipSpawnTimes.containsKey(s) && !shipDomesActivated.contains(s)) {
+                if (!shipSpawnTimes.containsKey(s) && !shipDomesActivated.contains(s) && !s.getCustomData().containsKey("DA_DOME_ACTIVATED")) {
                     registerNewShipDeployment(s);
                 }
 
@@ -5554,42 +5559,45 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
      */
 
+    private boolean isPlayerActivelySteering() {
+        try {
+            if (Keyboard.isKeyDown(Keyboard.KEY_W) || Keyboard.isKeyDown(Keyboard.KEY_A) ||
+                Keyboard.isKeyDown(Keyboard.KEY_S) || Keyboard.isKeyDown(Keyboard.KEY_D) ||
+                Keyboard.isKeyDown(Keyboard.KEY_Q) || Keyboard.isKeyDown(Keyboard.KEY_E) ||
+                Keyboard.isKeyDown(Keyboard.KEY_UP) || Keyboard.isKeyDown(Keyboard.KEY_DOWN) ||
+                Keyboard.isKeyDown(Keyboard.KEY_LEFT) || Keyboard.isKeyDown(Keyboard.KEY_RIGHT)) {
+                return true;
+            }
+        } catch (Throwable t) {}
+        return false;
+    }
+
     private boolean isShipManualPlayerControlled(ShipAPI ship) {
-
         if (ship == null || engine == null) return false;
-
         if (ship != engine.getPlayerShip()) {
-
             return false; // Fleet ships are AI-controlled (automatic mode)
-
         }
 
+        // Direct Autopilot check (U key in combat/simulator)
+        boolean autopilotOn = false;
+        try {
+            if (engine.getCombatUI() != null && engine.getCombatUI().isAutopilotOn()) {
+                autopilotOn = true;
+            } else if (engine.isUIAutopilotOn()) {
+                autopilotOn = true;
+            }
+        } catch (Throwable t) {}
 
-
-        // The player flagship without an AI is definitively manual
-
-        if (ship.getShipAI() == null) {
-
-            return true;
-
+        if (autopilotOn) {
+            return false; // Under autopilot: AI moves the ship
         }
 
-
-
-        // Direct CombatUI Autopilot check
-
-        if (engine.getCombatUI() != null) {
-
-            return !engine.getCombatUI().isAutopilotOn();
-
+        // In simulation, or when idle/hands-off movement keys: allow automatic collision avoidance / dodging
+        if (engine.isSimulation() || !isPlayerActivelySteering()) {
+            return false;
         }
 
-
-
-        // Fallback: engine.isUIAutopilotOn() is inverted in vanilla (true when manual)
-
-        return engine.isUIAutopilotOn();
-
+        return true;
     }
 
 
@@ -5669,12 +5677,12 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
 
 
-                if (ast.getCustomData().containsKey("IS_EASTER_EGG")) continue;
-
                 boolean isMegalith = ast.getCustomData().containsKey("DA_IS_MEGALITH");
+                boolean isEasterEgg = ast.getCustomData().containsKey("IS_EASTER_EGG");
+                boolean isHeavy = (ast.getCollisionRadius() >= 65f || ast.getMass() >= 2500f);
                 float speedSq = vel.x * vel.x + vel.y * vel.y;
 
-                if (speedSq >= minSpeedSq || isMegalith) {
+                if (speedSq >= minSpeedSq || isMegalith || isEasterEgg || isHeavy) {
 
                     fastThreats.add(ast);
 
@@ -5806,9 +5814,13 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
                 float relSpeedSq = rvx * rvx + rvy * rvy;
 
-                boolean isMegalith = threat.getCustomData().containsKey("DA_IS_MEGALITH");
+                boolean isSpecialThreat = threat.getCustomData().containsKey("DA_IS_MEGALITH") ||
+                                         threat.getCustomData().containsKey("IS_EASTER_EGG") ||
+                                         threat.getCollisionRadius() >= 65f ||
+                                         threat.getMass() >= 2500f;
 
-                if (!isMegalith && relSpeedSq < (aiMinThreatVelocity * aiMinThreatVelocity)) continue;
+                float minVelThreshold = isSpecialThreat ? 30.0f : aiMinThreatVelocity;
+                if (relSpeedSq < (minVelThreshold * minVelThreshold)) continue;
 
 
 
@@ -5920,9 +5932,17 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
                 if (isPlayerManual) {
 
-                    // Instantly release control to the player if autopilot was disengaged!
+                    // Instantly release control to the player if manual steering was engaged!
 
                     state.activeCommand = null;
+
+                    state.activeThrustCommand = null;
+
+                    state.activeTurnCommand = null;
+
+                    state.escapeDirX = 0f;
+
+                    state.escapeDirY = 0f;
 
                     state.cooldown = 0f;
 
@@ -5948,6 +5968,18 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
                     ship.giveCommand(state.activeTurnCommand, null, 0);
 
+                }
+
+                // Physical thruster assist: ensures ships briskly and visibly accelerate out of danger path
+                if (state.cooldown > 0f && (state.escapeDirX != 0f || state.escapeDirY != 0f)) {
+                    float accel = ship.getAcceleration();
+                    if (accel > 0f) {
+                        Vector2f vel = ship.getVelocity();
+                        if (vel != null) {
+                            vel.x += state.escapeDirX * accel * 0.95f * amount;
+                            vel.y += state.escapeDirY * accel * 0.95f * amount;
+                        }
+                    }
                 }
 
 
@@ -6051,12 +6083,14 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         }
 
         state.cooldown = Math.max(state.cooldown, duration);
+        state.escapeDirX = escapeWorldX;
+        state.escapeDirY = escapeWorldY;
 
 
 
         // Lateral thruster burn
 
-        if (Math.abs(dotLeft) >= 0.18f) {
+        if (Math.abs(dotLeft) >= 0.05f) {
 
             ShipCommand strafeCmd = (dotLeft > 0f) ? ShipCommand.STRAFE_LEFT : ShipCommand.STRAFE_RIGHT;
 
@@ -6074,7 +6108,7 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
         // Longitudinal thruster burn (accelerate away or reverse clear of trajectory)
 
-        if (Math.abs(dotFwd) >= 0.22f) {
+        if (Math.abs(dotFwd) >= 0.08f) {
 
             ShipCommand thrustCmd = (dotFwd > 0f) ? ShipCommand.ACCELERATE : ShipCommand.DECELERATE;
 
@@ -6090,14 +6124,22 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
 
 
-        // Ships only use translational thrusters (strafe/throttle) to dodge, NEVER hijacking heading!
-        state.activeTurnCommand = null;
+        // Turning assistance for heavier ships with slow strafe
+        float desiredFacing = computeAngle(0f, 0f, escapeWorldX, escapeWorldY);
+        float diffFacing = getShortestRotation(ship.getFacing(), desiredFacing);
+        if (Math.abs(diffFacing) > 15f && Math.abs(diffFacing) < 135f) {
+            ShipCommand turnCmd = (diffFacing > 0f) ? ShipCommand.TURN_LEFT : ShipCommand.TURN_RIGHT;
+            state.activeTurnCommand = turnCmd;
+            ship.giveCommand(turnCmd, null, 0);
+        } else {
+            state.activeTurnCommand = null;
+        }
 
         ShipwideAIFlags flags = ship.getAIFlags();
         if (flags != null) {
-            // Do NOT set RUN_QUICKLY (which causes AI to abandon pursuit/attack orders and flee)
-            flags.setFlag(AIFlags.HAS_INCOMING_DAMAGE, Math.min(0.35f, duration));
-
+            flags.setFlag(AIFlags.HAS_INCOMING_DAMAGE, Math.min(0.6f, duration));
+            flags.setFlag(AIFlags.DO_NOT_BACK_OFF, 0.45f);
+            flags.setFlag(AIFlags.WANTED_TO_SLOW_DOWN, 0.4f);
         }
 
     }
@@ -6200,7 +6242,7 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
 
 
-                applyEvasiveManeuver(ship, escapeWorldX, escapeWorldY, Math.max(0.5f, timeToImpact + 0.25f));
+                applyEvasiveManeuver(ship, escapeWorldX, escapeWorldY, Math.max(0.6f, timeToImpact + 0.35f));
 
             }
 
@@ -6291,8 +6333,9 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
             CombatEntityAPI ast = asteroids.get(i);
             if (ast == null || ast.isExpired() || !engine.isEntityInPlay(ast)) continue;
             boolean isMegalith = ast.getCustomData().containsKey("DA_IS_MEGALITH");
-            boolean isDerelict = "DERELICT".equals(ast.getCustomData().get("EASTER_EGG_TYPE"));
-            if (isMegalith || isDerelict) {
+            boolean isEasterEgg = ast.getCustomData().containsKey("IS_EASTER_EGG");
+            boolean isColossal = isMegalith || isEasterEgg || (ast.getCollisionRadius() >= 75f) || (ast.getMass() >= 4000f);
+            if (isColossal) {
                 if (colossals == null) colossals = new ArrayList<CombatEntityAPI>();
                 colossals.add(ast);
             }
@@ -6365,13 +6408,13 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                 float rvx = ovX - shipVel.x;
                 float rvy = ovY - shipVel.y;
                 float relSpdSq = rvx * rvx + rvy * rvy;
-                if (relSpdSq < 64f) continue; // Relative speed < 8 u/s, effectively static
+                if (relSpdSq < 16f) continue; // Relative speed < 4 u/s, effectively static
 
                 float dot = toObsX * rvx + toObsY * rvy;
                 if (dot >= 0f) continue; // Diverging / moving away
 
                 float tCpa = -dot / relSpdSq;
-                if (tCpa <= 0.02f || tCpa > 6.0f) continue; // Up to 6.0s lookahead window for capital/cruiser safety
+                if (tCpa <= 0.01f || tCpa > 8.0f) continue; // Up to 8.0s lookahead window for capital/cruiser safety
 
                 float cpaX = toObsX + rvx * tCpa;
                 float cpaY = toObsY + rvy * tCpa;
@@ -6475,9 +6518,11 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
             shipStates.put(ship, state);
         }
         state.cooldown = Math.max(state.cooldown, duration);
+        state.escapeDirX = escapeWorldX;
+        state.escapeDirY = escapeWorldY;
 
         // Lateral thruster burn to gently glide around contour
-        if (Math.abs(dotLeft) >= 0.08f) {
+        if (Math.abs(dotLeft) >= 0.05f) {
             ShipCommand strafeCmd = (dotLeft > 0f) ? ShipCommand.STRAFE_LEFT : ShipCommand.STRAFE_RIGHT;
             state.activeCommand = strafeCmd;
             ship.giveCommand(strafeCmd, null, 0);
@@ -6486,10 +6531,10 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         }
 
         // Longitudinal throttle: decelerate if heading directly towards obstacle to give room to clear
-        if (dotFwd < -0.15f) {
+        if (dotFwd < -0.10f) {
             state.activeThrustCommand = ShipCommand.DECELERATE;
             ship.giveCommand(ShipCommand.DECELERATE, null, 0);
-        } else if (dotFwd > 0.35f) {
+        } else if (dotFwd > 0.20f) {
             state.activeThrustCommand = ShipCommand.ACCELERATE;
             ship.giveCommand(ShipCommand.ACCELERATE, null, 0);
         } else {
@@ -6497,9 +6542,9 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         }
 
         // Polite, smooth avoidance steering:
-        // Cruisers & Capital ships have very slow lateral strafe; a gentle turn aligns their main engines with escape route
-        boolean isHeavyShip = (ship.getHullSize() == ShipAPI.HullSize.CRUISER || ship.getHullSize() == ShipAPI.HullSize.CAPITAL_SHIP);
-        if (isHeavyShip && timeToImpact < 5.0f && dotFwd < -0.12f && Math.abs(dotLeft) > 0.15f) {
+        // Destroyers, Cruisers & Capital ships have slower lateral strafe; a gentle turn aligns their main engines with escape route
+        boolean needsTurnAssist = (ship.getHullSize() == ShipAPI.HullSize.DESTROYER || ship.getHullSize() == ShipAPI.HullSize.CRUISER || ship.getHullSize() == ShipAPI.HullSize.CAPITAL_SHIP);
+        if (needsTurnAssist && timeToImpact < 6.0f && Math.abs(dotLeft) > 0.10f) {
             ShipCommand turnCmd = (dotLeft > 0f) ? ShipCommand.TURN_LEFT : ShipCommand.TURN_RIGHT;
             state.activeTurnCommand = turnCmd;
             ship.giveCommand(turnCmd, null, 0);
@@ -6578,7 +6623,7 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
                 float proj = dx * dirX + dy * dirY;
 
-                if (proj <= 50f) continue; // Behind origin
+                if (proj <= -250f) continue; // Behind origin buffer
 
 
 
@@ -6590,9 +6635,9 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
 
 
-                // Active reaction window: wave is approaching within 5.5 seconds, and has not yet cleared
+                // Active reaction window: wave is approaching within 7.0 seconds, and has not yet cleared
 
-                if (timeToFront > 5.5f || timeToTail < -0.6f) continue;
+                if (timeToFront > 7.0f || timeToTail < -0.8f) continue;
 
 
 
@@ -6720,7 +6765,14 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
                     if (ship.getShield().isOff() && ship.getFluxTracker() != null && ship.getFluxTracker().getFluxLevel() < 0.85f) {
 
-                        ship.giveCommand(ShipCommand.TOGGLE_SHIELD_OR_PHASE_CLOAK, null, 0);
+                        if (ship.getShield().getType() == ShieldType.OMNI) {
+                            ship.giveCommand(ShipCommand.TOGGLE_SHIELD_OR_PHASE_CLOAK, null, 0);
+                        } else if (ship.getShield().getType() == ShieldType.FRONT) {
+                            float diff = Math.abs(getShortestRotation(ship.getFacing(), angleToOrigin));
+                            if (diff <= ship.getShield().getArc() * 0.5f + 25.0f) {
+                                ship.giveCommand(ShipCommand.TOGGLE_SHIELD_OR_PHASE_CLOAK, null, 0);
+                            }
+                        }
 
                     }
 

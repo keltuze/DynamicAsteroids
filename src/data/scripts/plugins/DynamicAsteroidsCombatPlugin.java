@@ -10593,15 +10593,10 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         float r = ship.getCollisionRadius() * 1.15f + 15f;
         engine.addSmoothParticle(loc, new Vector2f(0f, 0f), r * 1.4f, 0.7f, 1.0f, new Color(100, 220, 255, 190));
         engine.addHitParticle(loc, new Vector2f(0f, 0f), r * 0.8f, 0.5f, 0.6f, new Color(120, 240, 255, 220));
-        engine.addFloatingText(loc, IS_RUSSIAN ? "ПОЛЕ ОБТЕКАНИЯ: АКТИВНО (7с)" : "DEFLECTION DOME: ONLINE (7s)", 20f, new Color(90, 215, 255), ship, 0.4f, 2.2f);
     }
 
     private void triggerShipDomeDeactivation(ShipAPI ship) {
-        if (engine == null || ship == null || ship.getLocation() == null) return;
-        Vector2f loc = ship.getLocation();
-        float r = ship.getCollisionRadius() * 1.15f + 15f;
-        engine.addSmoothParticle(loc, new Vector2f(0f, 0f), r * 1.1f, 0.5f, 0.6f, new Color(70, 160, 255, 130));
-        engine.addFloatingText(loc, IS_RUSSIAN ? "ПОЛЕ ОБТЕКАНИЯ: ОТКЛЮЧЕНО" : "DEFLECTION DOME: OFFLINE", 18f, new Color(150, 195, 240, 180), ship, 0.3f, 1.6f);
+        // Deflection field naturally fades out over the final 1.2 seconds; no notifications or sounds needed
     }
 
     @Override

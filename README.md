@@ -31,7 +31,7 @@ Direct download links for the latest version. Both editions contain all 5 live p
 * **Laminar Flow Asteroid Deflection:** Incoming asteroids smoothly glide and curve around ship perimeters through tangential laminar flow, with repulsive push force and visual contact sparks if asteroids near the barrier.
 * **98% Kinetic Collision Protection:** While the barrier is active, collision damage from asteroids is reduced by 98% (`0.02x` multiplier, matching station dome defense).
 * **Dual Spawn Handling:** Seamlessly protects both opening battle deployments and mid-battle reinforcement calls with zero delay.
-* **Activation & Expiration Cues:** Displays visual particle rings and floating combat text ("ПОЛЕ ОБТЕКАНИЯ: АКТИВНО (7с)" / "ПОЛЕ ОБТЕКАНИЯ: ОТКЛЮЧЕНО"), with dedicated UI audio for the player ship.
+* **Visual Deflector Marker:** Displays a clear holographic deflector barrier rotating around the ship's perimeter for 7 seconds with a smooth fade-out over the final 1.2s — without intrusive text popups or sounds to keep combat clean and atmospheric.
 
 ### ⚡ 2. Station Deflection Dome Circuit Breaker Fix
 * Fixed edge-detection timer bug: station module destruction or flux overload triggers a 60-second offline outage with visible sparks and notification, and automatically restores once systems recover, without restarting every scan tick.

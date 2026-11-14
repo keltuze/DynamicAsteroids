@@ -3,7 +3,7 @@
 [![Game Version](https://img.shields.io/badge/Starsector-0.98.5a--RC4%20%7C%200.98.5a-blue.svg)](https://fractalsoftworks.com/)
 [![Java Compatibility](https://img.shields.io/badge/Java-8%20(Bytecode%2052.0)-green.svg)]()
 [![LunaLib](https://img.shields.io/badge/LunaLib-Required-orange.svg)]()
-[![Latest Release](https://img.shields.io/badge/Release-v2.0.68-brightgreen.svg)](https://github.com/keltuze/DynamicAsteroids/releases/tag/v2.0.68)
+[![Latest Release](https://img.shields.io/badge/Release-v2.0.69-brightgreen.svg)](https://github.com/keltuze/DynamicAsteroids/releases/tag/v2.0.69)
 
 > **Breathes life into static asteroid belts and deep space combat!**  
 > In vanilla Starsector, asteroids just hang motionless in space. **Dynamic Asteroids** transforms them into rushing kinetic rivers of space debris, derelict recovery operations, interactive salvage gathering, and tactical survival challenges during combat.  

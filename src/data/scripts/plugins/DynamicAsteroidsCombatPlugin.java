@@ -5559,43 +5559,30 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
      */
 
-    private boolean isPlayerActivelySteering() {
-        try {
-            if (Keyboard.isKeyDown(Keyboard.KEY_W) || Keyboard.isKeyDown(Keyboard.KEY_A) ||
-                Keyboard.isKeyDown(Keyboard.KEY_S) || Keyboard.isKeyDown(Keyboard.KEY_D) ||
-                Keyboard.isKeyDown(Keyboard.KEY_Q) || Keyboard.isKeyDown(Keyboard.KEY_E) ||
-                Keyboard.isKeyDown(Keyboard.KEY_UP) || Keyboard.isKeyDown(Keyboard.KEY_DOWN) ||
-                Keyboard.isKeyDown(Keyboard.KEY_LEFT) || Keyboard.isKeyDown(Keyboard.KEY_RIGHT)) {
-                return true;
-            }
-        } catch (Throwable t) {}
-        return false;
-    }
-
     private boolean isShipManualPlayerControlled(ShipAPI ship) {
         if (ship == null || engine == null) return false;
+
+        // Fleet ships are AI-controlled (automatic mode)
         if (ship != engine.getPlayerShip()) {
-            return false; // Fleet ships are AI-controlled (automatic mode)
+            return false;
         }
 
-        // Direct Autopilot check (U key in combat/simulator)
-        boolean autopilotOn = false;
+        // The player flagship without an AI assigned is strictly under manual player control
+        if (ship.getShipAI() == null) {
+            return true;
+        }
+
+        // Direct Autopilot check ('U' key in combat/simulator)
         try {
-            if (engine.getCombatUI() != null && engine.getCombatUI().isAutopilotOn()) {
-                autopilotOn = true;
-            } else if (engine.isUIAutopilotOn()) {
-                autopilotOn = true;
+            if (engine.getCombatUI() != null) {
+                return !engine.getCombatUI().isAutopilotOn();
             }
         } catch (Throwable t) {}
 
-        if (autopilotOn) {
-            return false; // Under autopilot: AI moves the ship
-        }
-
-        // In simulation, or when idle/hands-off movement keys: allow automatic collision avoidance / dodging
-        if (engine.isSimulation() || !isPlayerActivelySteering()) {
-            return false;
-        }
+        // Fallback: engine.isUIAutopilotOn() in vanilla Starsector returns true when in manual mode
+        try {
+            return engine.isUIAutopilotOn();
+        } catch (Throwable t) {}
 
         return true;
     }

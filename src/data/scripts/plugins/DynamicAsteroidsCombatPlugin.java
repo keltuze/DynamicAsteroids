@@ -16,6 +16,8 @@ import java.util.List;
 
 import java.util.Random;
 
+import org.apache.log4j.Logger;
+
 import org.json.JSONObject;
 
 import org.lwjgl.input.Keyboard;
@@ -335,7 +337,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
     private float megalithMinRadius = 125.0f;
     private float megalithMaxRadius = 550.0f;
     private boolean enableDeploymentSafety = true;
-    private float deploymentSafetyDuration = 7.0f;
+    private float deploymentSafetyDuration = 14.0f;
     private boolean megalithArcFlight = true;
     private float megalithDerelictDropChance = 0.001f;
     private float summonMegalithKeyCooldown = 0f;
@@ -696,6 +698,10 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
         this.campaignListenerRegistered = false;
 
         this.activeEasterEggEntities.clear();
+        DerelictRecoveryCampaignListener.clearQueue();
+        if (engine != null && !engine.isSimulation() && engine.isInCampaign() && Global.getSector() != null) {
+            DerelictRecoveryCampaignListener.ensureRegistered();
+        }
 
 
 
@@ -2486,9 +2492,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         // Process Simulation Hotkeys:
         // ONLY ACTIVE IN SIMULATION! In regular campaign battles, hotkeys do nothing.
         if (engine.isSimulation()) {
-            if (summonKeyCooldown > 0f) {
-                summonKeyCooldown -= amount;
-            }
             if (summonContainerKeyCooldown > 0f) {
                 summonContainerKeyCooldown -= amount;
             }
@@ -3433,9 +3436,11 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                                     if (!rescuedDerelictVariantIds.contains(vId)) {
                                         rescuedDerelictVariantIds.add(vId);
                                     }
-                                    derelictSalvageRecords.put(vId, new DerelictSalvageRecord(
+                                    DerelictSalvageRecord rec = new DerelictSalvageRecord(
                                         vId, dName, derelictRescueChance, 0.15f, 0.35f
-                                    ));
+                                    );
+                                    derelictSalvageRecords.put(vId, rec);
+                                    DerelictRecoveryCampaignListener.queueForRecovery(rec);
                                 }
                                 if (engine.getCombatUI() != null) {
                                     String msg = IS_RUSSIAN ?
@@ -3449,7 +3454,7 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                 }
             }
 
-            // Task 2: Check if player has at least one ship alive on the battlefield at the end of combat
+            // Task 2: Check if player has surviving ships (on battlefield, retreated, in reserves, or valid campaign fleet)
             boolean playerAlive = false;
             if (engine.getShips() != null) {
                 for (ShipAPI s : engine.getShips()) {
@@ -3459,19 +3464,26 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                     }
                 }
             }
+            if (!playerAlive && engine.getFleetManager(0) != null) {
+                if (engine.getFleetManager(0).getRetreatedCopy() != null && !engine.getFleetManager(0).getRetreatedCopy().isEmpty()) {
+                    playerAlive = true;
+                }
+                if (engine.getFleetManager(0).getReservesCopy() != null && !engine.getFleetManager(0).getReservesCopy().isEmpty()) {
+                    playerAlive = true;
+                }
+            }
+            if (!playerAlive && Global.getSector() != null && Global.getSector().getPlayerFleet() != null) {
+                if (Global.getSector().getPlayerFleet().isValidPlayerFleet() && !Global.getSector().getPlayerFleet().getFleetData().getMembersListCopy().isEmpty()) {
+                    playerAlive = true;
+                }
+            }
 
             if (!derelictSalvageRecords.isEmpty() && !engine.isSimulation() && engine.isInCampaign() && Global.getSector() != null && playerAlive) {
-
                 campaignListenerRegistered = true;
-
-                Global.getSector().getListenerManager().addListener(
-
-                    new DerelictRecoveryCampaignListener(new ArrayList<DerelictSalvageRecord>(derelictSalvageRecords.values())),
-
-                    true
-
-                );
-
+                DerelictRecoveryCampaignListener.ensureRegistered();
+                for (DerelictSalvageRecord rec : derelictSalvageRecords.values()) {
+                    DerelictRecoveryCampaignListener.queueForRecovery(rec);
+                }
             }
 
         }
@@ -3870,9 +3882,9 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
                 String msg = IS_RUSSIAN ?
 
-                    ("СЕНСОРЫ: По экстренному вызову ['] обнаружен остов (" + hullName + ")!") :
+                    ("СЕНСОРЫ: Обнаружен заброшенный корабль (" + hullName + ")!") :
 
-                    ("SENSORS: Summoned derelict ship via ['] detected (" + hullName + ")!");
+                    ("SENSORS: Derelict ship detected (" + hullName + ")!");
 
                 engine.getCombatUI().addMessage(1, msg, new Color(80, 255, 160));
 
@@ -7546,35 +7558,89 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
 
 
-    public static class DerelictRecoveryCampaignListener extends BaseCampaignEventListener {
+    public static class DerelictRecoveryCampaignListener extends BaseCampaignEventListener implements com.fs.starfarer.api.EveryFrameScript {
 
-        private final List<DerelictSalvageRecord> records;
+        private static final Logger log = Global.getLogger(DerelictRecoveryCampaignListener.class);
+
+        private static DerelictRecoveryCampaignListener instance = null;
+
+        public static final List<DerelictSalvageRecord> pendingDeliveries = new ArrayList<DerelictSalvageRecord>();
 
         private boolean processed = false;
 
 
 
-        public DerelictRecoveryCampaignListener(List<DerelictSalvageRecord> records) {
+        public static synchronized void ensureRegistered() {
 
-            super(true); // transient
+            try {
 
-            this.records = new ArrayList<DerelictSalvageRecord>(records);
+                if (Global.getSector() == null) return;
+
+                if (instance == null) {
+
+                    instance = new DerelictRecoveryCampaignListener();
+
+                    Global.getSector().getListenerManager().addListener(instance, true);
+
+                    Global.getSector().addTransientScript(instance);
+
+                    log.info("Dynamic Asteroids: DerelictRecoveryCampaignListener registered with Sector ListenerManager and TransientScripts.");
+
+                }
+
+            } catch (Throwable t) {
+
+                log.error("Dynamic Asteroids: ensureRegistered error: " + t.getMessage(), t);
+
+            }
 
         }
 
 
 
-        public DerelictRecoveryCampaignListener(String variantId, float rescueChance) {
+        public static synchronized void clearQueue() {
 
-            super(true); // transient
+            pendingDeliveries.clear();
 
-            this.records = new ArrayList<DerelictSalvageRecord>();
+            if (instance != null) {
 
-            if (variantId != null) {
-
-                this.records.add(new DerelictSalvageRecord(variantId, variantId, rescueChance, 0.15f, 0.35f));
+                instance.processed = false;
 
             }
+
+        }
+
+
+
+        public static synchronized void queueForRecovery(DerelictSalvageRecord rec) {
+
+            if (rec == null || rec.variantId == null) return;
+
+            ensureRegistered();
+
+            for (DerelictSalvageRecord existing : pendingDeliveries) {
+
+                if (rec.variantId.equals(existing.variantId)) {
+
+                    log.info("Dynamic Asteroids: Derelict [" + rec.variantId + "] already in pendingDeliveries queue, updating.");
+
+                    return;
+
+                }
+
+            }
+
+            pendingDeliveries.add(rec);
+
+            log.info("Dynamic Asteroids: QUEUED derelict [" + rec.variantId + "] (" + rec.hullName + ") for direct fleet transfer! (Queue count: " + pendingDeliveries.size() + ")");
+
+        }
+
+
+
+        public DerelictRecoveryCampaignListener() {
+
+            super(true); // transient
 
         }
 
@@ -7584,88 +7650,177 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
         public void reportPlayerEngagement(EngagementResultAPI result) {
 
-            if (processed || records == null || records.isEmpty()) return;
+            log.info("Dynamic Asteroids: reportPlayerEngagement called by Sector battle resolver.");
 
-            processed = true;
+            deliverAllPendingToFleet();
+
+        }
 
 
+
+        @Override
+        public boolean isDone() {
+            return false;
+        }
+
+
+
+        @Override
+
+        public boolean runWhilePaused() {
+
+            return true;
+
+        }
+
+
+
+        @Override
+
+        public void advance(float amount) {
+
+            if (!pendingDeliveries.isEmpty()) {
+
+                log.info("Dynamic Asteroids: EveryFrameScript.advance delivering " + pendingDeliveries.size() + " pending derelict(s) on campaign map.");
+
+                deliverAllPendingToFleet();
+
+            }
+
+        }
+
+
+
+        private synchronized void deliverAllPendingToFleet() {
+
+            if (pendingDeliveries.isEmpty()) return;
 
             try {
 
+                if (Global.getSector() == null) return;
+
                 CampaignFleetAPI playerFleet = Global.getSector().getPlayerFleet();
+
+                if (playerFleet == null) return;
+
+
+
+                log.info("Dynamic Asteroids: Executing direct fleet delivery for " + pendingDeliveries.size() + " derelict(s)...");
+
+
 
                 Random rnd = new Random();
 
-                for (DerelictSalvageRecord rec : records) {
+                List<DerelictSalvageRecord> toProcess = new ArrayList<DerelictSalvageRecord>(pendingDeliveries);
+
+                pendingDeliveries.clear();
+
+                processed = true;
+
+
+
+                for (DerelictSalvageRecord rec : toProcess) {
 
                     if (rec == null || rec.variantId == null) continue;
 
-                    if (rec.rescueChance <= 0f) continue;
-
-                    if (rnd.nextFloat() > rec.rescueChance) continue;
+                    log.info("Dynamic Asteroids: Processing delivery for [" + rec.variantId + "], rescueChance=" + rec.rescueChance);
 
 
 
-                    FleetMemberAPI member = Global.getFactory().createFleetMember(FleetMemberType.SHIP, rec.variantId);
+                    if (rec.rescueChance <= 0f) {
 
-                    member.setOwner(1);
+                        log.info("Dynamic Asteroids: Rescue chance <= 0, skipping.");
 
-                    // Ensure always_recoverable tag so Starsector recovery screen NEVER drops this ship!
-                    member.getVariant().addTag("always_recoverable");
-                    member.getVariant().addTag(Tags.VARIANT_ALWAYS_RECOVERABLE);
-                    if (member.getHullSpec() != null) {
-                        member.getHullSpec().addTag("always_recoverable");
-                        member.getHullSpec().addTag(Tags.VARIANT_ALWAYS_RECOVERABLE);
+                        continue;
+
                     }
 
-                    FleetEncounterContext.prepareShipForRecovery(member, false, false, true, rec.minDmodProb, rec.maxDmodProb, rnd);
+                    if (rnd.nextFloat() > rec.rescueChance) {
 
-                    member.getVariant().addTag("always_recoverable");
-                    member.getVariant().addTag(Tags.VARIANT_ALWAYS_RECOVERABLE);
+                        log.info("Dynamic Asteroids: Rescue chance roll failed (" + rec.rescueChance + "), derelict lost.");
+
+                        continue;
+
+                    }
+
+
+
+                    FleetMemberAPI member = null;
+
+                    try {
+
+                        member = Global.getFactory().createFleetMember(FleetMemberType.SHIP, rec.variantId);
+
+                    } catch (Throwable t) {
+
+                        log.error("Dynamic Asteroids: Failed to create fleet member for [" + rec.variantId + "]: " + t.getMessage(), t);
+
+                    }
+
+                    if (member == null) continue;
+
+
+
+                    member.setOwner(0);
+
+
+
+                    // Apply standard Starsector recovery rules (weapons, d-mods, s-mods)
+
+                    try {
+
+                        FleetEncounterContext.prepareShipForRecovery(member, false, false, true, rec.minDmodProb, rec.maxDmodProb, rnd);
+
+                    } catch (Throwable t) {
+
+                        log.error("Dynamic Asteroids: prepareShipForRecovery error: " + t.getMessage());
+
+                    }
+
+
 
                     if (rec.destroyed) {
+
                         try {
+
                             com.fs.starfarer.api.impl.campaign.DModManager.addDMods(member, true, 2 + rnd.nextInt(3), rnd);
+
+                            com.fs.starfarer.api.impl.campaign.DModManager.setDHull(member.getVariant());
+
                         } catch (Throwable t2) {}
-                    }
 
-                    boolean addedToScreen = false;
+                    } else if (rec.outOfBounds) {
 
-                    if (result != null && result.getLoserResult() != null) {
+                        try {
 
-                        result.getLoserResult().getDisabled().add(member);
+                            com.fs.starfarer.api.impl.campaign.DModManager.addDMods(member, true, 1 + rnd.nextInt(2), rnd);
 
-                        addedToScreen = true;
+                            com.fs.starfarer.api.impl.campaign.DModManager.setDHull(member.getVariant());
 
-                    }
-
-                    // If not added to enemy loser disabled list (or if player disengaged / non-standard battle),
-                    // guarantee the salvaged ship is transferred directly to player fleet!
-                    if (!addedToScreen && playerFleet != null) {
-
-                        member.setOwner(0);
-
-                        member.getRepairTracker().setCR(0.40f);
-
-                        playerFleet.getFleetData().addFleetMember(member);
-
-                        String label = (rec.hullName != null) ? rec.hullName : member.getHullSpec().getHullName();
-
-                        Global.getSector().getCampaignUI().addMessage(
-
-                            (IS_RUSSIAN ? ("Остов \"" + label + "\" успешно эвакуирован и присоединён к флоту!") :
-
-                                          ("Derelict \"" + label + "\" recovered and added to your fleet!")),
-
-                            new Color(60, 255, 140)
-
-                        );
+                        } catch (Throwable t2) {}
 
                     }
+
+
+
+                    member.getRepairTracker().setCR(0.40f);
+
+                    playerFleet.getFleetData().addFleetMember(member);
+                    try {
+                        playerFleet.getFleetData().setSyncNeeded();
+                        playerFleet.getFleetData().syncIfNeeded();
+                        playerFleet.getFleetData().updateCargoCapacities();
+                    } catch (Throwable syncErr) {}
+
+                    log.info("Dynamic Asteroids: >>> SUCCESS! Successfully added " + member.getShipName() + " [" + rec.variantId + "] directly to player fleet! Total fleet size: " + playerFleet.getFleetData().getMembersListCopy().size());
 
                 }
 
-            } catch (Throwable t) {}
+            } catch (Throwable t) {
+
+                log.error("Dynamic Asteroids: Error in deliverAllPendingToFleet: " + t.getMessage(), t);
+
+            }
 
         }
 
@@ -9000,11 +9155,15 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
                             }
 
-                            derelictSalvageRecords.put(vId, new DerelictSalvageRecord(
+                            DerelictSalvageRecord rec = new DerelictSalvageRecord(
 
                                 vId, rescuedDerelictHullName, derelictRescueChance, 0.15f, 0.35f
 
-                            ));
+                            );
+
+                            derelictSalvageRecords.put(vId, rec);
+
+                            DerelictRecoveryCampaignListener.queueForRecovery(rec);
 
                         }
 

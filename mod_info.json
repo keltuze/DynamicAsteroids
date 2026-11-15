@@ -2,7 +2,7 @@
   "id": "dynamic_asteroids",
   "name": "Dynamic Asteroids 2.0.70 [RU]",
   "author": "keltuze",
-  "utility": "false",
+  "utility": "true",
   "version": "2.0.70",
   "description": "Dynamic Asteroids 2.0.70: Живые астероидные пояса, кинетический таранный урон по пресетам сложности, колоссальные мегалиты с ценным лутом, купола станций, эвакуация редких остовов.",
   "gameVersion": "0.98.5a-RC4",

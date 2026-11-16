@@ -338,9 +338,15 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
     private float megalithMaxRadius = 550.0f;
     private boolean enableDeploymentSafety = true;
     private float deploymentSafetyDuration = 14.0f;
-    private boolean megalithArcFlight = true;
+    private boolean megalithArcFlight = false;
     private float megalithDerelictDropChance = 0.001f;
     private float summonMegalithKeyCooldown = 0f;
+    private int battleTargetMegaliths = 12;
+    private boolean shieldMagnetEnabled = true;
+    private int shieldMagnetKeycode = Keyboard.KEY_T;
+    private int shieldMagnetMouseButton = 4;
+    private float magnetToggleCooldown = 0.0f;
+    private boolean formationWithBaselineWave = false;
 
     // Station Anti-Ramming Protection & Deflection Dome
     private static final float STATION_DOME_OFFLINE_DURATION = 60.0f;
@@ -547,7 +553,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
 
     private float asteroidHealthMult = 0.51f;
 
-    private float pdAsteroidDamageMult = 6.0f;
+    private float pdAsteroidDamageMult = 8.0f;
 
     private float aiMinThreatVelocity = 200.0f;
 
@@ -649,6 +655,10 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
 
         this.megalithsPreSeeded = false;
         this.currentMegalithCount = 0;
+        this.battleTargetMegaliths = 8 + random.nextInt(9);
+        this.shieldMagnetEnabled = true;
+        this.magnetToggleCooldown = 0f;
+        this.formationWithBaselineWave = false;
         this.openSpacePreSeeded = false;
         this.openSpaceTargetMegaliths = 1 + random.nextInt(3); // 1, 2, or 3
         this.openSpaceMegalithTimer = 0f;
@@ -1033,7 +1043,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
 
                 targetedSnipeChance = 0.02f;
 
-                figureEventInterval = 38.0f;
+                figureEventInterval = 26.0f;
 
                 enableMicroDodge = true;
 
@@ -1045,7 +1055,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
 
                 asteroidHealthMult = 0.425f;
 
-                pdAsteroidDamageMult = 7.0f;
+                pdAsteroidDamageMult = 8.0f;
 
                 asteroidCollisionDamageMult = 0.42f;
 
@@ -1088,7 +1098,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
 
                 targetedSnipeChance = 0.05f;
 
-                figureEventInterval = 28.0f;
+                figureEventInterval = 18.0f;
 
                 enableMicroDodge = true;
 
@@ -1100,7 +1110,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
 
                 asteroidHealthMult = 0.51f;
 
-                pdAsteroidDamageMult = 6.0f;
+                pdAsteroidDamageMult = 8.0f;
 
                 asteroidCollisionDamageMult = 1.20f;
 
@@ -1143,7 +1153,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
 
                 targetedSnipeChance = 0.08f;
 
-                figureEventInterval = 18.0f;
+                figureEventInterval = 12.0f;
 
                 enableMicroDodge = true;
 
@@ -1155,7 +1165,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
 
                 asteroidHealthMult = 0.595f;
 
-                pdAsteroidDamageMult = 6.5f;
+                pdAsteroidDamageMult = 8.0f;
 
                 asteroidCollisionDamageMult = 2.16f;
 
@@ -1198,7 +1208,7 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
 
                 targetedSnipeChance = 0.15f;
 
-                figureEventInterval = 12.0f;
+                figureEventInterval = 8.0f;
 
                 enableMicroDodge = true;
 
@@ -1398,6 +1408,12 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
                 megalithMinRadius = (float) config.optDouble("megalithMinRadius", megalithMinRadius);
                 megalithMaxRadius = (float) config.optDouble("megalithMaxRadius", megalithMaxRadius);
                 megalithArcFlight = config.optBoolean("megalithArcFlight", megalithArcFlight);
+                String magKey = config.optString("shieldMagnetToggleKey", "T");
+                try {
+                    int kIdx = Keyboard.getKeyIndex(magKey.toUpperCase());
+                    if (kIdx != 0) shieldMagnetKeycode = kIdx;
+                } catch (Throwable t) {}
+                shieldMagnetMouseButton = config.optInt("shieldMagnetMouseButton", shieldMagnetMouseButton);
                 megalithDerelictDropChance = (float) config.optDouble("megalithDerelictDropChance", megalithDerelictDropChance);
                 enableStationAsteroidProtection = config.optBoolean("enableStationAsteroidProtection", enableStationAsteroidProtection);
                 stationAsteroidDamageMult = (float) config.optDouble("stationAsteroidDamageMult", stationAsteroidDamageMult);
@@ -1546,6 +1562,8 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
                 if (bMegalith != null) enableMegalithBoulders = bMegalith.booleanValue();
                 Boolean bArc = getLunaBoolean("da_megalithArcFlight");
                 if (bArc != null) megalithArcFlight = bArc.booleanValue();
+                Integer nMagKey = getLunaInt("da_shieldMagnetToggleKey");
+                if (nMagKey != null && nMagKey != 0) shieldMagnetKeycode = nMagKey.intValue();
                 Integer nMaxMeg = getLunaInt("da_maxMegaliths");
                 if (nMaxMeg != null) maxMegaliths = nMaxMeg.intValue();
                 Boolean bDepSafe = getLunaBoolean("da_enableDeploymentSafety");
@@ -1919,6 +1937,8 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
                 if (bMegalith != null) enableMegalithBoulders = bMegalith.booleanValue();
                 Boolean bArc = getLunaBoolean("da_megalithArcFlight");
                 if (bArc != null) megalithArcFlight = bArc.booleanValue();
+                Integer nMagKey = getLunaInt("da_shieldMagnetToggleKey");
+                if (nMagKey != null && nMagKey != 0) shieldMagnetKeycode = nMagKey.intValue();
                 Number nInt = getLunaNumber("da_megalithSpawnInterval");
                 if (nInt != null) megalithSpawnInterval = nInt.floatValue();
                 Boolean bDepSafe = getLunaBoolean("da_enableDeploymentSafety");
@@ -2489,6 +2509,40 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
         }
 
+        // Process Combat Hotkeys (Active in campaign battles and simulator):
+        if (magnetToggleCooldown > 0f) {
+            magnetToggleCooldown -= amount;
+        }
+
+        if (events != null && magnetToggleCooldown <= 0f) {
+            for (InputEventAPI event : events) {
+                if (event.isConsumed()) continue;
+                boolean triggered = false;
+                if (event.isKeyDownEvent() && shieldMagnetKeycode != 0 && event.getEventValue() == shieldMagnetKeycode) {
+                    triggered = true;
+                } else if (event.isMouseDownEvent() && shieldMagnetMouseButton >= 0 && event.getEventValue() == shieldMagnetMouseButton) {
+                    triggered = true;
+                }
+
+                if (triggered) {
+                    event.consume();
+                    magnetToggleCooldown = 0.35f;
+                    shieldMagnetEnabled = !shieldMagnetEnabled;
+
+                    ShipAPI playerShip = getPlayerShipSafely();
+                    if (playerShip != null && playerShip.getLocation() != null && engine != null) {
+                        Vector2f textLoc = new Vector2f(playerShip.getLocation().x, playerShip.getLocation().y + playerShip.getCollisionRadius() * 0.6f);
+                        if (!shieldMagnetEnabled) {
+                            engine.addFloatingText(textLoc, "Magnit Off", 24f, new Color(255, 65, 65), playerShip, 0.2f, 1.8f);
+                        } else {
+                            engine.addFloatingText(textLoc, "Magnit On", 24f, new Color(60, 220, 240), playerShip, 0.2f, 1.8f);
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
         // Process Simulation Hotkeys:
         // ONLY ACTIVE IN SIMULATION! In regular campaign battles, hotkeys do nothing.
         if (engine.isSimulation()) {
@@ -3021,45 +3075,7 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
                 // Kinetic Cruise Control
 
-                // Advance Megalith Arc Trajectory & Station Deflection
-                // If untethered (touched or shot by ships), becomes a 100% free Newtonian body that can be pushed!
-                if (ast.getCustomData().containsKey("DA_IS_MEGALITH")) {
-                    if (!ast.getCustomData().containsKey("DA_NO_MAINTAIN_VELOCITY")) {
-                        Object arcObj = ast.getCustomData().get("DA_ARC_RATE");
-                        if (arcObj instanceof Float) {
-                            float arcRate = ((Float) arcObj).floatValue();
-                            if (Math.abs(arcRate) > 0.00001f) {
-                                Object accumObj = ast.getCustomData().get("DA_ACCUM_ARC");
-                                float accumulated = (accumObj instanceof Float) ? ((Float) accumObj).floatValue() : 0f;
-                                float maxDeflection = (float) Math.toRadians(25.0f); // Gentle celestial arc: max 25 degrees total deflection across entire sector
-                                if (Math.abs(accumulated) < maxDeflection) {
-                                    Vector2f vel = ast.getVelocity();
-                                    if (vel != null) {
-                                        float curAngle = (float) Math.atan2(vel.y, vel.x);
-                                        float step = arcRate * amount;
-                                        float newAccum = accumulated + step;
-                                        if (Math.abs(newAccum) > maxDeflection) {
-                                            step = (newAccum > 0 ? maxDeflection : -maxDeflection) - accumulated;
-                                            newAccum = (newAccum > 0 ? maxDeflection : -maxDeflection);
-                                        }
-                                        ast.setCustomData("DA_ACCUM_ARC", Float.valueOf(newAccum));
-                                        float newAngle = curAngle + step;
-                                        float curSpeed = vel.length();
-                                        Object origSpdObj = ast.getCustomData().get("DA_MEGALITH_SPEED");
-                                        if (origSpdObj instanceof Float) {
-                                            float origSpd = ((Float) origSpdObj).floatValue();
-                                            if (curSpeed < origSpd * 0.75f) curSpeed = origSpd;
-                                        }
-                                        vel.x = (float) Math.cos(newAngle) * curSpeed;
-                                        vel.y = (float) Math.sin(newAngle) * curSpeed;
-                                        ast.setCustomData(BASE_VX_KEY, Float.valueOf(vel.x));
-                                        ast.setCustomData(BASE_VY_KEY, Float.valueOf(vel.y));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                // Megaliths fly in strictly straight trajectories (arc flight disabled)
 
                 // Station Deflection Dome: All asteroids part and flow smoothly around station perimeters
                 applyStationDeflectionToAsteroid(ast, amount);
@@ -3294,7 +3310,8 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                 advanceDirector(amount, focalCX, focalCY, halfW, halfH);
 
                 // 1.2. Baseline Avalanche Spawner (active during TORRENT & BURST, paused during LULL & FORMATION)
-                boolean allowBaselineSpawn = (currentDirectorState == DirectorState.TORRENT || currentDirectorState == DirectorState.BURST);
+                boolean allowBaselineSpawn = (currentDirectorState == DirectorState.TORRENT || currentDirectorState == DirectorState.BURST
+                    || (currentDirectorState == DirectorState.FORMATION && formationWithBaselineWave));
                 if (directorCycleMode == 1) {
                     allowBaselineSpawn = true; // Mode 1: Always continuous
                 } else if (directorCycleMode == 2) {
@@ -3314,22 +3331,21 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                     }
                 }
 
-                // 1.5. Colossal Megalith Spawner (Maintains up to maxMegaliths, sailing steadily across all phases)
+                // 1.5. Colossal Megalith Spawner (Maintains up to battleTargetMegaliths: 8-16, sailing steadily across all phases)
                 if (enableMegalithBoulders) {
                     // Initial battle pre-seed: populate sector with starting megaliths smoothly
                     if (!megalithsPreSeeded && isInAsteroidField) {
                         megalithsPreSeeded = true;
-                        int initialCount = Math.min(maxMegaliths, 4);
+                        int initialCount = Math.min(maxMegaliths, battleTargetMegaliths);
                         for (int mi = 0; mi < initialCount; mi++) {
                             spawnPreSeededMegalith(halfW, halfH);
                         }
                     }
 
                     megalithTimer += amount;
-                    // Cosmic pacing: maintain a majestic presence of 4-8 colossal boulders without crowding
-                    float targetMegaliths = Math.min(maxMegaliths, 8);
-                    float interval = (currentMegalithCount < 3) ? 14.0f : ((currentMegalithCount < targetMegaliths) ? 28.0f : megalithSpawnInterval);
-                    if (currentMegalithCount < maxMegaliths && megalithTimer >= interval) {
+                    int targetMegaliths = Math.min(maxMegaliths, battleTargetMegaliths);
+                    float interval = (currentMegalithCount < 4) ? 8.0f : ((currentMegalithCount < targetMegaliths) ? 14.0f : megalithSpawnInterval);
+                    if (currentMegalithCount < targetMegaliths && megalithTimer >= interval) {
                         megalithTimer = 0f;
                         spawnNaturalMegalith(focalCX, focalCY, halfW, halfH);
                     }
@@ -4068,6 +4084,12 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
 
 
+            if (ast.getCustomData().containsKey("DA_IS_MEGALITH")) {
+                vel.x = bvx;
+                vel.y = bvy;
+                return;
+            }
+
             float currentSpeedSq = vel.x * vel.x + vel.y * vel.y;
 
             float targetSpeedSq = bvx * bvx + bvy * bvy;
@@ -4436,51 +4458,61 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         float radius = megalithMinRadius + random.nextFloat() * (megalithMaxRadius - megalithMinRadius);
         float speed = megalithMinSpeed + random.nextFloat() * (megalithMaxSpeed - megalithMinSpeed);
 
-        // Full battlefield coverage from top to bottom edge
-        float spawnX = (random.nextFloat() - 0.5f) * (halfW * 2.0f);
-        float spawnY = (random.nextFloat() - 0.5f) * (halfH * 2.0f);
+        // Pre-seeded megaliths spawn spread out across the battlefield
+        float spawnX = (random.nextFloat() - 0.5f) * (halfW * 1.8f);
+        float spawnY = (random.nextFloat() - 0.5f) * (halfH * 1.8f);
 
         float vx = 0f;
         float vy = 0f;
-        float arcRate = 0f;
 
-        switch (avalancheDirection) {
-            case RIGHT_TO_LEFT:
-                vx = -speed;
-                vy = (random.nextFloat() - 0.5f) * 25f;
-                if (megalithArcFlight) {
-                    float sign = (spawnY > 0f) ? -1f : 1f;
-                    arcRate = sign * (0.06f + random.nextFloat() * 0.08f);
+        // Query eligible alive ships for 65% snipe chance
+        List<ShipAPI> eligibleShips = new ArrayList<ShipAPI>();
+        List<ShipAPI> allShips = engine.getShips();
+        if (allShips != null) {
+            for (ShipAPI ship : allShips) {
+                if (ship != null && ship.isAlive() && !ship.isHulk() && !ship.isShuttlePod()) {
+                    eligibleShips.add(ship);
                 }
-                break;
-            case LEFT_TO_RIGHT:
-                vx = speed;
-                vy = (random.nextFloat() - 0.5f) * 25f;
-                if (megalithArcFlight) {
-                    float sign = (spawnY > 0f) ? -1f : 1f;
-                    arcRate = sign * (0.06f + random.nextFloat() * 0.08f);
-                }
-                break;
-            case BOTTOM_TO_TOP:
-                vx = (random.nextFloat() - 0.5f) * 25f;
-                vy = speed;
-                if (megalithArcFlight) {
-                    float sign = (spawnX > 0f) ? 1f : -1f;
-                    arcRate = sign * (0.06f + random.nextFloat() * 0.08f);
-                }
-                break;
-            case TOP_TO_BOTTOM:
-            default:
-                vx = (random.nextFloat() - 0.5f) * 25f;
-                vy = -speed;
-                if (megalithArcFlight) {
-                    float sign = (spawnX > 0f) ? -1f : 1f;
-                    arcRate = sign * (0.06f + random.nextFloat() * 0.08f);
-                }
-                break;
+            }
         }
 
-        spawnMegalithBoulder(spawnX, spawnY, vx, vy, radius, arcRate);
+        if (random.nextFloat() < 0.65f && !eligibleShips.isEmpty()) {
+            ShipAPI target = eligibleShips.get(random.nextInt(eligibleShips.size()));
+            float tx = target.getLocation().x;
+            float ty = target.getLocation().y;
+            float dx = tx - spawnX;
+            float dy = ty - spawnY;
+            float dist = (float) Math.sqrt(dx * dx + dy * dy);
+            if (dist > 0.001f) {
+                vx = (dx / dist) * speed;
+                vy = (dy / dist) * speed;
+            } else {
+                vx = -speed;
+                vy = 0f;
+            }
+        } else {
+            // Straight line across battlefield based on general avalanche or random angle
+            float dirAngle = 0f;
+            switch (avalancheDirection) {
+                case RIGHT_TO_LEFT:
+                    dirAngle = 3.14159f + (random.nextFloat() - 0.5f) * 0.5f;
+                    break;
+                case LEFT_TO_RIGHT:
+                    dirAngle = 0f + (random.nextFloat() - 0.5f) * 0.5f;
+                    break;
+                case BOTTOM_TO_TOP:
+                    dirAngle = 1.5708f + (random.nextFloat() - 0.5f) * 0.5f;
+                    break;
+                case TOP_TO_BOTTOM:
+                default:
+                    dirAngle = -1.5708f + (random.nextFloat() - 0.5f) * 0.5f;
+                    break;
+            }
+            vx = (float) Math.cos(dirAngle) * speed;
+            vy = (float) Math.sin(dirAngle) * speed;
+        }
+
+        spawnMegalithBoulder(spawnX, spawnY, vx, vy, radius, 0f);
     }
 
     public void spawnNaturalMegalith(float focalCX, float focalCY, float halfW, float halfH) {
@@ -4489,59 +4521,58 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         float radius = megalithMinRadius + random.nextFloat() * (megalithMaxRadius - megalithMinRadius);
         float speed = megalithMinSpeed + random.nextFloat() * (megalithMaxSpeed - megalithMinSpeed);
 
-        // Spawn safely outside visible map boundary so boulders do not pop in visibly
+        // Spawn from a random angle along map boundary (outside visible screen)
+        float entryAngle = random.nextFloat() * (float) (Math.PI * 2.0);
         float off = Math.max(radius + 450f, 650f);
-        float spawnX = 0f;
-        float spawnY = 0f;
+        Vector2f startPt = getRectangleBoundaryPoint(focalCX, focalCY, halfW + off, halfH + off, entryAngle);
+        float spawnX = startPt.x;
+        float spawnY = startPt.y;
+
         float vx = 0f;
         float vy = 0f;
-        float arcRate = 0f;
 
-        switch (avalancheDirection) {
-            case RIGHT_TO_LEFT:
-                spawnX = focalCX + halfW + off;
-                spawnY = focalCY + (random.nextFloat() - 0.5f) * (halfH * 2.0f);
-                vx = -speed;
-                vy = (random.nextFloat() - 0.5f) * 25f;
-                if (megalithArcFlight) {
-                    float sign = (spawnY > focalCY) ? -1f : 1f;
-                    arcRate = sign * (0.06f + random.nextFloat() * 0.08f);
+        // Query eligible alive ships for 65% targeted snipe roll
+        List<ShipAPI> eligibleShips = new ArrayList<ShipAPI>();
+        List<ShipAPI> allShips = engine.getShips();
+        if (allShips != null) {
+            for (ShipAPI ship : allShips) {
+                if (ship != null && ship.isAlive() && !ship.isHulk() && !ship.isShuttlePod()) {
+                    eligibleShips.add(ship);
                 }
-                break;
-            case LEFT_TO_RIGHT:
-                spawnX = focalCX - halfW - off;
-                spawnY = focalCY + (random.nextFloat() - 0.5f) * (halfH * 2.0f);
-                vx = speed;
-                vy = (random.nextFloat() - 0.5f) * 25f;
-                if (megalithArcFlight) {
-                    float sign = (spawnY > focalCY) ? -1f : 1f;
-                    arcRate = sign * (0.06f + random.nextFloat() * 0.08f);
-                }
-                break;
-            case BOTTOM_TO_TOP:
-                spawnX = focalCX + (random.nextFloat() - 0.5f) * (halfW * 2.0f);
-                spawnY = focalCY - halfH - off;
-                vx = (random.nextFloat() - 0.5f) * 25f;
-                vy = speed;
-                if (megalithArcFlight) {
-                    float sign = (spawnX > focalCX) ? 1f : -1f;
-                    arcRate = sign * (0.06f + random.nextFloat() * 0.08f);
-                }
-                break;
-            case TOP_TO_BOTTOM:
-            default:
-                spawnX = focalCX + (random.nextFloat() - 0.5f) * (halfW * 2.0f);
-                spawnY = focalCY + halfH + off;
-                vx = (random.nextFloat() - 0.5f) * 25f;
-                vy = -speed;
-                if (megalithArcFlight) {
-                    float sign = (spawnX > focalCX) ? -1f : 1f;
-                    arcRate = sign * (0.06f + random.nextFloat() * 0.08f);
-                }
-                break;
+            }
         }
 
-        spawnMegalithBoulder(spawnX, spawnY, vx, vy, radius, arcRate);
+        if (random.nextFloat() < 0.65f && !eligibleShips.isEmpty()) {
+            ShipAPI target = eligibleShips.get(random.nextInt(eligibleShips.size()));
+            float tx = target.getLocation().x;
+            float ty = target.getLocation().y;
+            float dx = tx - spawnX;
+            float dy = ty - spawnY;
+            float dist = (float) Math.sqrt(dx * dx + dy * dy);
+            if (dist > 0.001f) {
+                vx = (dx / dist) * speed;
+                vy = (dy / dist) * speed;
+            } else {
+                vx = -speed;
+                vy = 0f;
+            }
+        } else {
+            // Straight line across to opposite side of the map
+            float exitAngle = entryAngle + (float) Math.PI + (random.nextFloat() - 0.5f) * 0.6f;
+            Vector2f endPt = getRectangleBoundaryPoint(focalCX, focalCY, halfW, halfH, exitAngle);
+            float dx = endPt.x - spawnX;
+            float dy = endPt.y - spawnY;
+            float dist = (float) Math.sqrt(dx * dx + dy * dy);
+            if (dist > 0.001f) {
+                vx = (dx / dist) * speed;
+                vy = (dy / dist) * speed;
+            } else {
+                vx = -speed;
+                vy = 0f;
+            }
+        }
+
+        spawnMegalithBoulder(spawnX, spawnY, vx, vy, radius, 0f);
     }
 
     public void summonMegalithNearPlayer() {
@@ -4562,17 +4593,16 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         float vy = (float) Math.sin(moveAngle) * speed;
 
         float radius = megalithMinRadius + random.nextFloat() * (megalithMaxRadius - megalithMinRadius);
-        float arcRate = (random.nextBoolean() ? 1f : -1f) * (0.08f + random.nextFloat() * 0.08f);
+        float arcRate = 0f;
 
         CombatEntityAPI megalith = spawnMegalithBoulder(spawnX, spawnY, vx, vy, radius, arcRate);
         if (megalith != null && engine.getCombatUI() != null) {
             try {
                 Global.getSoundPlayer().playUISound("ui_radar_detect_vessel", 0.9f, 0.7f);
             } catch (Throwable t) {}
-            float arcDisplay = ((int)(Math.abs(arcRate) * 100)) / 100.0f;
             String msg = IS_RUSSIAN ?
-                ("СИМУЛЯТОР: Создан колоссальный мегалит (Радиус: " + (int)radius + " ед, дуга: " + arcDisplay + " град/с)!") :
-                ("SIMULATOR: Spawned colossal megalith (Radius: " + (int)radius + " u, arc: " + arcDisplay + " deg/s)!");
+                ("СИМУЛЯТОР: Создан колоссальный мегалит (Радиус: " + (int)radius + " ед)!") :
+                ("SIMULATOR: Spawned colossal megalith (Radius: " + (int)radius + " u)!");
             engine.getCombatUI().addMessage(1, msg, new Color(240, 180, 80));
         }
     }
@@ -4764,7 +4794,7 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                 if (directorStateTimer >= directorStateDuration) {
                     directorStateTimer = 0f;
                     float roll = random.nextFloat();
-                    if (roll < 0.45f) {
+                    if (roll < 0.60f) {
                         transitionToDirectorState(DirectorState.FORMATION, focalCX, focalCY, halfW, halfH);
                     } else if (roll < 0.85f) {
                         transitionToDirectorState(DirectorState.LULL, focalCX, focalCY, halfW, halfH);
@@ -4778,10 +4808,10 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                 // Fast brisk wave
                 if (directorStateTimer >= directorStateDuration) {
                     directorStateTimer = 0f;
-                    if (random.nextFloat() < 0.55f) {
-                        transitionToDirectorState(DirectorState.LULL, focalCX, focalCY, halfW, halfH);
-                    } else {
+                    if (random.nextFloat() < 0.60f) {
                         transitionToDirectorState(DirectorState.FORMATION, focalCX, focalCY, halfW, halfH);
+                    } else {
+                        transitionToDirectorState(DirectorState.LULL, focalCX, focalCY, halfW, halfH);
                     }
                 }
                 break;
@@ -4789,8 +4819,8 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
             case FORMATION:
                 // Geometric formation wave is active
                 if (activeStreams.isEmpty()) {
-                    // Chaining chance ("волна, волна"): 42% chance to immediately spawn a second wave!
-                    if (formationWavesInChain < 1 && random.nextFloat() < 0.42f) {
+                    // Chaining chance ("волна, волна"): 45% chance to immediately spawn a second wave!
+                    if (formationWavesInChain < 1 && random.nextFloat() < 0.45f) {
                         formationWavesInChain++;
                         triggerMultiAngleFormationWave(focalCX, focalCY, halfW, halfH);
                     } else if (directorStateTimer >= 3.5f) {
@@ -4798,8 +4828,8 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                         if (directorCycleMode == 2) {
                             transitionToDirectorState(DirectorState.LULL, focalCX, focalCY, halfW, halfH);
                         } else {
-                            // After wave(s): 60% lull / silence, 40% seamless return to torrent
-                            if (random.nextFloat() < 0.60f) {
+                            // After wave(s): 55% lull / silence, 45% seamless return to torrent
+                            if (random.nextFloat() < 0.55f) {
                                 transitionToDirectorState(DirectorState.LULL, focalCX, focalCY, halfW, halfH);
                             } else {
                                 transitionToDirectorState(DirectorState.TORRENT, focalCX, focalCY, halfW, halfH);
@@ -4816,11 +4846,11 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                     if (directorCycleMode == 2) {
                         transitionToDirectorState(DirectorState.FORMATION, focalCX, focalCY, halfW, halfH);
                     } else {
-                        // After lull: 65% long rolling torrent, 35% sudden formation wave
-                        if (random.nextFloat() < 0.65f) {
-                            transitionToDirectorState(DirectorState.TORRENT, focalCX, focalCY, halfW, halfH);
-                        } else {
+                        // After lull: 50% sudden formation wave, 50% long rolling torrent
+                        if (random.nextFloat() < 0.50f) {
                             transitionToDirectorState(DirectorState.FORMATION, focalCX, focalCY, halfW, halfH);
+                        } else {
+                            transitionToDirectorState(DirectorState.TORRENT, focalCX, focalCY, halfW, halfH);
                         }
                     }
                 }
@@ -4834,17 +4864,18 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
         switch (newState) {
             case TORRENT:
-                directorStateDuration = 26.0f + random.nextFloat() * 16.0f; // 26 - 42 seconds
+                directorStateDuration = 18.0f + random.nextFloat() * 12.0f; // 18 - 30 seconds
                 break;
             case BURST:
-                directorStateDuration = 12.0f + random.nextFloat() * 8.0f;  // 12 - 20 seconds
+                directorStateDuration = 10.0f + random.nextFloat() * 6.0f;  // 10 - 16 seconds
                 break;
             case LULL:
-                directorStateDuration = 6.0f + random.nextFloat() * 6.0f;   // 6 - 12 seconds of serene calm
+                directorStateDuration = 5.0f + random.nextFloat() * 5.0f;   // 5 - 10 seconds of serene calm
                 break;
             case FORMATION:
                 directorStateDuration = 4.0f;
                 formationWavesInChain = 0;
+                formationWithBaselineWave = (random.nextFloat() < 0.45f);
                 triggerMultiAngleFormationWave(focalCX, focalCY, halfW, halfH);
                 break;
         }
@@ -4852,24 +4883,15 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     private void triggerMultiAngleFormationWave(float focalCX, float focalCY, float halfW, float halfH) {
 
-        // Roll number of concurrent streams/angles:
-
+        // Roll number of concurrent streams/angles (more streams = rarer):
         int streamCount = 1;
-
         float roll = random.nextFloat();
-
-        if (roll < 0.45f) {
-
-            streamCount = 1;
-
-        } else if (roll < 0.85f) {
-
-            streamCount = 2; // Dual stream from 2 angles
-
+        if (roll < 0.60f) {
+            streamCount = 1; // 60% single stream
+        } else if (roll < 0.88f) {
+            streamCount = 2; // 28% dual cross
         } else {
-
-            streamCount = 3; // Triple cross from 3 angles
-
+            streamCount = 3; // 12% triple cross (rarest)
         }
 
 
@@ -4998,14 +5020,20 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
             ActiveFigureStream stream = new ActiveFigureStream();
 
-            stream.type = waveFigureType;
+            // Combinations of distinct formation scenarios across streams
+            FigureType streamFigureType = (streamCount == 1) ? waveFigureType : allFigures[random.nextInt(allFigures.length)];
+            stream.type = streamFigureType;
 
-            stream.rocksRemaining = rocksPerStream;
+            int rocksThisStream = rocksPerStream;
+            if (streamFigureType == FigureType.DUAL_RAILS || streamFigureType == FigureType.EXPANDING_FAN) {
+                rocksThisStream += Math.round(20 * capScale);
+            }
+            stream.rocksRemaining = rocksThisStream;
 
             float bInterval = 0.016f;
-            if (waveFigureType == FigureType.COMET_SWARM) {
+            if (streamFigureType == FigureType.COMET_SWARM) {
                 bInterval = 0.008f;
-            } else if (waveFigureType == FigureType.DUAL_RAILS || waveFigureType == FigureType.EXPANDING_FAN) {
+            } else if (streamFigureType == FigureType.DUAL_RAILS || streamFigureType == FigureType.EXPANDING_FAN) {
                 bInterval = 0.012f; // Dense rapid salvo for dual pillars and shotgun blast
             }
             stream.burstInterval = bInterval;
@@ -7327,7 +7355,7 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     public static float getPDAsteroidDamageMult() {
 
-        return instance != null ? instance.pdAsteroidDamageMult : 6.0f;
+        return instance != null ? instance.pdAsteroidDamageMult : 8.0f;
 
     }
 
@@ -8445,7 +8473,7 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
     }
 
     private void applyShieldMagnet(CombatEntityAPI entity, List<ShipAPI> ships, float amount) {
-        if (easterEggMagnetStrength <= 0f || amount <= 0f || entity == null) return;
+        if (!shieldMagnetEnabled || easterEggMagnetStrength <= 0f || amount <= 0f || entity == null) return;
         if (!Boolean.TRUE.equals(entity.getCustomData().get("IS_EASTER_EGG"))) return;
 
         Vector2f eggLoc = entity.getLocation();

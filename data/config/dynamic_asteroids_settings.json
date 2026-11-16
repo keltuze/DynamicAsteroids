@@ -1,6 +1,6 @@
 {
     "activePreset": 2,
-    "language": "ru",
+    "language": "en",
     "enableInSimulation": true,
     "simulationToggleKey": "SLASH",
     "minFieldRocks": 140,
@@ -18,7 +18,6 @@
     "megalithSpawnInterval": 42.0,
     "megalithMinRadius": 125.0,
     "megalithMaxRadius": 550.0,
-    "megalithArcFlight": true,
     "megalithDerelictDropChance": 0.001,
     "openSpaceMinRocks": 3,
     "openSpaceMaxRocks": 7,
@@ -38,7 +37,7 @@
     "pdMaxFluxThreshold": 0.75,
     "enableEarlySnipeEvasion": true,
     "asteroidHealthMult": 0.51,
-    "pdAsteroidDamageMult": 6.0,
+    "pdAsteroidDamageMult": 8.0,
     "asteroidCollisionDamageMult": 1.2,
     "enableStationAsteroidProtection": true,
     "stationAsteroidDamageMult": 0.02,
@@ -58,5 +57,7 @@
     "megalithMinSpeed": 90.0,
     "megalithMaxSpeed": 140.0,
     "enableDeploymentSafety": true,
-    "deploymentSafetyDuration": 7.0
+    "deploymentSafetyDuration": 7.0,
+    "shieldMagnetToggleKey": "T",
+    "shieldMagnetMouseButton": 4
 }

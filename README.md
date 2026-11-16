@@ -3,50 +3,53 @@
 [![Game Version](https://img.shields.io/badge/Starsector-0.98.5a--RC4%20%7C%200.98.5a-blue.svg)](https://fractalsoftworks.com/)
 [![Java Compatibility](https://img.shields.io/badge/Java-8%20(Bytecode%2052.0)-green.svg)]()
 [![LunaLib](https://img.shields.io/badge/LunaLib-Required-orange.svg)]()
-[![Latest Release](https://img.shields.io/badge/Release-v2.0.70-brightgreen.svg)](https://github.com/keltuze/DynamicAsteroids/releases/tag/v2.0.70)
+[![Latest Release](https://img.shields.io/badge/Release-v2.0.75-brightgreen.svg)](https://github.com/keltuze/DynamicAsteroids/releases/tag/v2.0.75)
 
 > **Breathes life into static asteroid belts and deep space combat!**  
 > In vanilla Starsector, asteroids just hang motionless in space. **Dynamic Asteroids** transforms them into rushing kinetic rivers of space debris, derelict recovery operations, interactive salvage gathering, and tactical survival challenges during combat.  
-> **Version 2.0.70** completely overhauls the derelict recovery pipeline: stabilized derelict ships are now reliably transferred directly into the player's fleet with proper D-mod preparation and instant fleet sync, resolving issues where ships were lost across retreat/disengage battle cycles. Includes station-grade deployment deflection fields for all ships (14 seconds of visible rotating deflector domes with laminar flow and 98% kinetic asteroid protection for opening spawns and reinforcements), 100% manual player flight authority, and full compatibility with Starsector 0.98.5a.
+> **Version 2.0.75** completely overhauls the derelict recovery pipeline: stabilized derelict ships are now reliably transferred directly into the player's fleet with proper D-mod preparation and instant fleet sync, resolving issues where ships were lost across retreat/disengage battle cycles. Includes station-grade deployment deflection fields for all ships (14 seconds of visible rotating deflector domes with laminar flow and 98% kinetic asteroid protection for opening spawns and reinforcements), 100% manual player flight authority, and full compatibility with Starsector 0.98.5a.
 
 ---
 
-## 📦 Downloads (v2.0.70 Release)
+## 📦 Downloads (v2.0.75 Release)
 
 Direct download links for the latest version. Both editions contain all 5 live presets (from Cinematic soft drift to hypervelocity Chaos):
 
 | Edition | Language | Highlights & Features | Direct Download |
 | :--- | :---: | :--- | :--- |
-| **Russian Edition (RU)** | 🇷🇺 Русский | Полная русская локализация (интерфейс, LunaLib, боевые тревоги), гарантированная выдача остовов во флот, дефлекторные купола кораблей на старте и подкреплениях, шрифты для LunaLib | [**`DynamicAsteroids_RU_v2.0.70.zip`**](https://github.com/keltuze/DynamicAsteroids/releases/download/v2.0.70/DynamicAsteroids_RU_v2.0.70.zip) |
-| **Standard Edition (EN)** | 🇬🇧 English | Full English edition, guaranteed combat derelict ship delivery to fleet, ship deployment deflection domes, directional shield tractor beam, Domain caches, smart PD whitelist | [**`DynamicAsteroids_v2.0.70.zip`**](https://github.com/keltuze/DynamicAsteroids/releases/download/v2.0.70/DynamicAsteroids_v2.0.70.zip) |
+| **Russian Edition (RU)** | 🇷🇺 Русский | Полная русская локализация (интерфейс, LunaLib, боевые тревоги), гарантированная выдача остовов во флот, дефлекторные купола кораблей на старте и подкреплениях, шрифты для LunaLib | [**`DynamicAsteroids_RU_v2.0.75.zip`**](https://github.com/keltuze/DynamicAsteroids/releases/download/v2.0.75/DynamicAsteroids_RU_v2.0.75.zip) |
+| **Standard Edition (EN)** | 🇬🇧 English | Full English edition, guaranteed combat derelict ship delivery to fleet, ship deployment deflection domes, directional shield tractor beam, Domain caches, smart PD whitelist | [**`DynamicAsteroids_v2.0.75.zip`**](https://github.com/keltuze/DynamicAsteroids/releases/download/v2.0.75/DynamicAsteroids_v2.0.75.zip) |
 
 > 🔗 All release assets and past versions are available on the [**GitHub Releases Page**](https://github.com/keltuze/DynamicAsteroids/releases).
 
 ---
 
-## 🚀 What's New in v2.0.70
+## 🚀 What's New in v2.0.75 ("Горячие клавиши и Сильная защита пво")
 
-### ⚓ 1. Fixed Derelict Ship Recovery Upon Combat Stabilization
-* **Direct & Guaranteed Fleet Transfer:** Fixed derelict ship recovery upon combat stabilization. Stabilized abandoned hulls are now directly and seamlessly transferred to the player's fleet (`playerFleet.getFleetData().addFleetMember(member)`), bypassing fragile post-battle salvage screen filters that previously discarded derelicts in retreat, disengage, or pursuit combat contexts.
-* **Full Starsector Salvage Conditioning:** Recovered derelict hulls receive canonical Starsector salvage preparation: weapons and hull intact, standard D-mod generation, D-hull hullmod assignment, and 40% initial Combat Readiness (CR).
-* **Instant Fleet Synchronization:** Calls engine `syncIfNeeded()`, `setSyncNeeded()`, and `updateCargoCapacities()` upon transfer, ensuring fleet screens, member lists, and supply/fuel capacities update immediately without ghosting.
-* **Clean & Immersive:** Silent campaign delivery without distracting map banner popups.
+### 🛡️ 1. Strong Point Defense (8.0x Asteroid Damage Multiplier)
+* **Standardized 8.0x PD Multiplier:** Point defense damage against asteroids is now set to 8.0x across all fixed presets (Cinematic, Balanced, Storm, Chaos).
+* **Rapid Interception:** Flak cannons, vulcan batteries, and point defense lasers vaporize incoming space rock threats before they can breach hull or shields.
+* **Custom Preset Support:** Fully adjustable from 1.0x to 30.0x in Custom Preset (0) via LunaLib.
 
-### 🕹️ 2. Strictly Preserved Manual Player Flight Controls
-* **Zero Interception During Manual Piloting:** The collision avoidance system never overrides player ship controls or thrusters when flying manually.
-* **Autopilot Mode Support:** Collision avoidance on the flagship activates strictly when the player engages Autopilot ('U' key).
-* **Fleet AI Evasion Intact:** All allied and enemy AI-controlled vessels continue actively dodging asteroid streams, colossal megaliths, and drifting hulks.
+### ☄️ 2. Straight-Line Colossal Megaliths & Interactive Newtonian Untethering
+* **Strict Straight Trajectories:** Colossal Megaliths no longer curve on arbitrary arcs. They fly in direct straight trajectories across the sector.
+* **65% Targeted Snipe Chance:** 65% of naturally spawning Megaliths lock course directly toward a random active ship on the battlefield, creating high-stakes tactical navigation hazards.
+* **Immunity to Small Rock Bumps:** Megaliths maintain their precise vector and velocity through streams, completely undisturbed by smaller asteroid collisions.
+* **Ship Impact Untethering:** The moment ANY ship touches or shoots a Megalith (kinetic, high-explosive, energy projectiles, missiles, or ship hulls), the Megalith untethers from scripted trajectory control into a 100% free physical Newtonian body.
 
-### 🛸 3. AI Collision Avoidance Overhaul
-* **Full Avoidance for All Megalith Trajectories:** Ships detect colossal boulders and heavy wreckage traveling in any direction (including vertical upward drift) up to 8 seconds ahead.
-* **Easter Egg & Derelict Collision Awareness:** Ships actively recognize drifting debris fragments, abandoned hulls, and boulder-embedded caches as physical obstacles.
-* **Thruster Propulsion Assist:** Heavy cruisers and capital ships apply genuine maneuvering thruster propulsion to briskly steer clear of impending impacts.
+### 🌌 3. 8 to 16 Concurrent Megaliths in Asteroid Belts
+* **Massive Atmospheric Presence:** When engaging in battle inside an asteroid field, the sector smoothly spawns and maintains between 8 and 16 simultaneous colossal Megaliths (randomized per battle).
+* **Sector-Wide Spread:** Pre-seeded Megaliths appear distributed across the entire operational area from the opening seconds of engagement.
 
-### 🛡️ 4. Ship Deployment Deflection Dome (Station-Grade Grace Barrier)
-* **14-Second Rotating Deflector Barrier:** Ships entering combat deploy a visible rotating holographic deflection field for 14 seconds upon spawn.
-* **98% Kinetic Collision Protection:** Reduces kinetic collision damage from asteroids by 98% (`0.02x` multiplier) during deployment.
-* **Laminar Flow Deflection:** Asteroids smoothly curve around ship perimeters through repulsive push forces.
-* **Clean Presentation:** No noisy text spam or alarms upon entry, keeping combat immersive.
+### 🧲 4. Shield Magnet Toggle Hotkey [T] / Mouse 5
+* **In-Combat Toggle:** Press `[T]` (default keycode 20) or Mouse 5 (forward side button) at any time to toggle the shield tractor beam attraction of derelicts, caches, and debris ON or OFF.
+* **Clean Visual Feedback:** Displays floating text above the flagship: `"Magnit On"` in cyan (`#3CDCf0`) or `"Magnit Off"` in red (`#FF4141`). Silent and unobtrusive without audio or banner clutter.
+* **Fully Configurable:** Easily rebindable in LunaLib (F2) under Keycode setting or via `dynamic_asteroids_settings.json`.
+
+### 🌊 5. Dynamic Formation Cycles & Pattern Combinations
+* **Increased Formation Frequency:** Shorter torrent/burst intervals and higher transition probabilities bring dense geometric formations to the battlefield more frequently.
+* **Simultaneous Avalanche Streams:** 45% chance for formation waves to trigger alongside baseline avalanche streams.
+* **Multi-Pattern Combinations:** Multi-angle streams roll independent formation shapes (e.g., Comet Swarm crossed with Expanding Fan) rather than repeating identical geometries. Rarest at 3 concurrent streams (12%), common at 1 stream (60%).
 
 ---
 
@@ -86,7 +89,7 @@ Test features safely in the simulator:
 
 ## 🛠️ Installation
 
-1. Download [`DynamicAsteroids_RU_v2.0.70.zip`](https://github.com/keltuze/DynamicAsteroids/releases/download/v2.0.70/DynamicAsteroids_RU_v2.0.70.zip) (Russian) or [`DynamicAsteroids_v2.0.70.zip`](https://github.com/keltuze/DynamicAsteroids/releases/download/v2.0.70/DynamicAsteroids_v2.0.70.zip) (English).
+1. Download [`DynamicAsteroids_RU_v2.0.75.zip`](https://github.com/keltuze/DynamicAsteroids/releases/download/v2.0.75/DynamicAsteroids_RU_v2.0.75.zip) (Russian) or [`DynamicAsteroids_v2.0.75.zip`](https://github.com/keltuze/DynamicAsteroids/releases/download/v2.0.75/DynamicAsteroids_v2.0.75.zip) (English).
 2. Extract into your `Starsector/mods/` directory.
 3. Ensure **LunaLib** is installed and enabled.
 4. Activate **Dynamic Asteroids** in the launcher.

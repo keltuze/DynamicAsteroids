@@ -7213,17 +7213,56 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
             // 1.5. Megalith Asteroid Immunity & Interactive Physical Untethering
             if (target.getCustomData().containsKey("DA_IS_MEGALITH")) {
-                if (paramObject instanceof CombatEntityAPI) {
-                    CombatEntityAPI source = (CombatEntityAPI) paramObject;
-                    if (source.getCollisionClass() == CollisionClass.ASTEROID || source.getCustomData().containsKey(TRACKED_KEY)) {
-                        damage.getModifier().modifyMult("da_megalith_asteroid_immunity", 0.0f);
-                        return "da_megalith_asteroid_immunity";
-                    }
-                }
                 // Untether megalith from scripted velocity when pushed or shot by ships/weapons!
                 if (paramObject instanceof ShipAPI || paramObject instanceof DamagingProjectileAPI || 
                     paramObject instanceof BeamAPI || paramObject instanceof MissileAPI) {
                     target.getCustomData().put("DA_NO_MAINTAIN_VELOCITY", Boolean.TRUE);
+                }
+
+                // Permanent Kinetic Immunity between Megaliths & Asteroids:
+                // Megaliths are immune to kinetic collision damage from other megaliths and asteroids.
+                // When they collide with each other, they bounce and scrape with natural collision sounds without shattering!
+                boolean isAsteroidOrMegalithSource = false;
+                if (paramObject instanceof CombatEntityAPI) {
+                    CombatEntityAPI source = (CombatEntityAPI) paramObject;
+                    if (source.getCollisionClass() == CollisionClass.ASTEROID 
+                        || source.getCustomData().containsKey(TRACKED_KEY)
+                        || source.getCustomData().containsKey("DA_IS_MEGALITH")
+                        || source instanceof CombatAsteroidAPI) {
+                        isAsteroidOrMegalithSource = true;
+                    }
+                } else if (paramObject == null && damage.getType() == com.fs.starfarer.api.combat.DamageType.KINETIC) {
+                    // Starsector physics internal collision resolution between non-ship celestial bodies
+                    boolean contactingShip = false;
+                    if (instance != null && instance.engine != null) {
+                        List<ShipAPI> ships = instance.engine.getShips();
+                        if (ships != null) {
+                            Vector2f tLoc = target.getLocation();
+                            float tRad = target.getCollisionRadius();
+                            for (int si = 0; si < ships.size(); si++) {
+                                ShipAPI s = ships.get(si);
+                                if (s != null && s.isAlive() && !s.isHulk()) {
+                                    float d = Misc.getDistance(tLoc, s.getLocation());
+                                    if (d < tRad + s.getCollisionRadius() + 40f) {
+                                        contactingShip = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (!contactingShip) {
+                        isAsteroidOrMegalithSource = true;
+                    }
+                }
+
+                if (isAsteroidOrMegalithSource) {
+                    damage.getModifier().modifyMult("da_megalith_asteroid_immunity", 0.0f);
+                    if (instance != null && instance.engine != null && point != null) {
+                        instance.engine.addHitParticle(point, new Vector2f(0f, 0f), 65f, 0.4f, 0.35f, new Color(220, 210, 195, 200));
+                        instance.engine.addSmoothParticle(point, new Vector2f(0f, 0f), 90f, 0.6f, 0.5f, new Color(190, 180, 170, 140));
+                    }
+                    return "da_megalith_asteroid_immunity";
                 }
             }
 

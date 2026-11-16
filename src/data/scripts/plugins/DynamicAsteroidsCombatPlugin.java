@@ -708,7 +708,12 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
         this.campaignListenerRegistered = false;
 
         this.activeEasterEggEntities.clear();
-        DerelictRecoveryCampaignListener.clearQueue();
+        if (Global.getSector() != null && !DerelictRecoveryCampaignListener.pendingDeliveries.isEmpty()) {
+            DerelictRecoveryCampaignListener.ensureRegistered();
+            DerelictRecoveryCampaignListener.deliverPendingDeliveriesNow();
+        } else {
+            DerelictRecoveryCampaignListener.clearQueue();
+        }
         if (engine != null && !engine.isSimulation() && engine.isInCampaign() && Global.getSector() != null) {
             DerelictRecoveryCampaignListener.ensureRegistered();
         }
@@ -2546,6 +2551,9 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         // Process Simulation Hotkeys:
         // ONLY ACTIVE IN SIMULATION! In regular campaign battles, hotkeys do nothing.
         if (engine.isSimulation()) {
+            if (summonKeyCooldown > 0f) {
+                summonKeyCooldown -= amount;
+            }
             if (summonContainerKeyCooldown > 0f) {
                 summonContainerKeyCooldown -= amount;
             }
@@ -3443,8 +3451,8 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                         Boolean rescued = (Boolean) egg.getCustomData().get("DERELICT_RESCUED");
                         if (rescued == null || !rescued.booleanValue()) {
                             Float holdT = (Float) egg.getCustomData().get("DERELICT_HOLD_TIMER");
-                            boolean engaged = Boolean.TRUE.equals(egg.getCustomData().get("DERELICT_PLAYER_ENGAGED"));
-                            if (engaged || (holdT != null && holdT.floatValue() > 0f)) {
+                            // 2-second combat over protection: if player held the derelict for at least 2.0s, count as rescued!
+                            if (holdT != null && holdT.floatValue() >= 2.0f) {
                                 egg.getCustomData().put("DERELICT_RESCUED", Boolean.TRUE);
                                 String vId = (String) egg.getCustomData().get("DERELICT_VARIANT_ID");
                                 String dName = (String) egg.getCustomData().get("DERELICT_NAME");
@@ -3793,17 +3801,24 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                     String.format("%s Dist: %d su (%d o'clock) | SYSTEMS STABLE", arrow, (int)dist, clock);
 
             } else {
-
                 int pct = Math.min(100, Math.round((holdT / derelictRescueHoldTime) * 100f));
+                Float lastHeldT = (Float) bestDerelict.getCustomData().get("DERELICT_MAGNET_HELD_TIME");
+                boolean beingHeld = (lastHeldT != null && (totalCombatTime - lastHeldT.floatValue()) < 0.35f);
 
                 title = (IS_RUSSIAN ? ("СИГНАЛ SOS: " + hullName) : ("SOS SIGNAL: " + hullName)) + countSuffix;
-
-                data = IS_RUSSIAN ?
-
-                    String.format("%s Дист: %d ед. (на %d ч.) | Стабилизация: %d%% (%d/%d с)", arrow, (int)dist, clock, pct, (int)holdT, (int)derelictRescueHoldTime) :
-
-                    String.format("%s Dist: %d su (%d o'clock) | Stabilizing: %d%% (%d/%d s)", arrow, (int)dist, clock, pct, (int)holdT, (int)derelictRescueHoldTime);
-
+                if (beingHeld) {
+                    data = IS_RUSSIAN ?
+                        String.format("%s Дист: %d ед. (на %d ч.) | Захват магнитом: %d%% (%d/%d с)", arrow, (int)dist, clock, pct, (int)holdT, (int)derelictRescueHoldTime) :
+                        String.format("%s Dist: %d su (%d o'clock) | Magnet Lock: %d%% (%d/%d s)", arrow, (int)dist, clock, pct, (int)holdT, (int)derelictRescueHoldTime);
+                } else if (holdT > 0f) {
+                    data = IS_RUSSIAN ?
+                        String.format("%s Дист: %d ед. (на %d ч.) | Пауза (захватите магнитом): %d%%", arrow, (int)dist, clock, pct) :
+                        String.format("%s Dist: %d su (%d o'clock) | Paused (hold with magnet): %d%%", arrow, (int)dist, clock, pct);
+                } else {
+                    data = IS_RUSSIAN ?
+                        String.format("%s Дист: %d ед. (на %d ч.) | Захватите щитом для стабилизации", arrow, (int)dist, clock) :
+                        String.format("%s Dist: %d su (%d o'clock) | Hold with shield magnet to stabilize", arrow, (int)dist, clock);
+                }
             }
 
         } else {
@@ -7638,29 +7653,28 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
 
         public static synchronized void ensureRegistered() {
-
             try {
-
                 if (Global.getSector() == null) return;
-
                 if (instance == null) {
-
                     instance = new DerelictRecoveryCampaignListener();
-
-                    Global.getSector().getListenerManager().addListener(instance, true);
-
-                    Global.getSector().addTransientScript(instance);
-
-                    log.info("Dynamic Asteroids: DerelictRecoveryCampaignListener registered with Sector ListenerManager and TransientScripts.");
-
                 }
-
+                if (!Global.getSector().hasTransientScript(instance.getClass())) {
+                    Global.getSector().addTransientScript(instance);
+                    log.info("Dynamic Asteroids: Registered DerelictRecoveryCampaignListener as Sector transient script.");
+                }
+                if (!Global.getSector().getAllListeners().contains(instance)) {
+                    Global.getSector().addTransientListener(instance);
+                    log.info("Dynamic Asteroids: Registered DerelictRecoveryCampaignListener as Sector transient listener.");
+                }
             } catch (Throwable t) {
-
                 log.error("Dynamic Asteroids: ensureRegistered error: " + t.getMessage(), t);
-
             }
+        }
 
+        public static synchronized void deliverPendingDeliveriesNow() {
+            if (instance != null && !pendingDeliveries.isEmpty()) {
+                instance.deliverAllPendingToFleet();
+            }
         }
 
 
@@ -7802,7 +7816,7 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
                     }
 
-                    if (rnd.nextFloat() > rec.rescueChance) {
+                    if (rec.rescueChance < 1.0f && rnd.nextFloat() > rec.rescueChance) {
 
                         log.info("Dynamic Asteroids: Rescue chance roll failed (" + rec.rescueChance + "), derelict lost.");
 
@@ -7880,6 +7894,14 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                     } catch (Throwable syncErr) {}
 
                     log.info("Dynamic Asteroids: >>> SUCCESS! Successfully added " + member.getShipName() + " [" + rec.variantId + "] directly to player fleet! Total fleet size: " + playerFleet.getFleetData().getMembersListCopy().size());
+                    try {
+                        if (Global.getSector() != null && Global.getSector().getCampaignUI() != null) {
+                            String note = IS_RUSSIAN ?
+                                ("Эвакуация остова: " + member.getShipName() + " (" + rec.hullName + ") принят в состав флота!") :
+                                ("Derelict recovered: " + member.getShipName() + " (" + rec.hullName + ") joined your fleet!");
+                            Global.getSector().getCampaignUI().addMessage(note, new Color(80, 255, 160));
+                        }
+                    } catch (Throwable tUI) {}
 
                 }
 
@@ -8555,6 +8577,7 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         entity.getCustomData().put("DA_NO_MAINTAIN_VELOCITY", Boolean.TRUE);
         if ("DERELICT".equals(entity.getCustomData().get("EASTER_EGG_TYPE"))) {
             entity.getCustomData().put("DERELICT_PLAYER_ENGAGED", Boolean.TRUE);
+            entity.getCustomData().put("DERELICT_MAGNET_HELD_TIME", Float.valueOf(totalCombatTime));
         }
 
         Vector2f shipLoc = closestShieldedShip.getLocation();
@@ -9146,21 +9169,19 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
             boolean inBounds = Math.abs(loc.x) <= halfW && Math.abs(loc.y) <= halfH;
 
+            Float curT = (Float) entity.getCustomData().get("DERELICT_HOLD_TIMER");
+            float holdTimer = (curT != null ? curT.floatValue() : 0f);
 
+            Float lastHeld = (Float) entity.getCustomData().get("DERELICT_MAGNET_HELD_TIME");
+            boolean isMagnetHeld = inBounds && (lastHeld != null && (totalCombatTime - lastHeld.floatValue()) < 0.25f);
 
-            if (inBounds) {
-
-                Float curT = (Float) entity.getCustomData().get("DERELICT_HOLD_TIMER");
-
-                float holdTimer = (curT != null ? curT.floatValue() : 0f) + amount;
-
+            if (isMagnetHeld) {
+                holdTimer += amount;
                 entity.getCustomData().put("DERELICT_HOLD_TIMER", Float.valueOf(holdTimer));
+            }
 
-
-
-                Boolean rescued = (Boolean) entity.getCustomData().get("DERELICT_RESCUED");
-
-                if ((rescued == null || !rescued.booleanValue()) && holdTimer >= derelictRescueHoldTime) {
+            Boolean rescued = (Boolean) entity.getCustomData().get("DERELICT_RESCUED");
+            if ((rescued == null || !rescued.booleanValue()) && holdTimer >= derelictRescueHoldTime) {
 
                     entity.getCustomData().put("DERELICT_RESCUED", Boolean.TRUE);
 
@@ -9279,8 +9300,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                     } catch (Throwable t) {}
 
                 }
-
-            }
 
 
 

@@ -14,7 +14,7 @@
     "figureEventInterval": 28.0,
     "enableMegalithBoulders": true,
     "maxMegaliths": 25,
-    "megalithSpeed": 120.0,
+    "megalithSpeed": 60.0,
     "megalithSpawnInterval": 42.0,
     "megalithMinRadius": 125.0,
     "megalithMaxRadius": 550.0,
@@ -43,8 +43,8 @@
     "stationAsteroidDamageMult": 0.02,
     "enableStationDeflectionDome": true,
     "stationDomeMargin": 140.0,
-    "playerKillResourceDropChance": 0.005,
-    "playerKillFighterDropChance": 0.001,
+    "playerKillResourceDropChance": 0.002,
+    "playerKillFighterDropChance": 0.0005,
     "derelictSpawnChance": 0.015,
     "otherEasterEggChance": 0.06,
     "derelictRescueHoldTime": 60.0,
@@ -54,10 +54,10 @@
     "easterEggSpeed": 400.0,
     "easterEggMagnetStrength": 1400.0,
     "openSpaceEasterEggMult": 0.14,
-    "megalithMinSpeed": 90.0,
-    "megalithMaxSpeed": 140.0,
+    "megalithMinSpeed": 45.0,
+    "megalithMaxSpeed": 70.0,
     "enableDeploymentSafety": true,
     "deploymentSafetyDuration": 7.0,
     "shieldMagnetToggleKey": "T",
-    "shieldMagnetMouseButton": 4
+    "shieldMagnetMouseButton": -1
 }

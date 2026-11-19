@@ -99,8 +99,10 @@ public class AsteroidPDAutofirePlugin implements AutofireAIPlugin {
             return;
         }
 
-        // Never target easter eggs (derelicts, wreckage, fuel tanks)
-        if (threat.getCustomData().containsKey("IS_EASTER_EGG")) {
+        // Never target easter eggs (derelicts, wreckage, fuel tanks) or colossal megaliths
+        if (threat.getCustomData().containsKey("IS_EASTER_EGG") ||
+            threat.getCustomData().containsKey("DA_IS_MEGALITH") ||
+            threat.getCollisionRadius() >= 120.0f) {
             return;
         }
 

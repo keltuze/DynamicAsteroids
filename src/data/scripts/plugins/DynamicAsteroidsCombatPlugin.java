@@ -1,14 +1,10 @@
 package data.scripts.plugins;
 
-
-
 import java.awt.Color;
 
 import java.lang.reflect.Field;
 
 import java.lang.reflect.Method;
-
-import java.lang.reflect.Type;
 
 import java.util.ArrayList;
 
@@ -23,8 +19,6 @@ import org.json.JSONObject;
 import org.lwjgl.input.Keyboard;
 
 import org.lwjgl.util.vector.Vector2f;
-
-
 
 import com.fs.starfarer.api.GameState;
 
@@ -53,8 +47,6 @@ import com.fs.starfarer.api.combat.ViewportAPI;
 
 import com.fs.starfarer.api.input.InputEventAPI;
 
-
-
 import java.util.Map;
 import java.util.HashMap;
 import java.util.Set;
@@ -69,6 +61,10 @@ import com.fs.starfarer.api.combat.ShipCommand;
 import com.fs.starfarer.api.combat.ShipwideAIFlags;
 
 import com.fs.starfarer.api.combat.ShipwideAIFlags.AIFlags;
+
+import com.fs.starfarer.api.combat.ShipSystemAPI;
+
+import com.fs.starfarer.api.combat.ShipSystemSpecAPI;
 
 import com.fs.starfarer.api.combat.WeaponAPI;
 
@@ -96,11 +92,7 @@ import java.util.EnumSet;
 
 import com.fs.starfarer.api.campaign.BaseCampaignEventListener;
 
-import com.fs.starfarer.api.combat.BaseCombatLayeredRenderingPlugin;
-
 import lunalib.lunaSettings.LunaSettings;
-
-import com.fs.starfarer.api.combat.CombatEngineLayers;
 
 import com.fs.starfarer.api.combat.EngagementResultAPI;
 
@@ -122,12 +114,6 @@ import com.fs.starfarer.api.combat.ShipHullSpecAPI;
 
 import com.fs.starfarer.api.combat.ShipVariantAPI;
 
-import com.fs.starfarer.api.impl.campaign.ids.Tags;
-
-
-
-
-
 /**
 
  * Dynamic Asteroids 2.0 (Cyclone Edition)
@@ -136,97 +122,56 @@ import com.fs.starfarer.api.impl.campaign.ids.Tags;
 
 public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin implements FleetMemberDeploymentListener {
 
-
-
     // Configurable compilation flags
 
     private static final boolean IS_RUSSIAN = true;
 
     private static final float DEFAULT_STREAM_SPEED = 600.0f;
 
-
-
     public enum StreamDirection {
-
         RIGHT_TO_LEFT,  // West (<-)
-
         LEFT_TO_RIGHT,  // East (->)
-
         BOTTOM_TO_TOP,  // North (^)
-
         TOP_TO_BOTTOM   // South (v)
 
     }
 
-
-
     public enum FigureType {
-
         LANCE_BEAM(
-
             IS_RUSSIAN ? "Метеоритный луч" : "Meteor Lance",
-
             IS_RUSSIAN ? "Плотный гиперзвуковой луч прорезает сектор" : "Dense hypervelocity beam cutting through the sector"
-
         ),
-
         COMET_SWARM(
-
             IS_RUSSIAN ? "Кометный рой" : "Comet Swarm",
-
             IS_RUSSIAN ? "Огромное плотное скопление астероидов" : "Massive dense cloud of tumbling asteroids"
-
         ),
-
         DUAL_RAILS(
-
             IS_RUSSIAN ? "Двойные рельсы" : "Dual Rails",
-
             IS_RUSSIAN ? "Два параллельных луча зажимают сектор" : "Twin parallel streams squeezing the combat zone"
-
         ),
-
         EXPANDING_FAN(
-
             IS_RUSSIAN ? "Веерный залп" : "Expanding Fan",
-
             IS_RUSSIAN ? "Конический веерный шквал астероидов" : "Spreading conical salvo of asteroids"
-
         ),
-
         HEAVY_MEGALITHS(
-
             IS_RUSSIAN ? "Пакет мегалитов" : "Megalith Pack",
-
             IS_RUSSIAN ? "Залп колоссальных мегалитов тяжелого класса" : "Salvo of colossal behemoth-class asteroids"
-
         );
-
-
 
         private final String displayName;
 
         private final String description;
-
-
-
         FigureType(String displayName, String description) {
-
             this.displayName = displayName;
-
             this.description = description;
 
         }
-
-
 
         public String getDisplayName() { return displayName; }
 
         public String getDescription() { return description; }
 
     }
-
-
 
     public static class ActiveFigureStream {
 
@@ -258,8 +203,6 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
 
     }
 
-
-
     private CombatEngineAPI engine;
 
     private boolean active = false;
@@ -270,19 +213,13 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
 
     private Random random = new Random();
 
-
-
     // Constant background avalanche direction for the whole battle
 
     private StreamDirection avalancheDirection = StreamDirection.RIGHT_TO_LEFT;
 
-
-
     // Active Preset Profile (0=Custom, 1=Cinematic, 2=Balanced [Default], 3=Storm, 4=Chaos)
 
     private int activePreset = 2;
-
-
 
     // Stream settings (Default 200 - 300)
 
@@ -304,8 +241,6 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
 
     private final java.util.Set<String> lunaSettingWarnings = new java.util.HashSet<String>();
 
-
-
     // Sparkling Kinetic Trails (Optimized: zero lag at 120 FPS)
 
     private boolean enableParticleTrails = true;
@@ -314,37 +249,38 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
 
     private float trailTickTimer = 0f;
 
-
-
     // Asteroid Ramming & Easter Eggs Tuning
 
     private float asteroidCollisionDamageMult = 1.20f;
 
-    private float playerKillResourceDropChance = 0.005f;
-
-    private float playerKillFighterDropChance = 0.001f;
+    private float playerKillResourceDropChance = 0.002f;
+    private float playerKillFighterDropChance = 0.0005f;
+    private float asteroidCheckTimer = 0f;
+    private static final float ASTEROID_CHECK_INTERVAL = 0.20f;
+    private float lastSmallAsteroidDropTime = -100.0f;
+    private static final float SMALL_ASTEROID_DROP_COOLDOWN = 60.0f;
 
     // Solitary Giant Megalith Boulders & Arc Flight
     private boolean enableMegalithBoulders = true;
     private int maxMegaliths = 20;
     private int currentMegalithCount = 0;
     private boolean megalithsPreSeeded = false;
-    private float megalithSpeed = 90.0f;
-    private float megalithMinSpeed = 60.0f;
-    private float megalithMaxSpeed = 120.0f;
+    private float megalithSpeed = 45.0f;
+    private float megalithMinSpeed = 30.0f;
+    private float megalithMaxSpeed = 60.0f;
     private float megalithTimer = 12.0f;
     private float megalithSpawnInterval = 42.0f;
     private float megalithMinRadius = 125.0f;
     private float megalithMaxRadius = 550.0f;
     private boolean enableDeploymentSafety = true;
-    private float deploymentSafetyDuration = 14.0f;
+    private float deploymentSafetyDuration = 14.0f; // Restored to 14.0s: capitals & stations require 10-14s to raise shields during entry
     private boolean megalithArcFlight = false;
     private float megalithDerelictDropChance = 0.001f;
     private float summonMegalithKeyCooldown = 0f;
     private int battleTargetMegaliths = 12;
     private boolean shieldMagnetEnabled = true;
     private int shieldMagnetKeycode = Keyboard.KEY_T;
-    private int shieldMagnetMouseButton = 4;
+    private int shieldMagnetMouseButton = -1;
     private float magnetToggleCooldown = 0.0f;
     private boolean formationWithBaselineWave = false;
 
@@ -388,15 +324,11 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
 
     private float derelictRescueChance = 1.0f;
 
-
-
     // Detection Sound state
 
     private int pendingDetectionSoundPlays = 0;
 
     private float detectionSoundTimer = 0f;
-
-
 
     // Runtime Easter Egg state
 
@@ -409,6 +341,10 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
     private final List<String> rescuedDerelictVariantIds = new ArrayList<String>();
 
     private final Map<String, DerelictSalvageRecord> derelictSalvageRecords = new HashMap<String, DerelictSalvageRecord>();
+
+    // Pre-allocated collection pools for combat loop (Zero-Allocation)
+    private final List<CombatEntityAPI> toRemoveEntities = new ArrayList<CombatEntityAPI>(64);
+    private final List<CombatEntityAPI> toPoofEntities = new ArrayList<CombatEntityAPI>(64);
 
     private float summonKeyCooldown = 0f;
 
@@ -424,21 +360,15 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
 
     private List<CombatEntityAPI> activeEasterEggEntities = new ArrayList<CombatEntityAPI>();
 
-
-
     // Simulation toggle state (persistent across encounters in same session)
 
     private boolean simulationEnabled = true;
 
     private boolean simulationHintShown = false;
 
-
-
     // Active figure streams list (supports 1, 2, or 3 concurrent angles!)
 
     private List<ActiveFigureStream> activeStreams = new ArrayList<ActiveFigureStream>();
-
-
 
     // Dynamic Battle Capacity (Tuned on the fly via Shift + Plus / Minus)
 
@@ -454,8 +384,6 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
 
     private float backgroundSpawnInterval = 0.055f;
 
-
-
     // Dynamic Asteroid Director (Living Cycles: Torrent -> Wave(s) -> Lull)
     public enum DirectorState {
         TORRENT,    // Continuous dense rolling river (26-42s)
@@ -469,8 +397,6 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
     private float directorStateDuration = 32f;
     private int formationWavesInChain = 0;
     private int directorCycleMode = 0; // 0 = Living cycles, 1 = Continuous torrent, 2 = Waves & lulls
-
-
 
     // Open Space settings (Quiet, rare solitary stray meteors)
 
@@ -501,8 +427,6 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
     private float openSpaceSwarmChance = 0.12f; // Rare chance per interval
     private float summonSwarmKeyCooldown = 0f;
 
-
-
     // Combat tracking
 
     private float totalCombatTime = 0f;
@@ -510,8 +434,6 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
     private boolean notifiedPlayer = false;
 
     private float notifyTimer = 0f;
-
-
 
     private static final String SETTINGS_PATH = "data/config/dynamic_asteroids_settings.json";
 
@@ -526,8 +448,6 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
     private static final String BASE_VY_KEY = "da_v2_bvy";
 
         private static final String TRAIL_TYPE_KEY = "da_v2_trail";
-
-
 
     // --- Fleet AI Reaction Settings ---
 
@@ -546,8 +466,6 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
     private float pdMaxFluxThreshold = 0.75f;
 
     private boolean enableEarlySnipeEvasion = true;
-
-
 
     // Asteroid Durability & Point Defense Shatter Bonus
 
@@ -569,35 +487,21 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
 
     private float lunaCheckTimer = 0.0f;
 
-
-
     private static class ShipAvoidanceState {
-
         float cooldown = 0.0f;
-
         ShipCommand activeCommand = null;
-
         ShipCommand activeThrustCommand = null;
-
         ShipCommand activeTurnCommand = null;
-
         CombatEntityAPI targetThreat = null;
-
         float targetAngle = 0.0f;
-
         float escapeDirX = 0.0f;
-
         float escapeDirY = 0.0f;
 
     }
 
-
-
     private final Map<ShipAPI, ShipAvoidanceState> shipStates = new HashMap<ShipAPI, ShipAvoidanceState>();
 
     private final List<CombatEntityAPI> fastThreats = new ArrayList<CombatEntityAPI>(256);
-
-
 
     public static class ImminentThreatData {
 
@@ -608,18 +512,13 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
         public float ttl;
 
         public ImminentThreatData(CombatEntityAPI threat, float timeToImpact, float ttl) {
-
             this.threat = threat;
-
             this.timeToImpact = timeToImpact;
-
             this.ttl = ttl;
 
         }
 
     }
-
-
 
     private final Map<ShipAPI, ImminentThreatData> imminentThreats = new HashMap<ShipAPI, ImminentThreatData>();
 
@@ -627,32 +526,22 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
 
     private static DynamicAsteroidsCombatPlugin instance = null;
 
-
-
-
-
     @Override
 
     public void init(CombatEngineAPI engine) {
-
         this.engine = engine;
-
         this.active = false;
-
         this.totalCombatTime = 0f;
-
         this.backgroundSpawnTimer = 0f;
-
         this.activeStreams.clear();
-
+        this.toRemoveEntities.clear();
+        this.toPoofEntities.clear();
         this.notifiedPlayer = false;
-
         this.notifyTimer = 0f;
-
         this.simulationHintShown = false;
-
         this.trailTickTimer = 0f;
-
+        this.asteroidCheckTimer = 0f;
+        this.lastSmallAsteroidDropTime = -100.0f;
         this.megalithsPreSeeded = false;
         this.currentMegalithCount = 0;
         this.battleTargetMegaliths = 8 + random.nextInt(9);
@@ -666,47 +555,28 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
         this.openSpaceSwarmDelay = 60.0f + random.nextFloat() * 45.0f;
         this.backgroundPreSeeded = false;
         this.activeBackgroundCount = 0;
-
         this.directorCycleMode = 0;
         this.currentDirectorState = (random.nextFloat() < 0.70f) ? DirectorState.TORRENT : DirectorState.BURST;
         this.directorStateTimer = 0f;
         this.directorStateDuration = 25.0f + random.nextFloat() * 15.0f;
         this.formationWavesInChain = 0;
-
         this.shipStates.clear();
-
         this.fastThreats.clear();
-
         this.aiTickTimer = 0.0f;
-
         instance = this;
-
         this.imminentThreats.clear();
-
         this.wrappedShips.clear();
-
         this.battleDerelictSpawned = false;
-
         this.activeDerelictEntity = null;
-
         this.rescuedDerelictVariantId = null;
-
         this.rescuedDerelictVariantIds.clear();
-
         this.derelictSalvageRecords.clear();
-
         this.summonKeyCooldown = 0f;
-
         this.summonContainerKeyCooldown = 0f;
-
         this.rescuedDerelictHullName = null;
-
         this.derelictRescueNotified = false;
-
         this.activeOtherEasterEggs = 0;
-
         this.campaignListenerRegistered = false;
-
         this.activeEasterEggEntities.clear();
         if (Global.getSector() != null && !DerelictRecoveryCampaignListener.pendingDeliveries.isEmpty()) {
             DerelictRecoveryCampaignListener.ensureRegistered();
@@ -718,179 +588,101 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
             DerelictRecoveryCampaignListener.ensureRegistered();
         }
 
-
-
         try {
-
             Global.getSettings().loadTexture("graphics/icons/derelict.png");
-
             Global.getSettings().loadTexture("graphics/icons/radar_circle.png");
-
             Global.getSettings().loadTexture("graphics/icons/danger3.png");
-
             Global.getSettings().loadTexture("graphics/icons/debris_field_icon.png");
-
             Global.getSettings().loadTexture("graphics/icons/intel/log_to_derelict_ship.png");
-
             Global.getSettings().loadTexture("graphics/icons/fleet_triangle.png");
-
             Global.getSettings().loadTexture("graphics/warroom/ship_arrow.png");
-
             Global.getSettings().loadTexture("graphics/stations/large_cache.png");
-
             Global.getSettings().loadTexture("graphics/stations/survey_probe.png");
-
             Global.getSettings().loadTexture("graphics/stations/probe.png");
-
             Global.getSettings().loadTexture("graphics/ships/nav_buoy.png");
-
             Global.getSettings().loadTexture("graphics/icons/cargo/fuel.png");
-
             Global.getSettings().loadTexture("graphics/ships/derelict/derelict_mothership_pod_engine_left.png");
-
             Global.getSettings().loadTexture("graphics/debris/debris_lrg0.png");
-
             Global.getSettings().loadTexture("graphics/debris/debris_lrg1.png");
-
             Global.getSettings().loadTexture("graphics/ships/hound/hound_substandard.png");
-
             Global.getSettings().loadTexture("graphics/ships/cerberus/cerberus_substandard.png");
-
             Global.getSettings().loadTexture("graphics/ships/lasher/lasher_d.png");
-
             Global.getSettings().loadTexture("graphics/ships/buffalo/buffalo_d.png");
-
             Global.getSettings().loadTexture("graphics/ships/wayfarer/wayfarer.png");
-
             Global.getSettings().loadTexture("graphics/ships/shepherd/shepherd.png");
-
             Global.getSettings().loadTexture("graphics/ships/dram/dram.png");
-
         } catch (Throwable t) {}
-
-
-
         initDerelictPool();
-
-
-
         this.activeStationDomes.clear();
         this.activeShipDomes.clear();
         this.shipSpawnTimes.clear();
         this.shipDomesActivated.clear();
         this.shipDomesDeactivated.clear();
 
+        // BUG-2 FIX: engine null check moved BEFORE usage
+        if (engine == null) return;
         if (engine.getListenerManager() != null) {
-
             engine.getListenerManager().addListener(new AsteroidDamageModifier());
             engine.getListenerManager().addListener(this);
 
         }
 
-
-
-        if (engine == null) return;
-
-
-
         // Detect title screen
-
         isTitleScreen = false;
-
         try {
-
             if (Global.getCurrentState() == GameState.TITLE) {
-
                 isTitleScreen = true;
-
             } else if (!engine.isInCampaign() && !engine.isSimulation() && !engine.isMission()) {
-
                 isTitleScreen = true;
 
             }
 
         } catch (Throwable t) {
-
             isTitleScreen = true;
 
         }
 
-
-
         // 1. Disable vanilla background asteroid belt generators
-
         disableVanillaAsteroidFields();
 
-
-
         // 2. Clear static vanilla asteroids
-
         clearAllAsteroids(false);
 
-
-
         // 2. Strict campaign terrain check
-
         boolean campaignTerrainHasAsteroids = false;
-
         try {
-
             if (engine.isInCampaign() && Global.getSector() != null && Global.getSector().getPlayerFleet() != null) {
-
                 CampaignFleetAPI playerFleet = Global.getSector().getPlayerFleet();
-
                 LocationAPI loc = playerFleet.getContainingLocation();
-
                 if (loc != null) {
-
                     List<CampaignTerrainAPI> terrains = loc.getTerrainCopy();
-
                     if (terrains != null) {
-
                         for (CampaignTerrainAPI terrain : terrains) {
-
                             if (terrain == null) continue;
-
                             String type = terrain.getType();
-
                             String terrainId = (terrain.getPlugin() != null) ? terrain.getPlugin().getTerrainId() : null;
-
-
-
                             boolean isAsteroidTerrain = false;
-
                             if (terrain.getPlugin() instanceof AsteroidSource) {
-
                                 isAsteroidTerrain = true;
-
                             } else {
-
                                 if (type != null && type.toLowerCase().contains("asteroid")) {
-
                                     isAsteroidTerrain = true;
 
                                 }
 
                                 if (terrainId != null && terrainId.toLowerCase().contains("asteroid")) {
-
                                     isAsteroidTerrain = true;
 
                                 }
 
                             }
 
-
-
                             // Strict campaign check: only register true asteroid fields where the ship physically
 
                             // collides with asteroids on the map (containsEntity without artificial expansion buffers)
-
                             if (isAsteroidTerrain && terrain.getPlugin() != null) {
-
                                 if (terrain.getPlugin().containsEntity(playerFleet)) {
-
                                     campaignTerrainHasAsteroids = true;
-
                                     break;
 
                                 }
@@ -901,26 +693,15 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
 
                     }
 
-
-
                     // Also check direct physical proximity/collision with orbiting campaign asteroids
-
                     if (!campaignTerrainHasAsteroids && loc.getAsteroids() != null) {
-
                         Vector2f playerLoc = playerFleet.getLocation();
-
                         float fleetRadius = playerFleet.getRadius();
-
                         for (SectorEntityToken astToken : loc.getAsteroids()) {
-
                             if (astToken == null || astToken.getLocation() == null) continue;
-
                             float dist = Misc.getDistance(playerLoc, astToken.getLocation());
-
                             if (dist <= fleetRadius + astToken.getRadius() + 100f) {
-
                                 campaignTerrainHasAsteroids = true;
-
                                 break;
 
                             }
@@ -934,38 +715,23 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
             }
 
         } catch (Throwable t) {
-
             Global.getLogger(DynamicAsteroidsCombatPlugin.class).warn("Dynamic Asteroids: Failed to load mod settings; continuing with safe defaults.", t);
 
         }
 
-
-
         // 3. Location classification
-
         if (isTitleScreen) {
-
             isInAsteroidField = true;
-
         } else if (engine.isSimulation()) {
-
             isInAsteroidField = true;
-
         } else if (engine.isInCampaign()) {
-
             isInAsteroidField = campaignTerrainHasAsteroids;
-
         } else {
-
             isInAsteroidField = false;
 
         }
 
-
-
         loadSettings();
-
-
 
         // If simulation is active and disabled in settings
         if (engine.isSimulation()) {
@@ -979,7 +745,6 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
         // 4. RULE 1: Baseline avalanche flows in ONE CONSTANT DIRECTION throughout the whole battle
         int dirChoice = random.nextInt(4);
         switch (dirChoice) {
-
             case 0: avalancheDirection = StreamDirection.RIGHT_TO_LEFT; break;
 
             case 1: avalancheDirection = StreamDirection.LEFT_TO_RIGHT; break;
@@ -990,310 +755,176 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
 
         }
 
-
-
         // 5. Total asteroid capacity rolled between minFieldRocks (200) and maxFieldRocks (300)
-
         if (isInAsteroidField) {
-
             int minR = Math.min(minFieldRocks, maxFieldRocks);
-
             int maxR = Math.max(minFieldRocks, maxFieldRocks);
-
             battleTargetCount = minR + random.nextInt(Math.max(1, maxR - minR + 1));
-
             maxBackgroundRocks = Math.max(160, Math.min(450, (int)(battleTargetCount * 0.60f)));
-
             backgroundSpawnInterval = Math.max(0.015f, 0.055f * (300f / Math.max(300, battleTargetCount)));
-
         } else {
-
             int minR = Math.min(openSpaceMinRocks, openSpaceMaxRocks);
-
             int maxR = Math.max(openSpaceMinRocks, openSpaceMaxRocks);
-
             openSpaceTargetCount = minR + random.nextInt(Math.max(1, maxR - minR + 1));
-
             openSpaceCurrentDelay = openSpaceMinDelay + random.nextFloat() * (openSpaceMaxDelay - openSpaceMinDelay);
 
         }
-
-
 
         this.active = true;
 
     }
 
-
-
     public void applyPresetSettings(int preset) {
-
         switch (preset) {
-
             case 1: // Cinematic Calm (400 speed)
 
                 setStreamSpeed(400.0f);
-
-                megalithSpeed = 70.0f;
-                megalithMinSpeed = 50.0f;
-                megalithMaxSpeed = 90.0f;
+                megalithSpeed = 35.0f;
+                megalithMinSpeed = 25.0f;
+                megalithMaxSpeed = 45.0f;
                 megalithMinRadius = 125.0f;
                 megalithMaxRadius = 450.0f;
-
                 minFieldRocks = 120;
-
                 maxFieldRocks = 350;
-
                 asteroidLifespan = 75.0f;
-
                 targetedSnipeChance = 0.02f;
-
                 figureEventInterval = 26.0f;
-
                 enableMicroDodge = true;
-
                 enableShieldReaction = true;
-
                 enablePDTargeting = true;
-
                 pdCriticalThreatsOnly = true;
-
                 asteroidHealthMult = 0.425f;
-
                 pdAsteroidDamageMult = 8.0f;
-
                 asteroidCollisionDamageMult = 0.42f;
-
                 derelictSpawnChance = 0.005f;
-
                 debrisEasterEggChance = 0.080f;
-
                 resourceEasterEggChance = 0.020f;
-
                 otherEasterEggChance = 0.025f;
-
                 easterEggSpeed = 300.0f;
-
                 easterEggMagnetStrength = 1400.0f;
-
                 derelictRescueHoldTime = 45.0f;
-
                 derelictRescueChance = 1.0f;
-
                 openSpaceEasterEggMult = 0.10f;
                 openSpaceSwarmChance = 0.08f;
-
                 break;
-
             case 2: // Balanced Standard (600 speed)
 
                 setStreamSpeed(600.0f);
-
-                megalithSpeed = 90.0f;
-                megalithMinSpeed = 60.0f;
-                megalithMaxSpeed = 120.0f;
+                megalithSpeed = 45.0f;
+                megalithMinSpeed = 30.0f;
+                megalithMaxSpeed = 60.0f;
                 megalithMinRadius = 125.0f;
                 megalithMaxRadius = 550.0f;
-
                 minFieldRocks = 200;
-
                 maxFieldRocks = 650;
-
                 asteroidLifespan = 60.0f;
-
                 targetedSnipeChance = 0.05f;
-
                 figureEventInterval = 18.0f;
-
                 enableMicroDodge = true;
-
                 enableShieldReaction = true;
-
                 enablePDTargeting = true;
-
                 pdCriticalThreatsOnly = true;
-
                 asteroidHealthMult = 0.51f;
-
                 pdAsteroidDamageMult = 8.0f;
-
                 asteroidCollisionDamageMult = 1.20f;
-
                 derelictSpawnChance = 0.015f;
-
                 debrisEasterEggChance = 0.160f;
-
                 resourceEasterEggChance = 0.040f;
-
                 otherEasterEggChance = 0.060f;
-
                 easterEggSpeed = 400.0f;
-
                 easterEggMagnetStrength = 1400.0f;
-
                 derelictRescueHoldTime = 60.0f;
-
                 derelictRescueChance = 1.0f;
-
                 openSpaceEasterEggMult = 0.14f;
                 openSpaceSwarmChance = 0.12f;
-
                 break;
-
             case 3: // Asteroid Storm (1200 speed)
 
                 setStreamSpeed(1200.0f);
-
-                megalithSpeed = 110.0f;
-                megalithMinSpeed = 80.0f;
-                megalithMaxSpeed = 135.0f;
+                megalithSpeed = 55.0f;
+                megalithMinSpeed = 40.0f;
+                megalithMaxSpeed = 68.0f;
                 megalithMinRadius = 125.0f;
                 megalithMaxRadius = 550.0f;
-
                 minFieldRocks = 300;
-
                 maxFieldRocks = 850;
-
                 asteroidLifespan = 45.0f;
-
                 targetedSnipeChance = 0.08f;
-
                 figureEventInterval = 12.0f;
-
                 enableMicroDodge = true;
-
                 enableShieldReaction = true;
-
                 enablePDTargeting = true;
-
                 pdCriticalThreatsOnly = false;
-
                 asteroidHealthMult = 0.595f;
-
                 pdAsteroidDamageMult = 8.0f;
-
                 asteroidCollisionDamageMult = 2.16f;
-
                 derelictSpawnChance = 0.035f;
-
                 debrisEasterEggChance = 0.280f;
-
                 resourceEasterEggChance = 0.080f;
-
                 otherEasterEggChance = 0.120f;
-
                 easterEggSpeed = 500.0f;
-
                 easterEggMagnetStrength = 1600.0f;
-
                 derelictRescueHoldTime = 60.0f;
-
                 derelictRescueChance = 1.0f;
-
                 openSpaceEasterEggMult = 0.16f;
                 openSpaceSwarmChance = 0.18f;
-
                 break;
-
             case 4: // Extreme Chaos: High Risk / High Reward (3000 speed, deadly collision, generous loot)
 
                 setStreamSpeed(3000.0f);
-
-                megalithSpeed = 120.0f;
-                megalithMinSpeed = 90.0f;
-                megalithMaxSpeed = 150.0f;
+                megalithSpeed = 60.0f;
+                megalithMinSpeed = 45.0f;
+                megalithMaxSpeed = 75.0f;
                 megalithMinRadius = 125.0f;
                 megalithMaxRadius = 550.0f;
-
                 minFieldRocks = 450;
-
                 maxFieldRocks = 1000;
-
                 asteroidLifespan = 35.0f;
-
                 targetedSnipeChance = 0.15f;
-
                 figureEventInterval = 8.0f;
-
                 enableMicroDodge = true;
-
                 enableShieldReaction = true;
-
                 enablePDTargeting = true;
-
                 pdCriticalThreatsOnly = false;
-
                 asteroidHealthMult = 0.68f;
-
                 pdAsteroidDamageMult = 8.0f;
-
                 asteroidCollisionDamageMult = 4.20f;
-
                 derelictSpawnChance = 0.070f;
-
                 debrisEasterEggChance = 0.450f;
-
                 resourceEasterEggChance = 0.160f;
-
                 otherEasterEggChance = 0.250f;
-
                 easterEggSpeed = 650.0f;
-
                 easterEggMagnetStrength = 2000.0f;
-
                 derelictRescueHoldTime = 75.0f;
-
                 derelictRescueChance = 1.0f;
-
                 openSpaceEasterEggMult = 0.20f;
                 openSpaceSwarmChance = 0.28f;
-
                 break;
-
             default:
 
                 break;
 
         }
 
-
-
     }
 
-
-
     private void setStreamSpeed(float newSpeed) {
-
         float oldSpeed = streamSpeed;
-
         if (engine != null && oldSpeed > 50f && newSpeed > 50f && Math.abs(oldSpeed - newSpeed) > 10f) {
-
             float speedRatio = newSpeed / oldSpeed;
-
             List<CombatEntityAPI> asteroids = engine.getAsteroids();
-
             if (asteroids != null) {
-
                 for (CombatEntityAPI asteroid : asteroids) {
-
                     if (asteroid == null) continue;
-
                     if (asteroid.getVelocity() != null) {
-
                         asteroid.getVelocity().scale(speedRatio);
 
                     }
 
-
-
                     Object baseVx = asteroid.getCustomData().get(BASE_VX_KEY);
-
                     Object baseVy = asteroid.getCustomData().get(BASE_VY_KEY);
-
                     if (baseVx instanceof Float && baseVy instanceof Float) {
-
                         asteroid.setCustomData(BASE_VX_KEY, Float.valueOf(((Float) baseVx).floatValue() * speedRatio));
-
                         asteroid.setCustomData(BASE_VY_KEY, Float.valueOf(((Float) baseVy).floatValue() * speedRatio));
 
                     }
@@ -1308,12 +939,8 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
 
     }
 
-
-
     public String getPresetName() {
-
         switch (activePreset) {
-
             case 1: return IS_RUSSIAN ? "Кино" : "Cinematic";
 
             case 2: return IS_RUSSIAN ? "Баланс" : "Balanced";
@@ -1328,80 +955,40 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
 
     }
 
-
-
     private void loadSettings() {
-
         boolean lunaPresetLoaded = false;
-
         try {
-
             JSONObject config = Global.getSettings().loadJSON(SETTINGS_PATH);
-
             if (config != null) {
-
                 activePreset = config.optInt("activePreset", activePreset);
-
                 minFieldRocks = config.optInt("minFieldRocks", minFieldRocks);
-
                 maxFieldRocks = config.optInt("maxFieldRocks", maxFieldRocks);
-
                 streamSpeed = (float) config.optDouble("fieldSurgeSpeed", streamSpeed);
-
                 asteroidLifespan = (float) config.optDouble("asteroidLifespan", asteroidLifespan);
-
                 beamWidth = (float) config.optDouble("beamWidth", beamWidth);
-
                 targetedSnipeChance = (float) config.optDouble("targetedSnipeChance", targetedSnipeChance);
-
                 figureEventInterval = (float) config.optDouble("figureEventInterval", figureEventInterval);
-
                 enableInSimulation = config.optBoolean("enableInSimulation", enableInSimulation);
-
                 enableParticleTrails = config.optBoolean("enableParticleTrails", enableParticleTrails);
-
                 particleTrailChance = (float) config.optDouble("particleTrailChance", particleTrailChance);
-
-
-
                 openSpaceMinRocks = config.optInt("openSpaceMinRocks", openSpaceMinRocks);
-
                 openSpaceMaxRocks = config.optInt("openSpaceMaxRocks", openSpaceMaxRocks);
-
                 openSpaceMinDelay = (float) config.optDouble("openSpaceMinDelay", openSpaceMinDelay);
-
                 openSpaceMaxDelay = (float) config.optDouble("openSpaceMaxDelay", openSpaceMaxDelay);
-
                 openSpaceEasterEggMult = (float) config.optDouble("openSpaceEasterEggMult", openSpaceEasterEggMult);
-
-
-
                 enableMicroDodge = config.optBoolean("enableMicroDodge", enableMicroDodge);
-
                 enableShieldReaction = config.optBoolean("enableShieldReaction", enableShieldReaction);
-
                 enablePhaseReaction = config.optBoolean("enablePhaseReaction", enablePhaseReaction);
-
                 enablePDTargeting = config.optBoolean("enablePDTargeting", enablePDTargeting);
-
                 pdCriticalThreatsOnly = config.optBoolean("pdCriticalThreatsOnly", pdCriticalThreatsOnly);
-
                 enablePDFluxSafety = config.optBoolean("enablePDFluxSafety", enablePDFluxSafety);
-
                 pdMaxFluxThreshold = (float) config.optDouble("pdMaxFluxThreshold", pdMaxFluxThreshold);
-
                 enableEarlySnipeEvasion = config.optBoolean("enableEarlySnipeEvasion", enableEarlySnipeEvasion);
-
                 asteroidHealthMult = (float) config.optDouble("asteroidHealthMult", asteroidHealthMult);
-
                 pdAsteroidDamageMult = (float) config.optDouble("pdAsteroidDamageMult", pdAsteroidDamageMult);
-
                 asteroidCollisionDamageMult = (float) config.optDouble("asteroidCollisionDamageMult", asteroidCollisionDamageMult);
-
                 playerKillResourceDropChance = (float) config.optDouble("playerKillResourceDropChance", playerKillResourceDropChance);
-
                 playerKillFighterDropChance = (float) config.optDouble("playerKillFighterDropChance", playerKillFighterDropChance);
-
                 enableMegalithBoulders = config.optBoolean("enableMegalithBoulders", enableMegalithBoulders);
                 maxMegaliths = config.optInt("maxMegaliths", maxMegaliths);
                 enableDeploymentSafety = config.optBoolean("enableDeploymentSafety", enableDeploymentSafety);
@@ -1424,145 +1011,75 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
                 stationAsteroidDamageMult = (float) config.optDouble("stationAsteroidDamageMult", stationAsteroidDamageMult);
                 enableStationDeflectionDome = config.optBoolean("enableStationDeflectionDome", enableStationDeflectionDome);
                 stationDomeMargin = (float) config.optDouble("stationDomeMargin", stationDomeMargin);
-
                 derelictSpawnChance = (float) config.optDouble("derelictSpawnChance", derelictSpawnChance);
-
                 debrisEasterEggChance = (float) config.optDouble("debrisEasterEggChance", debrisEasterEggChance);
-
                 resourceEasterEggChance = (float) config.optDouble("resourceEasterEggChance", resourceEasterEggChance);
-
                 otherEasterEggChance = (float) config.optDouble("otherEasterEggChance", otherEasterEggChance);
-
                 easterEggSpeed = clampEasterEggSpeed((float) config.optDouble("easterEggSpeed", easterEggSpeed));
-
                 easterEggMagnetStrength = clampEasterEggMagnetStrength((float) config.optDouble("easterEggMagnetStrength", easterEggMagnetStrength));
-
                 derelictRescueHoldTime = (float) config.optDouble("derelictRescueHoldTime", derelictRescueHoldTime);
-
                 derelictRescueChance = (float) config.optDouble("derelictRescueChance", derelictRescueChance);
-
                 aiMinThreatVelocity = (float) config.optDouble("aiMinThreatVelocity", aiMinThreatVelocity);
-
                 aiLookaheadTime = (float) config.optDouble("aiLookaheadTime", aiLookaheadTime);
-
                 aiSafetyMargin = (float) config.optDouble("aiSafetyMargin", aiSafetyMargin);
-
                 aiDodgeCooldown = (float) config.optDouble("aiDodgeCooldown", aiDodgeCooldown);
-
                 aiMaxCheckInterval = (float) config.optDouble("aiMaxCheckInterval", aiMaxCheckInterval);
 
             }
 
         } catch (Throwable t) {
-
             Global.getLogger(DynamicAsteroidsCombatPlugin.class).warn("Dynamic Asteroids: Failed to load mod config; continuing with safe defaults.", t);
 
         }
 
-
-
         // LunaLib F2 overrides
-
         try {
-
             if (Global.getSettings().getModManager().isModEnabled("lunalib")) {
-
                 Integer nPreset = getLunaInt("da_activePreset");
-
                 if (nPreset != null) {
-
                     activePreset = nPreset.intValue();
-
                     lunaPresetLoaded = true;
 
                 }
 
-                loadLunaSettingNumber("da_directorCycleMode", directorCycleMode);
-        loadLunaSettingNumber("da_minFieldRocks", minFieldRocks);
-
-                loadLunaSettingNumber("da_maxFieldRocks", maxFieldRocks);
-
-                loadLunaSettingNumber("da_fieldSurgeSpeed", streamSpeed);
-
-                loadLunaSettingNumber("da_asteroidLifespan", asteroidLifespan);
-
-                loadLunaSettingNumber("da_beamWidth", beamWidth);
-
-                loadLunaSettingNumber("da_targetedSnipeChance", targetedSnipeChance);
-
-                loadLunaSettingNumber("da_particleTrailChance", particleTrailChance);
-
-                loadLunaSettingNumber("da_openSpaceMinRocks", openSpaceMinRocks);
-
-                loadLunaSettingNumber("da_openSpaceMaxRocks", openSpaceMaxRocks);
-
-                loadLunaSettingNumber("da_openSpaceMinDelay", openSpaceMinDelay);
-
-                loadLunaSettingNumber("da_openSpaceMaxDelay", openSpaceMaxDelay);
-
-                loadLunaSettingNumber("da_openSpaceEasterEggMult", openSpaceEasterEggMult);
+                loadLunaSettingNumber("da_directorCycleMode");
+        loadLunaSettingNumber("da_minFieldRocks");
+                loadLunaSettingNumber("da_maxFieldRocks");
+                loadLunaSettingNumber("da_fieldSurgeSpeed");
+                loadLunaSettingNumber("da_asteroidLifespan");
+                loadLunaSettingNumber("da_beamWidth");
+                loadLunaSettingNumber("da_targetedSnipeChance");
+                loadLunaSettingNumber("da_particleTrailChance");
+                loadLunaSettingNumber("da_openSpaceMinRocks");
+                loadLunaSettingNumber("da_openSpaceMaxRocks");
+                loadLunaSettingNumber("da_openSpaceMinDelay");
+                loadLunaSettingNumber("da_openSpaceMaxDelay");
+                loadLunaSettingNumber("da_openSpaceEasterEggMult");
                 Boolean bOpenMeg = getLunaBoolean("da_enableOpenSpaceMegaliths");
                 if (bOpenMeg != null) enableOpenSpaceMegaliths = bOpenMeg.booleanValue();
                 Boolean bOpenSwarm = getLunaBoolean("da_enableOpenSpaceSwarm");
                 if (bOpenSwarm != null) enableOpenSpaceSwarm = bOpenSwarm.booleanValue();
-                loadLunaSettingNumber("da_openSpaceSwarmChance", openSpaceSwarmChance);
-
-
-
+                loadLunaSettingNumber("da_openSpaceSwarmChance");
                 Boolean simVal = getLunaBoolean("da_enableInSimulation");
-
                 if (simVal != null) enableInSimulation = simVal.booleanValue();
-
-
-
                 Boolean ptVal = getLunaBoolean("da_enableParticleTrails");
-
                 if (ptVal != null) enableParticleTrails = ptVal.booleanValue();
-
-
-
                 Boolean mdVal = getLunaBoolean("da_enableMicroDodge");
-
                 if (mdVal != null) enableMicroDodge = mdVal.booleanValue();
-
-
-
                 Boolean srVal = getLunaBoolean("da_enableShieldReaction");
-
                 if (srVal != null) enableShieldReaction = srVal.booleanValue();
-
-
-
                 Boolean pdVal = getLunaBoolean("da_enablePDTargeting");
-
                 if (pdVal != null) enablePDTargeting = pdVal.booleanValue();
-
-
-
                 Boolean pdcVal = getLunaBoolean("da_pdCriticalThreatsOnly");
-
                 if (pdcVal != null) pdCriticalThreatsOnly = pdcVal.booleanValue();
-
-
-
                 Boolean bFluxSafe = getLunaBoolean("da_enablePDFluxSafety");
-
                 if (bFluxSafe != null) enablePDFluxSafety = bFluxSafe.booleanValue();
-
-
-
-                loadLunaSettingNumber("da_pdMaxFluxThreshold", pdMaxFluxThreshold);
-
-                loadLunaSettingNumber("da_asteroidHealthMult", asteroidHealthMult);
-
-                loadLunaSettingNumber("da_pdAsteroidDamageMult", pdAsteroidDamageMult);
-
-                loadLunaSettingNumber("da_asteroidCollisionDamageMult", asteroidCollisionDamageMult);
-
-                loadLunaSettingNumber("da_playerKillResourceDropChance", playerKillResourceDropChance);
-
-                loadLunaSettingNumber("da_playerKillFighterDropChance", playerKillFighterDropChance);
-
+                loadLunaSettingNumber("da_pdMaxFluxThreshold");
+                loadLunaSettingNumber("da_asteroidHealthMult");
+                loadLunaSettingNumber("da_pdAsteroidDamageMult");
+                loadLunaSettingNumber("da_asteroidCollisionDamageMult");
+                loadLunaSettingNumber("da_playerKillResourceDropChance");
+                loadLunaSettingNumber("da_playerKillFighterDropChance");
                 Boolean bMegalith = getLunaBoolean("da_enableMegalithBoulders");
                 if (bMegalith != null) enableMegalithBoulders = bMegalith.booleanValue();
                 Boolean bArc = getLunaBoolean("da_megalithArcFlight");
@@ -1573,215 +1090,133 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
                 if (nMaxMeg != null) maxMegaliths = nMaxMeg.intValue();
                 Boolean bDepSafe = getLunaBoolean("da_enableDeploymentSafety");
                 if (bDepSafe != null) enableDeploymentSafety = bDepSafe.booleanValue();
-                loadLunaSettingNumber("da_deploymentSafetyDuration", deploymentSafetyDuration);
-                loadLunaSettingNumber("da_megalithMinSpeed", megalithMinSpeed);
-                loadLunaSettingNumber("da_megalithMaxSpeed", megalithMaxSpeed);
-                loadLunaSettingNumber("da_megalithSpeed", megalithSpeed);
-                loadLunaSettingNumber("da_megalithSpawnInterval", megalithSpawnInterval);
-                loadLunaSettingNumber("da_megalithMinRadius", megalithMinRadius);
-                loadLunaSettingNumber("da_megalithMaxRadius", megalithMaxRadius);
-                loadLunaSettingNumber("da_megalithDerelictDropChance", megalithDerelictDropChance);
-                loadLunaSettingNumber("da_stationAsteroidDamageMult", stationAsteroidDamageMult);
+                loadLunaSettingNumber("da_deploymentSafetyDuration");
+                loadLunaSettingNumber("da_megalithMinSpeed");
+                loadLunaSettingNumber("da_megalithMaxSpeed");
+                loadLunaSettingNumber("da_megalithSpeed");
+                loadLunaSettingNumber("da_megalithSpawnInterval");
+                loadLunaSettingNumber("da_megalithMinRadius");
+                loadLunaSettingNumber("da_megalithMaxRadius");
+                loadLunaSettingNumber("da_megalithDerelictDropChance");
+                loadLunaSettingNumber("da_stationAsteroidDamageMult");
                 Boolean bStnProt = getLunaBoolean("da_enableStationAsteroidProtection");
                 if (bStnProt != null) enableStationAsteroidProtection = bStnProt.booleanValue();
                 Boolean bStnDome = getLunaBoolean("da_enableStationDeflectionDome");
                 if (bStnDome != null) enableStationDeflectionDome = bStnDome.booleanValue();
-                loadLunaSettingNumber("da_stationDomeMargin", stationDomeMargin);
-
-                loadLunaSettingNumber("da_derelictSpawnChance", derelictSpawnChance);
-
-                loadLunaSettingNumber("da_otherEasterEggChance", otherEasterEggChance);
-
-                loadLunaSettingNumber("da_derelictRescueHoldTime", derelictRescueHoldTime);
-
-                loadLunaSettingNumber("da_derelictRescueChance", derelictRescueChance);
-
-                loadLunaSettingNumber("da_easterEggMagnetStrength", easterEggMagnetStrength);
-
-                loadLunaSettingNumber("da_easterEggSpeed", easterEggSpeed);
-
-
-
-                loadLunaSettingNumber("da_aiMinThreatVelocity", aiMinThreatVelocity);
-
-                loadLunaSettingNumber("da_aiLookaheadTime", aiLookaheadTime);
+                loadLunaSettingNumber("da_stationDomeMargin");
+                loadLunaSettingNumber("da_derelictSpawnChance");
+                loadLunaSettingNumber("da_otherEasterEggChance");
+                loadLunaSettingNumber("da_derelictRescueHoldTime");
+                loadLunaSettingNumber("da_derelictRescueChance");
+                loadLunaSettingNumber("da_easterEggMagnetStrength");
+                loadLunaSettingNumber("da_easterEggSpeed");
+                loadLunaSettingNumber("da_aiMinThreatVelocity");
+                loadLunaSettingNumber("da_aiLookaheadTime");
 
             }
 
         } catch (Throwable t) {
-
             Global.getLogger(DynamicAsteroidsCombatPlugin.class).warn("Dynamic Asteroids: Failed to read LunaLib settings; using mod config values.", t);
 
         }
 
-
-
         if (activePreset < 0 || activePreset > 4) {
-
             Global.getLogger(DynamicAsteroidsCombatPlugin.class).warn("Dynamic Asteroids: Invalid preset " + activePreset + "; using Balanced (2).");
-
             activePreset = 2;
 
         }
 
-
-
         // Clamping (Defaults 200 to 300)
-
         if (minFieldRocks < 20) minFieldRocks = 50;
-
         if (maxFieldRocks < minFieldRocks) maxFieldRocks = minFieldRocks + 100;
-
         if (maxFieldRocks > 2500) maxFieldRocks = 2500;
-
         if (streamSpeed > 5000f) streamSpeed = 5000f;
-
         if (asteroidLifespan < 1.0f) asteroidLifespan = 60.0f;
-
         if (beamWidth < 150f) beamWidth = 650f;
-
         if (targetedSnipeChance < 0f) targetedSnipeChance = 0f;
-
         if (targetedSnipeChance > 1f) targetedSnipeChance = 1f;
-
         if (particleTrailChance < 0f) particleTrailChance = 0f;
-
         if (particleTrailChance > 1f) particleTrailChance = 1f;
-
         if (figureEventInterval < 10.0f) figureEventInterval = 28.0f;
-
         if (openSpaceMinRocks < 1) openSpaceMinRocks = 4;
-
         if (openSpaceMaxRocks < openSpaceMinRocks) openSpaceMaxRocks = openSpaceMinRocks + 5;
-
         if (openSpaceMinDelay <= 0f) openSpaceMinDelay = 2.0f;
-
         if (openSpaceMaxDelay < openSpaceMinDelay) openSpaceMaxDelay = openSpaceMinDelay + 3.0f;
-
         if (openSpaceEasterEggMult < 0f) openSpaceEasterEggMult = 0f;
-
         if (openSpaceEasterEggMult > 1.0f) openSpaceEasterEggMult = 1.0f;
-
         if (asteroidHealthMult < 0.1f) asteroidHealthMult = 0.1f;
-
         if (asteroidHealthMult > 5.0f) asteroidHealthMult = 5.0f;
-
         if (playerKillResourceDropChance < 0f) playerKillResourceDropChance = 0f;
-
         if (playerKillResourceDropChance > 1f) playerKillResourceDropChance = 1f;
-
         if (playerKillFighterDropChance < 0f) playerKillFighterDropChance = 0f;
-
         if (playerKillFighterDropChance > 1f) playerKillFighterDropChance = 1f;
-
         if (megalithMinRadius < 30f) megalithMinRadius = 80f;
         if (megalithMaxRadius < megalithMinRadius) megalithMaxRadius = megalithMinRadius + 50f;
         if (megalithSpawnInterval < 5f) megalithSpawnInterval = 20f;
         if (maxMegaliths < 1) maxMegaliths = 1;
         if (maxMegaliths > 60) maxMegaliths = 60;
-        if (megalithMinSpeed < 10f) megalithMinSpeed = 60f;
-        if (megalithMaxSpeed < megalithMinSpeed) megalithMaxSpeed = megalithMinSpeed + 20f;
-        if (megalithSpeed < 20f) megalithSpeed = 90f;
+        if (megalithMinSpeed < 5f) megalithMinSpeed = 30f;
+        if (megalithMaxSpeed < megalithMinSpeed) megalithMaxSpeed = megalithMinSpeed + 10f;
+        if (megalithSpeed < 10f) megalithSpeed = 45f;
         if (megalithDerelictDropChance < 0f) megalithDerelictDropChance = 0f;
         if (megalithDerelictDropChance > 0.05f) megalithDerelictDropChance = 0.05f;
         if (stationAsteroidDamageMult < 0f) stationAsteroidDamageMult = 0f;
         if (stationAsteroidDamageMult > 1f) stationAsteroidDamageMult = 1f;
         if (stationDomeMargin < 40f) stationDomeMargin = 140f;
-
         if (pdAsteroidDamageMult < 1.0f) pdAsteroidDamageMult = 1.0f;
-
         if (pdAsteroidDamageMult > 20.0f) pdAsteroidDamageMult = 20.0f;
-
         if (derelictSpawnChance < 0f) derelictSpawnChance = 0f;
-
         if (derelictSpawnChance > 1f) derelictSpawnChance = 1f;
-
         if (debrisEasterEggChance < 0f) debrisEasterEggChance = 0f;
-
         if (debrisEasterEggChance > 1f) debrisEasterEggChance = 1f;
-
         if (resourceEasterEggChance < 0f) resourceEasterEggChance = 0f;
-
         if (resourceEasterEggChance > 1f) resourceEasterEggChance = 1f;
-
         if (otherEasterEggChance < 0f) otherEasterEggChance = 0f;
-
         if (otherEasterEggChance > 1f) otherEasterEggChance = 1f;
-
         easterEggSpeed = clampEasterEggSpeed(easterEggSpeed);
-
         easterEggMagnetStrength = clampEasterEggMagnetStrength(easterEggMagnetStrength);
-
         if (activePreset > 0) {
-
             applyPresetSettings(activePreset);
 
         }
 
         if (!lunaPresetLoaded && Global.getSettings().getModManager().isModEnabled("lunalib")) {
-
             Global.getLogger(DynamicAsteroidsCombatPlugin.class).warn("Dynamic Asteroids: LunaLib did not return da_activePreset; using preset " + activePreset + ".");
 
         }
 
         Global.getLogger(DynamicAsteroidsCombatPlugin.class).info(
-
             "Dynamic Asteroids: Applied preset " + activePreset + " (" + getPresetName() + "), stream speed "
-
                 + (int) streamSpeed + ", asteroid range " + minFieldRocks + "-" + maxFieldRocks + ".");
 
     }
 
-
-
-    private void loadLunaSettingNumber(String fieldId, float currentVal) {
-
+    // BUG-3 FIX: removed unused 'currentVal' parameter
+    private void loadLunaSettingNumber(String fieldId) {
         Number num = getLunaNumber(fieldId);
-
         if (num == null) return;
-
         if (fieldId.equals("da_directorCycleMode")) directorCycleMode = num.intValue();
         else if (fieldId.equals("da_minFieldRocks")) minFieldRocks = num.intValue();
-
         else if (fieldId.equals("da_maxFieldRocks")) maxFieldRocks = num.intValue();
-
         else if (fieldId.equals("da_fieldSurgeSpeed")) streamSpeed = num.floatValue();
-
         else if (fieldId.equals("da_asteroidLifespan")) asteroidLifespan = num.floatValue();
-
         else if (fieldId.equals("da_aiMinThreatVelocity")) aiMinThreatVelocity = num.floatValue();
-
         else if (fieldId.equals("da_aiLookaheadTime")) aiLookaheadTime = num.floatValue();
-
         else if (fieldId.equals("da_beamWidth")) beamWidth = num.floatValue();
-
         else if (fieldId.equals("da_targetedSnipeChance")) targetedSnipeChance = num.floatValue();
-
         else if (fieldId.equals("da_particleTrailChance")) particleTrailChance = num.floatValue();
-
         else if (fieldId.equals("da_openSpaceMinRocks")) openSpaceMinRocks = num.intValue();
-
         else if (fieldId.equals("da_openSpaceMaxRocks")) openSpaceMaxRocks = num.intValue();
-
         else if (fieldId.equals("da_openSpaceMinDelay")) openSpaceMinDelay = num.floatValue();
-
         else if (fieldId.equals("da_openSpaceMaxDelay")) openSpaceMaxDelay = num.floatValue();
-
         else if (fieldId.equals("da_openSpaceEasterEggMult")) openSpaceEasterEggMult = num.floatValue();
         else if (fieldId.equals("da_openSpaceSwarmChance")) openSpaceSwarmChance = num.floatValue();
-
         else if (fieldId.equals("da_activePreset")) activePreset = num.intValue();
-
         else if (fieldId.equals("da_pdMaxFluxThreshold")) pdMaxFluxThreshold = num.floatValue();
-
         else if (fieldId.equals("da_asteroidHealthMult")) asteroidHealthMult = num.floatValue();
-
         else if (fieldId.equals("da_pdAsteroidDamageMult")) pdAsteroidDamageMult = num.floatValue();
-
         else if (fieldId.equals("da_asteroidCollisionDamageMult")) asteroidCollisionDamageMult = num.floatValue();
-
         else if (fieldId.equals("da_playerKillResourceDropChance")) playerKillResourceDropChance = num.floatValue();
-
         else if (fieldId.equals("da_playerKillFighterDropChance")) playerKillFighterDropChance = num.floatValue();
         else if (fieldId.equals("da_maxMegaliths")) maxMegaliths = num.intValue();
         else if (fieldId.equals("da_megalithSpeed")) megalithSpeed = num.floatValue();
@@ -1791,57 +1226,29 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
         else if (fieldId.equals("da_megalithDerelictDropChance")) megalithDerelictDropChance = num.floatValue();
         else if (fieldId.equals("da_stationAsteroidDamageMult")) stationAsteroidDamageMult = num.floatValue();
         else if (fieldId.equals("da_stationDomeMargin")) stationDomeMargin = num.floatValue();
-
         else if (fieldId.equals("da_derelictSpawnChance")) derelictSpawnChance = num.floatValue();
-
         else if (fieldId.equals("da_debrisEasterEggChance")) debrisEasterEggChance = num.floatValue();
-
         else if (fieldId.equals("da_resourceEasterEggChance")) resourceEasterEggChance = num.floatValue();
-
         else if (fieldId.equals("da_otherEasterEggChance")) otherEasterEggChance = num.floatValue();
-
         else if (fieldId.equals("da_easterEggSpeed")) setEasterEggSpeed(num.floatValue());
-
         else if (fieldId.equals("da_easterEggMagnetStrength")) easterEggMagnetStrength = clampEasterEggMagnetStrength(num.floatValue());
-
         else if (fieldId.equals("da_derelictRescueHoldTime")) derelictRescueHoldTime = num.floatValue();
-
         else if (fieldId.equals("da_derelictRescueChance")) derelictRescueChance = num.floatValue();
 
     }
 
-
-
         private void refreshLunaSettings() {
-
         if (engine == null) return;
-
         try {
-
             if (Global.getSettings().getModManager().isModEnabled("lunalib")) {
-
                 Boolean pdVal = getLunaBoolean("da_enablePDTargeting");
-
                 if (pdVal != null) enablePDTargeting = pdVal.booleanValue();
-
-
-
                 Boolean pdcVal = getLunaBoolean("da_pdCriticalThreatsOnly");
-
                 if (pdcVal != null) pdCriticalThreatsOnly = pdcVal.booleanValue();
-
-
-
                 Boolean mdVal = getLunaBoolean("da_enableMicroDodge");
-
                 if (mdVal != null) enableMicroDodge = mdVal.booleanValue();
-
-
-
                 Boolean srVal = getLunaBoolean("da_enableShieldReaction");
-
                 if (srVal != null) enableShieldReaction = srVal.booleanValue();
-
                 Boolean simRefVal = getLunaBoolean("da_enableInSimulation");
                 if (simRefVal != null) {
                     boolean newSim = simRefVal.booleanValue();
@@ -1857,44 +1264,25 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
                     }
                 }
 
-
-
                 Integer nPreset = getLunaInt("da_activePreset");
-
                 if (nPreset != null) {
-
                     int pVal = nPreset.intValue();
-
                     if (pVal != activePreset) {
-
                         activePreset = pVal;
-
                         if (activePreset > 0) {
-
                             applyPresetSettings(activePreset);
-
                             int minR = Math.min(minFieldRocks, maxFieldRocks);
-
                             int maxR = Math.max(minFieldRocks, maxFieldRocks);
-
                             battleTargetCount = minR + random.nextInt(Math.max(1, maxR - minR + 1));
-
                             maxBackgroundRocks = Math.max(160, Math.min(450, (int)(battleTargetCount * 0.60f)));
-
                             backgroundSpawnInterval = Math.max(0.015f, 0.055f * (300f / Math.max(300, battleTargetCount)));
 
                             // Silenced preset switch message in simulation
-
                         } else {
-
                             if (engine != null && engine.getCombatUI() != null && engine.isSimulation()) {
-
                                 String msg = IS_RUSSIAN ? 
-
                                     "Dynamic Asteroids: Переключен профиль на [Свой] (Ручная настройка параметров)" :
-
                                     "Dynamic Asteroids: Profile switched to [Custom] (Manual slider tuning)";
-
                                 engine.getCombatUI().addMessage(1, msg, Color.CYAN);
 
                             }
@@ -1905,39 +1293,18 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
 
                 }
 
-
-
                 Boolean bFluxSafe2 = getLunaBoolean("da_enablePDFluxSafety");
-
                 if (bFluxSafe2 != null) enablePDFluxSafety = bFluxSafe2.booleanValue();
-
-
-
                 Number nPdFlux = getLunaNumber("da_pdMaxFluxThreshold");
-
                 if (nPdFlux != null) pdMaxFluxThreshold = nPdFlux.floatValue();
-
-
-
                 Boolean bTrails = getLunaBoolean("da_enableParticleTrails");
-
                 if (bTrails != null) enableParticleTrails = bTrails.booleanValue();
-
-
-
                 Boolean bEarlyEv = getLunaBoolean("da_enableEarlySnipeEvasion");
-
                 if (bEarlyEv != null) enableEarlySnipeEvasion = bEarlyEv.booleanValue();
-
-
-
                 Number nPkRes = getLunaNumber("da_playerKillResourceDropChance");
-
                 if (nPkRes != null) playerKillResourceDropChance = nPkRes.floatValue();
-
                 Number nPkFighter = getLunaNumber("da_playerKillFighterDropChance");
                 if (nPkFighter != null) playerKillFighterDropChance = nPkFighter.floatValue();
-
                 Boolean bMegalith = getLunaBoolean("da_enableMegalithBoulders");
                 if (bMegalith != null) enableMegalithBoulders = bMegalith.booleanValue();
                 Boolean bArc = getLunaBoolean("da_megalithArcFlight");
@@ -1979,158 +1346,72 @@ public class DynamicAsteroidsCombatPlugin extends BaseEveryFrameCombatPlugin imp
                 Number nStnMargin = getLunaNumber("da_stationDomeMargin");
                 if (nStnMargin != null) stationDomeMargin = nStnMargin.floatValue();
 
-                if (nPkFighter != null) playerKillFighterDropChance = nPkFighter.floatValue();
-
+                // BUG-4 FIX: removed duplicate nPkFighter assignment that was here (already set at line ~1779)
                 if (activePreset == 0) {
 
                     // Preset 0 = Custom mode: user manually tunes individual sliders!
-
                     Number nSpeed = getLunaNumber("da_fieldSurgeSpeed");
-
                     if (nSpeed != null) {
-
                         float newSpeed = nSpeed.floatValue();
-
                         if (Math.abs(newSpeed - streamSpeed) > 10f) {
-
                             setStreamSpeed(newSpeed);
 
                         }
 
                     }
 
-
-
                     Number nDirectorMode = getLunaNumber("da_directorCycleMode");
 if (nDirectorMode != null) directorCycleMode = nDirectorMode.intValue();
 Number nMinRocks = getLunaNumber("da_minFieldRocks");
-
                     if (nMinRocks != null) minFieldRocks = nMinRocks.intValue();
-
-
-
                     Number nMaxRocks = getLunaNumber("da_maxFieldRocks");
-
                     if (nMaxRocks != null) maxFieldRocks = nMaxRocks.intValue();
-
-
-
                     Number nLifespan = getLunaNumber("da_asteroidLifespan");
-
                     if (nLifespan != null) asteroidLifespan = nLifespan.floatValue();
-
-
-
                     Number nBeamW = getLunaNumber("da_beamWidth");
-
                     if (nBeamW != null) beamWidth = nBeamW.floatValue();
-
-
-
                     Number nCollDmg = getLunaNumber("da_asteroidCollisionDamageMult");
-
                     if (nCollDmg != null) asteroidCollisionDamageMult = nCollDmg.floatValue();
-
-
-
                     Number nDerelictChance = getLunaNumber("da_derelictSpawnChance");
-
                     if (nDerelictChance != null) derelictSpawnChance = nDerelictChance.floatValue();
-
-
-
                     Number nDebrisChance = getLunaNumber("da_debrisEasterEggChance");
-
                     if (nDebrisChance != null) debrisEasterEggChance = nDebrisChance.floatValue();
-
-
-
                     Number nResourceChance = getLunaNumber("da_resourceEasterEggChance");
-
                     if (nResourceChance != null) resourceEasterEggChance = nResourceChance.floatValue();
-
-
-
                     Number nOtherChance = getLunaNumber("da_otherEasterEggChance");
-
                     if (nOtherChance != null) otherEasterEggChance = nOtherChance.floatValue();
-
-
-
                     Number nEggSpeed = getLunaNumber("da_easterEggSpeed");
-
                     if (nEggSpeed != null) setEasterEggSpeed(nEggSpeed.floatValue());
-
-
-
                     Number nMagStrength = getLunaNumber("da_easterEggMagnetStrength");
-
                     if (nMagStrength != null) easterEggMagnetStrength = clampEasterEggMagnetStrength(nMagStrength.floatValue());
-
-
-
                     Number nHoldTime = getLunaNumber("da_derelictRescueHoldTime");
-
                     if (nHoldTime != null) derelictRescueHoldTime = nHoldTime.floatValue();
-
-
-
                     Number nRescueChance = getLunaNumber("da_derelictRescueChance");
-
                     if (nRescueChance != null) derelictRescueChance = nRescueChance.floatValue();
-
-
-
                     Number nTrailChance = getLunaNumber("da_particleTrailChance");
-
                     if (nTrailChance != null) particleTrailChance = nTrailChance.floatValue();
-
-
-
                     Number nAstHp = getLunaNumber("da_asteroidHealthMult");
-
                     if (nAstHp != null) asteroidHealthMult = nAstHp.floatValue();
-
-
-
                     Number nPdDmg = getLunaNumber("da_pdAsteroidDamageMult");
-
                     if (nPdDmg != null) pdAsteroidDamageMult = nPdDmg.floatValue();
-
-
-
                     Number nThreatVel = getLunaNumber("da_aiMinThreatVelocity");
-
                     if (nThreatVel != null) aiMinThreatVelocity = nThreatVel.floatValue();
-
-
-
                     Number nLookahead = getLunaNumber("da_aiLookaheadTime");
-
                     if (nLookahead != null) aiLookaheadTime = nLookahead.floatValue();
 
                 }
 
             }
 
-        } catch (Throwable t) {
-
-        }
+        } catch (Throwable t) {}
 
     }
 
-
-
     private Number getLunaNumber(String fieldId) {
-
         try {
-
             Double value = LunaSettings.getDouble(MOD_ID, fieldId);
-
             if (value != null) return value;
-
         } catch (Throwable t) {
-
             logLunaSettingWarning(fieldId, t);
 
         }
@@ -2139,34 +1420,21 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     }
 
-
-
     private Integer getLunaInt(String fieldId) {
-
         try {
-
             return LunaSettings.getInt(MOD_ID, fieldId);
-
         } catch (Throwable t) {
-
             logLunaSettingWarning(fieldId, t);
-
             return null;
 
         }
 
     }
 
-
-
     private Boolean getLunaBoolean(String fieldId) {
-
         try {
-
             return LunaSettings.getBoolean(MOD_ID, fieldId);
-
         } catch (Throwable t) {
-
             logLunaSettingWarning(fieldId, t);
 
         }
@@ -2175,42 +1443,25 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     }
 
-
-
     private void logLunaSettingWarning(String fieldId, Throwable error) {
-
         if (lunaSettingWarnings.add(fieldId)) {
-
             Global.getLogger(DynamicAsteroidsCombatPlugin.class).warn("Dynamic Asteroids: Failed to read LunaLib setting " + fieldId + ".", error);
 
         }
 
     }
 
-
-
     private ShipAPI getPlayerShipSafely() {
-
         try {
-
             if (engine != null) return engine.getPlayerShip();
-
-        } catch (Throwable t) {
-
-        }
-
+        } catch (Throwable t) {}
         return null;
 
     }
 
-
-
     private String getAvalancheDirectionLabel() {
-
         if (IS_RUSSIAN) {
-
             switch (avalancheDirection) {
-
                 case RIGHT_TO_LEFT: return "Справа налево (Запад)";
 
                 case LEFT_TO_RIGHT: return "Слева направо (Восток)";
@@ -2222,11 +1473,8 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
             }
 
             return "Запад";
-
         } else {
-
             switch (avalancheDirection) {
-
                 case RIGHT_TO_LEFT: return "Right -> Left (West)";
 
                 case LEFT_TO_RIGHT: return "Left -> Right (East)";
@@ -2243,34 +1491,21 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     }
 
-
-
     // Track vanilla field disabling
 
+    private static boolean reflectionBlocked = false;
     private boolean vanillaFieldsDisabled = false;
 
-
-
     private void disableVanillaAsteroidFields() {
-
-        if (engine == null) return;
-
+        if (engine == null || vanillaFieldsDisabled || reflectionBlocked) return;
         try {
-
             Method getMapMethod = null;
-
             try {
-
                 getMapMethod = engine.getClass().getMethod("getCombatMap");
-
             } catch (Throwable t) {
-
                 for (Method m : engine.getClass().getDeclaredMethods()) {
-
                     if (m.getParameterTypes().length == 0 && m.getReturnType().getName().endsWith(".combat.A.B")) {
-
                         getMapMethod = m;
-
                         break;
 
                     }
@@ -2278,27 +1513,16 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                 }
 
             }
-
-
 
             Object combatMap = null;
-
             if (getMapMethod != null) {
-
                 getMapMethod.setAccessible(true);
-
                 combatMap = getMapMethod.invoke(engine);
-
             } else {
-
                 for (Field f : engine.getClass().getDeclaredFields()) {
-
                     if (f.getType().getName().endsWith(".combat.A.B")) {
-
                         f.setAccessible(true);
-
                         combatMap = f.get(engine);
-
                         break;
 
                     }
@@ -2307,30 +1531,19 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
             }
 
-
-
             if (combatMap != null) {
-
                 for (Field f : combatMap.getClass().getDeclaredFields()) {
-
                     if (List.class.isAssignableFrom(f.getType())) {
-
                         f.setAccessible(true);
 
                         // Do NOT call f.getGenericType()! In obfuscated game it throws ClassFormatError: Illegal field name
                         // The vanilla asteroid field generator list in com.fs.starfarer.combat.A.B is field "for"
                         List<?> list = (List<?>) f.get(combatMap);
-
                         if (list != null) {
-
                             boolean isAsteroidFieldList = "for".equals(f.getName());
-
                             if (!isAsteroidFieldList && !list.isEmpty()) {
-
                                 Object first = list.get(0);
-
                                 if (first != null && first.getClass().getName().endsWith(".combat.A.E")) {
-
                                     isAsteroidFieldList = true;
 
                                 }
@@ -2338,9 +1551,7 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                             }
 
                             if (isAsteroidFieldList) {
-
                                 list.clear();
-
                                 vanillaFieldsDisabled = true;
 
                             }
@@ -2353,34 +1564,20 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
             }
 
-        } catch (Throwable t) {
-
-        }
+        } catch (Throwable t) { reflectionBlocked = true; vanillaFieldsDisabled = true; }
 
     }
 
-
-
     private void clearAllAsteroids(boolean withSmoke) {
-
         if (engine == null) return;
-
         List<CombatEntityAPI> existing = engine.getAsteroids();
-
         if (existing != null && !existing.isEmpty()) {
-
             Color dustColor = new Color(130, 115, 100, 110);
-
             for (CombatEntityAPI ast : existing) {
-
                 if (ast != null && !ast.isExpired()) {
-
                     if (ast.getCustomData().containsKey("IS_EASTER_EGG")) continue;
-
                     if (withSmoke && ast.getLocation() != null && !isTitleScreen) {
-
                         float radius = Math.max(25f, ast.getCollisionRadius());
-
                         engine.addSmokeParticle(ast.getLocation(), new Vector2f(0f, 0f), radius * 0.8f, 0.4f, 0.6f, dustColor);
 
                     }
@@ -2395,62 +1592,42 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     }
 
-
-
     private void queueDetectionSoundBurst() {
-
         pendingDetectionSoundPlays = Math.min(9, pendingDetectionSoundPlays + 3);
 
     }
 
-
-
     private void advanceDetectionSound(float amount) {
-
         if (pendingDetectionSoundPlays <= 0) return;
-
         detectionSoundTimer -= amount;
-
         while (pendingDetectionSoundPlays > 0 && detectionSoundTimer <= 0f) {
-
             try {
-
                 Global.getSoundPlayer().playUISound("da_derelict_detect", 1.0f, 0.9f);
-
             } catch (Throwable t) {
-
                 try {
-
                     Global.getSoundPlayer().playUISound("ui_radar_detect_vessel", 1.0f, 1.0f);
-
                 } catch (Throwable t2) {}
 
             }
 
             pendingDetectionSoundPlays--;
-
             detectionSoundTimer += 0.25f;
 
         }
 
     }
 
-
-
     private void registerNewShipDeployment(ShipAPI s) {
         if (s == null || !s.isAlive()) return;
         if (s.isFighter() && s != engine.getPlayerShip()) return;
         if (s.isDrone()) return;
         if (s.isStation() || s.isStationModule() || s.getParentStation() != null) return;
-
         if (shipSpawnTimes.containsKey(s) || shipDomesActivated.contains(s) || s.getCustomData().containsKey("DA_DOME_ACTIVATED")) return;
-
         float spawnTime = totalCombatTime;
         shipSpawnTimes.put(s, Float.valueOf(spawnTime));
         shipDomesActivated.add(s);
         s.setCustomData("DA_SPAWN_TIME", Float.valueOf(spawnTime));
         s.setCustomData("DA_DOME_ACTIVATED", Boolean.TRUE);
-
         triggerShipDomeActivation(s);
     }
 
@@ -2464,11 +1641,7 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
     @Override
 
     public void advance(float amount, List<InputEventAPI> events) {
-
         if (!active || engine == null) return;
-
-
-
         totalCombatTime += amount;
 
         // Track per-ship deployment spawn time for kinetic deployment safety and ship deflection dome
@@ -2481,7 +1654,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                 if (s.isFighter() && s != engine.getPlayerShip()) continue;
                 if (s.isDrone()) continue;
                 if (s.isStation() || s.isStationModule() || s.getParentStation() != null) continue;
-
                 if (!shipSpawnTimes.containsKey(s) && !shipDomesActivated.contains(s) && !s.getCustomData().containsKey("DA_DOME_ACTIVATED")) {
                     registerNewShipDeployment(s);
                 }
@@ -2499,17 +1671,10 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         }
 
         advanceDetectionSound(amount);
-
         updateStationDomes(amount);
-
-
-
         lunaCheckTimer += amount;
-
         if (lunaCheckTimer >= 0.5f) {
-
             lunaCheckTimer = 0f;
-
             refreshLunaSettings();
 
         }
@@ -2533,7 +1698,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                     event.consume();
                     magnetToggleCooldown = 0.35f;
                     shieldMagnetEnabled = !shieldMagnetEnabled;
-
                     ShipAPI playerShip = getPlayerShipSafely();
                     if (playerShip != null && playerShip.getLocation() != null && engine != null) {
                         Vector2f textLoc = new Vector2f(playerShip.getLocation().x, playerShip.getLocation().y + playerShip.getCollisionRadius() * 0.6f);
@@ -2568,15 +1732,12 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
             boolean summonContainerTriggered = false;
             boolean summonMegalithTriggered = false;
             boolean summonSwarmTriggered = false;
-
             if (events != null) {
                 boolean shiftHeld = Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) || Keyboard.isKeyDown(Keyboard.KEY_RSHIFT);
                 boolean ctrlHeld = Keyboard.isKeyDown(Keyboard.KEY_LCONTROL) || Keyboard.isKeyDown(Keyboard.KEY_RCONTROL);
-
                 for (InputEventAPI event : events) {
                     if (!event.isConsumed() && event.isKeyDownEvent()) {
                         int key = event.getEventValue();
-
                         if (key == Keyboard.KEY_APOSTROPHE || key == Keyboard.KEY_GRAVE) {
                             event.consume();
                             if (summonKeyCooldown <= 0f) summonTriggered = true;
@@ -2672,29 +1833,18 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         }
 
         // Show simulation one-time hint
-
         if (engine.isSimulation() && !simulationHintShown) {
-
             simulationHintShown = true;
 
         }
 
-
-
         // Single combat notification
-
         if (!isTitleScreen && !notifiedPlayer) {
-
             ShipAPI player = getPlayerShipSafely();
-
             if (player != null) {
-
                 notifyTimer += amount;
-
                 if (notifyTimer >= 0.4f) {
-
                     notifiedPlayer = true;
-
                     showInitialNotification(player);
 
                 }
@@ -2703,166 +1853,96 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
         }
 
-
-
         // HUD status in bottom-left
-
         if (!isTitleScreen && getPlayerShipSafely() != null) {
-
             try {
-
                 String icon = Global.getSettings().getSpriteName("ui", "icon_fleet_danger");
-
                 if (engine.isSimulation()) {
-
                     if (!simulationEnabled) {
-
                         engine.maintainStatusForPlayerShip(
-
                             "DYNAMIC_ASTEROIDS_STATUS",
-
                             icon,
-
                             IS_RUSSIAN ? "СИМУЛЯЦИЯ (ОТКЛЮЧЕНА)" : "SIMULATION (DISABLED)",
-
                             IS_RUSSIAN ? "Астероиды: ВЫКЛ | [/] Включить" : "Asteroids: OFF | Press [/] to enable",
-
                             false
-
                         );
-
                     } else {
-
                         String streamInfo = activeStreams.isEmpty() ? (IS_RUSSIAN ? "Лавина: " : "Avalanche: ") + getAvalancheDirectionLabel() : (IS_RUSSIAN ? "АКТИВНО ПОТОКОВ: " : "STREAMS ACTIVE: ") + activeStreams.size();
-
                         engine.maintainStatusForPlayerShip(
-
                             "DYNAMIC_ASTEROIDS_STATUS",
-
                             icon,
-
                             (IS_RUSSIAN ? "СИМУЛЯЦИЯ: ПОЯС [" : "SIMULATION: ASTEROID BELT [") + getPresetName() + (IS_RUSSIAN ? "] (" : "] (") + battleTargetCount + (IS_RUSSIAN ? " макс, " : " max, ") + (int)streamSpeed + (IS_RUSSIAN ? " ск)" : " spd)"),
-
                             streamInfo + (IS_RUSSIAN ? " | [Shift +/-] Лимит | [Ctrl +/-] Скорость" : " | [Shift +/-] Limit | [Ctrl +/-] Speed"),
-
                             true
-
                         );
 
                     }
 
                 } else if (isInAsteroidField) {
-
                     String sub = (IS_RUSSIAN ? "Лавина: " : "Avalanche: ") + getAvalancheDirectionLabel();
-
                     if (currentDirectorState == DirectorState.LULL) {
-
                         sub += IS_RUSSIAN ? " | Затишье" : " | Calm Lull";
-
                     } else if (!activeStreams.isEmpty()) {
-
                         sub += IS_RUSSIAN ? (" | Формаций: " + activeStreams.size()) : (" | Formations: " + activeStreams.size() + " active");
-
                     } else {
-
                         sub += IS_RUSSIAN ? (" | Поток: " + activeBackgroundCount) : (" | Stream: " + activeBackgroundCount + " rocks");
 
                     }
 
                     engine.maintainStatusForPlayerShip(
-
                         "DYNAMIC_ASTEROIDS_STATUS",
-
                         icon,
-
                         (IS_RUSSIAN ? "ПОЯС: [" : "BELT: [") + getPresetName() + (IS_RUSSIAN ? "] (" : "] (") + (int)streamSpeed + (IS_RUSSIAN ? " ск)" : " spd)"),
-
                         sub,
-
                         true
-
                     );
-
                 } else {
-
                     engine.maintainStatusForPlayerShip(
-
                         "DYNAMIC_ASTEROIDS_STATUS",
-
                         icon,
-
                         IS_RUSSIAN ? "ОТКРЫТЫЙ КОСМОС" : "OPEN SPACE",
-
                         (IS_RUSSIAN ? "Дрейф: " : "Drift: ") + getAvalancheDirectionLabel() + (IS_RUSSIAN ? " | Редкие метеоры: " : " | Stray Meteors: ") + openSpaceTargetCount,
-
                         false
-
                     );
 
                 }
 
-            } catch (Throwable t) {
-
-            }
+            } catch (Throwable t) {}
 
         }
 
-
-
         // Pause check
-
         if (!isTitleScreen && engine.isPaused()) {
-
             return;
 
         }
 
-
-
         // Title screen movement
-
         if (isTitleScreen) {
-
             List<CombatEntityAPI> list = engine.getAsteroids();
-
             if (list != null) {
-
                 for (CombatEntityAPI ast : list) {
-
                     if (ast == null || ast.isExpired()) {
-
-                    if (ast != null && !ast.getCustomData().containsKey("IS_EASTER_EGG")) {
-
-                        Object lastHitObj = ast.getCustomData().get("DA_LAST_PLAYER_HIT_TIME");
-
-                        if (lastHitObj instanceof Float) {
-
-                            float lastHit = ((Float) lastHitObj).floatValue();
-
-                            if (totalCombatTime - lastHit < 0.45f) {
-
-                                processPlayerAsteroidKill(ast, getPlayerShipSafely());
-
+                        // BUG-1 FIX: properly scoped expired asteroid handling
+                        // Only check last-hit for non-null, non-easter-egg expired asteroids
+                        if (ast != null && !ast.getCustomData().containsKey("IS_EASTER_EGG")) {
+                            Object lastHitObj = ast.getCustomData().get("DA_LAST_PLAYER_HIT_TIME");
+                            if (lastHitObj instanceof Float) {
+                                float lastHit = ((Float) lastHitObj).floatValue();
+                                if (totalCombatTime - lastHit < 0.45f) {
+                                    processPlayerAsteroidKill(ast, getPlayerShipSafely());
+                                }
                             }
-
                         }
-
+                        continue;
                     }
 
-                    continue;
-
-                }
-
+                    // Velocity update — only reached for valid, non-expired asteroids
                     Vector2f loc = ast.getLocation();
-
                     Vector2f vel = ast.getVelocity();
-
                     if (loc != null && vel != null) {
-
                         loc.x += vel.x * amount;
-
                         loc.y += vel.y * amount;
-
                         ast.setFacing(ast.getFacing() + ast.getAngularVelocity() * amount);
 
                     }
@@ -2873,123 +1953,61 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
         }
 
-
-
         // Ensure vanilla background generators remain permanently disabled
-
         if (!vanillaFieldsDisabled || totalCombatTime < 2.0f) {
-
             disableVanillaAsteroidFields();
 
         }
 
-
-
         // Simulation stream control handled dynamically in spawner loop
         // Visible boundaries and strict despawn margins
-
         float focalCX = 0f;
-
         float focalCY = 0f;
-
-
-
         float halfW = engine.getMapWidth() * 0.5f;
-
         float halfH = engine.getMapHeight() * 0.5f;
-
-
-
         if (isTitleScreen) {
-
             ViewportAPI vp = engine.getViewport();
-
             if (vp != null && vp.getCenter() != null) {
-
                 focalCX = vp.getCenter().x;
-
                 focalCY = vp.getCenter().y;
 
             }
 
             float vw = (vp != null) ? vp.getVisibleWidth() : 2500f;
-
             float vh = (vp != null) ? vp.getVisibleHeight() : 1500f;
-
             halfW = vw * 0.5f;
-
             halfH = vh * 0.5f;
 
         }
 
-
-
         // Strict border margin (replaced by 5-second out of bounds exit despawn)
 
-
-
         // Advance existing asteroids
-
         List<CombatEntityAPI> asteroids = engine.getAsteroids();
-
         int activeCount = 0;
         activeBackgroundCount = 0;
-
-
-
         if (asteroids != null && !asteroids.isEmpty()) {
-
-            List<CombatEntityAPI> toRemove = null;
-
-            List<CombatEntityAPI> toPoof = null;
-
+            toRemoveEntities.clear();
+            toPoofEntities.clear();
             currentMegalithCount = 0;
-
-
-
             for (int i = 0; i < asteroids.size(); i++) {
-
                 CombatEntityAPI ast = asteroids.get(i);
-
                 if (ast == null || ast.isExpired()) continue;
 
-
-
                 // Easter eggs are managed separately by advanceEasterEgg, never delete or prune here!
-
                 if (ast.getCustomData().containsKey("IS_EASTER_EGG")) {
-
                     continue;
 
                 }
-
-
 
                 Vector2f loc = ast.getLocation();
-
                 if (loc == null) continue;
 
-
-
-                // Untracked vanilla rock removal
+                // Untracked vanilla rock: let it drift freely with vanilla physics and collisions
+                // Starsector's asteroid generator is satisfied and stops repeatedly spawning new ones
                 if (ast.getCustomData().get(TRACKED_KEY) == null) {
-
-                    if (toRemove == null) toRemove = new ArrayList<CombatEntityAPI>();
-
-                    toRemove.add(ast);
-
-                    // Re-disable vanilla generators if an untracked rock leaked through
-                    if (!vanillaFieldsDisabled || totalCombatTime < 10.0f) {
-
-                        disableVanillaAsteroidFields();
-
-                    }
-
                     continue;
-
                 }
-
-
 
                 boolean isMegalith = ast.getCustomData().containsKey("DA_IS_MEGALITH");
 
@@ -2998,9 +2016,7 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                                    loc.x > focalCX + halfW ||
                                    loc.y < focalCY - halfH ||
                                    loc.y > focalCY + halfH);
-
                 boolean hasEntered = ast.getCustomData().containsKey("DA_ENTERED_MAP");
-
                 if (!hasEntered) {
                     if (!outside) {
                         // Asteroid crossed into the playable map area or was pre-seeded inside!
@@ -3026,8 +2042,7 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                             float timer = (timerObj instanceof Float) ? ((Float) timerObj).floatValue() + amount : amount;
                             ast.getCustomData().put("DA_OUT_OF_BOUNDS_TIMER", timer);
                             if (timer >= 5.0f) {
-                                if (toRemove == null) toRemove = new ArrayList<CombatEntityAPI>();
-                                toRemove.add(ast);
+                                toRemoveEntities.add(ast);
                                 continue;
                             }
                         } else {
@@ -3035,8 +2050,7 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                             ast.getCustomData().remove("DA_OUT_OF_BOUNDS_TIMER");
                             Object birthObj = ast.getCustomData().get(SPAWN_TIME_KEY);
                             if (birthObj instanceof Float && (totalCombatTime - ((Float) birthObj).floatValue()) > 30.0f) {
-                                if (toRemove == null) toRemove = new ArrayList<CombatEntityAPI>();
-                                toRemove.add(ast);
+                                toRemoveEntities.add(ast);
                                 continue;
                             }
                         }
@@ -3049,8 +2063,7 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                         ast.getCustomData().put("DA_OUT_OF_BOUNDS_TIMER", timer);
                         if (timer >= 5.0f) {
                             // 5 seconds past the border -> delete!
-                            if (toRemove == null) toRemove = new ArrayList<CombatEntityAPI>();
-                            toRemove.add(ast);
+                            toRemoveEntities.add(ast);
                             continue;
                         }
                     } else {
@@ -3066,20 +2079,16 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                     float age = totalCombatTime - ((Float) birthObj).floatValue();
                     if (isMegalith) {
                         if (age >= 1200.0f) {
-                            if (toRemove == null) toRemove = new ArrayList<CombatEntityAPI>();
-                            toRemove.add(ast);
+                            toRemoveEntities.add(ast);
                             continue;
                         }
                     } else {
                         if (age >= Math.max(asteroidLifespan, 120.0f)) {
-                            if (toPoof == null) toPoof = new ArrayList<CombatEntityAPI>();
-                            toPoof.add(ast);
+                            toPoofEntities.add(ast);
                             continue;
                         }
                     }
                 }
-
-
 
                 // Kinetic Cruise Control
 
@@ -3090,9 +2099,7 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
                 // Ship Deployment Deflection Dome: All asteroids part and flow smoothly around newly deployed ships for 7 seconds
                 applyShipDeflectionToAsteroid(ast, amount);
-
                 maintainVelocity(ast);
-
                 if (ast.getCustomData().containsKey("DA_IS_MEGALITH")) {
                     currentMegalithCount++;
                 }
@@ -3104,134 +2111,79 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
             }
 
-
-
             // Dissolve into smoke puff on expiration
-
-            if (toPoof != null) {
-
+            if (!toPoofEntities.isEmpty()) {
                 Color dustColor = new Color(130, 115, 100, 110);
-
-                for (CombatEntityAPI dead : toPoof) {
-
+                for (int pIdx = 0; pIdx < toPoofEntities.size(); pIdx++) {
+                    CombatEntityAPI dead = toPoofEntities.get(pIdx);
                     if (dead != null && dead.getLocation() != null) {
-
                         float radius = Math.max(25f, dead.getCollisionRadius());
-
                         engine.addSmokeParticle(dead.getLocation(), new Vector2f(0f, 0f), radius * 0.8f, 0.4f, 0.6f, dustColor);
-
                     }
-
                     engine.removeEntity(dead);
-
                 }
-
+                toPoofEntities.clear();
             }
 
-
-
             // Silent removal for out of bounds
-
-            if (toRemove != null) {
-
-                for (CombatEntityAPI dead : toRemove) {
-
-                    engine.removeEntity(dead);
-
+            if (!toRemoveEntities.isEmpty()) {
+                for (int rIdx = 0; rIdx < toRemoveEntities.size(); rIdx++) {
+                    engine.removeEntity(toRemoveEntities.get(rIdx));
                 }
+                toRemoveEntities.clear();
+            }
 
+            // Megalith vs Megalith elastic physical resolution:
+            // Prevents megaliths from popping against each other or getting stuck grinding into each other
+            if (currentMegalithCount >= 2) {
+                resolveMegalithCollisions(asteroids);
             }
 
         }
-
-
 
         // =========================================================================
 
         // SPARKLING KINETIC PARTICLE TRAILS (ZERO LAG AT 120 FPS)
 
         // =========================================================================
-
         if (enableParticleTrails && !isTitleScreen && asteroids != null && !asteroids.isEmpty()) {
-
             trailTickTimer += amount;
-
             if (trailTickTimer >= 0.038f) { // ~26 ticks per sec
 
                 trailTickTimer = 0f;
-
-
-
                 Color goldSpark = new Color(255, 205, 115, 220);
-
                 Color goldDust = new Color(175, 150, 120, 90);
-
-
-
                 Color cyanSpark = new Color(120, 220, 255, 220);
-
                 Color cyanDust = new Color(110, 160, 210, 90);
-
-
-
                 Color redSpark = new Color(255, 65, 35, 240);
-
                 Color redDust = new Color(200, 50, 30, 110);
-
-
-
                 for (int i = 0; i < asteroids.size(); i++) {
-
                     CombatEntityAPI ast = asteroids.get(i);
-
                     if (ast == null || ast.isExpired()) continue;
-
                     Object trailObj = ast.getCustomData().get(TRAIL_TYPE_KEY);
-
                     if (trailObj instanceof Integer) {
-
                         Vector2f loc = ast.getLocation();
-
                         Vector2f vel = ast.getVelocity();
-
                         if (loc == null || vel == null) continue;
-
-
-
                         int tt = ((Integer) trailObj).intValue();
-
                         Color sparkCol = goldSpark;
-
                         Color dustCol = goldDust;
-
                         if (tt == 2) {
-
                             sparkCol = redSpark;
-
                             dustCol = redDust;
-
                         } else if (tt == 3) {
-
                             sparkCol = cyanSpark;
-
                             dustCol = cyanDust;
 
                         }
 
-
-
                         Vector2f pVel = new Vector2f(-vel.x * 0.04f, -vel.y * 0.04f);
-
                         float radius = Math.max(14f, ast.getCollisionRadius());
 
-
-
                         // Sparkling glint
-
                         engine.addHitParticle(loc, pVel, radius * 0.55f, 0.85f, 0.28f, sparkCol);
 
                         // Subtle soft trailing vapor
-
                         engine.addSmoothParticle(loc, pVel, radius * 0.75f, 0.40f, 0.35f, dustCol);
 
                     }
@@ -3241,8 +2193,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
             }
 
         }
-
-
 
         // Dynamic Asteroids stream spawner governor: when disabled in simulator, skip stream rock generation
         boolean allowStreamSpawning = true;
@@ -3328,7 +2278,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
                 if (allowBaselineSpawn) {
                     backgroundSpawnTimer += amount;
-
                     if (backgroundSpawnTimer >= backgroundSpawnInterval) {
                         backgroundSpawnTimer = 0f;
                         if (activeBackgroundCount < maxBackgroundRocks) {
@@ -3364,11 +2313,9 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
             // 3. Process Active Formation Streams (Dense heavy bursts across 1, 2, or 3 concurrent angles, or open space transit swarms)
             if (!activeStreams.isEmpty()) {
                 List<ActiveFigureStream> finishedStreams = null;
-
                 for (int i = 0; i < activeStreams.size(); i++) {
                     ActiveFigureStream stream = activeStreams.get(i);
                     if (stream == null) continue;
-
                     stream.timeElapsed += amount;
                     stream.lifetime -= amount;
                     if (stream.lifetime <= 0f && stream.rocksRemaining <= 0) {
@@ -3398,27 +2345,15 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         } // end if (allowStreamSpawning)
 
         // Fleet AI Collision Avoidance & Interception
-
         advanceAIAvoidance(amount);
 
-
-
         // Advance Easter Eggs (Derelicts, Caches, Probes, Tanks)
-
-        checkPlayerDestroyedAsteroids();
-
-
-
+        checkPlayerDestroyedAsteroids(amount);
         if (activeEasterEggEntities != null && !activeEasterEggEntities.isEmpty()) {
-
             for (int i = activeEasterEggEntities.size() - 1; i >= 0; i--) {
-
                 CombatEntityAPI egg = activeEasterEggEntities.get(i);
-
                 if (egg == null || egg.isExpired()) {
-
                     activeEasterEggEntities.remove(i);
-
                     continue;
 
                 }
@@ -3429,16 +2364,10 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
         }
 
-
-
         // Update Derelict HUD Status Compass & Timer
-
         updateDerelictHUDStatus();
 
-
-
         // Check combat conclusion for derelict recovery registration in campaign
-
         if (engine != null && engine.isCombatOver() && !campaignListenerRegistered) {
 
             // Task 3: If combat ended while player was stabilizing an active derelict on map, finalize its stabilization!
@@ -3514,34 +2443,20 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     }
 
-
-
     private final Map<String, SpriteAPI> spriteCache = new HashMap<String, SpriteAPI>();
 
-
-
     public SpriteAPI getCachedSprite(String category, String key, String fallbackPath) {
-
         String cacheKey = (category != null ? category : "") + ":" + (key != null ? key : "") + ":" + (fallbackPath != null ? fallbackPath : "");
-
         if (spriteCache.containsKey(cacheKey)) {
-
             return spriteCache.get(cacheKey);
 
         }
 
-
-
         SpriteAPI s = null;
-
         if (category != null && key != null) {
-
             try {
-
                 SpriteAPI cand = Global.getSettings().getSprite(category, key);
-
                 if (isValidSprite(cand)) {
-
                     s = cand;
 
                 }
@@ -3551,15 +2466,10 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         }
 
         if (s == null && fallbackPath != null) {
-
             try {
-
                 Global.getSettings().loadTexture(fallbackPath);
-
                 SpriteAPI cand = Global.getSettings().getSprite(fallbackPath);
-
                 if (isValidSprite(cand)) {
-
                     s = cand;
 
                 }
@@ -3568,243 +2478,119 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
         }
 
-
-
         spriteCache.put(cacheKey, s);
-
         return s;
 
     }
 
-
-
     public static boolean isValidSprite(SpriteAPI s) {
-
         if (s == null) return false;
-
         try {
 
             // Calling getWidth() throws NPE on broken proxy if the internal sprite (this.o00000) is null!
-
             return s.getWidth() > 0.001f;
-
         } catch (Throwable t) {
-
             return false;
 
         }
 
     }
 
-
-
     private void updateDerelictHUDStatus() {
-
         if (engine == null || activeEasterEggEntities == null || activeEasterEggEntities.isEmpty()) return;
-
-
-
         ShipAPI playerShip = engine.getPlayerShip();
-
         Vector2f pLoc = (playerShip != null) ? playerShip.getLocation() : null;
-
-
-
         CombatEntityAPI bestDerelict = null;
-
         float bestDistSq = Float.MAX_VALUE;
-
         int derelictCount = 0;
-
         int rescuedCount = 0;
-
-
-
         for (int i = 0; i < activeEasterEggEntities.size(); i++) {
-
             CombatEntityAPI ent = activeEasterEggEntities.get(i);
-
             if (ent == null || ent.isExpired() || (ent.getCustomData() != null && ent.getCustomData().containsKey("DA_EXPIRED")) || !engine.isEntityInPlay(ent)) continue;
-
             if (!"DERELICT".equals(ent.getCustomData().get("EASTER_EGG_TYPE"))) continue;
-
-
-
             derelictCount++;
-
             Boolean res = (Boolean) ent.getCustomData().get("DERELICT_RESCUED");
-
             if (res != null && res.booleanValue()) rescuedCount++;
-
-
-
             if (pLoc != null && ent.getLocation() != null) {
-
                 float dx = ent.getLocation().x - pLoc.x;
-
                 float dy = ent.getLocation().y - pLoc.y;
-
                 float dSq = dx * dx + dy * dy;
-
                 boolean isThisRescued = (res != null && res.booleanValue());
-
                 boolean isBestRescued = false;
-
                 if (bestDerelict != null) {
-
                     Boolean bRes = (Boolean) bestDerelict.getCustomData().get("DERELICT_RESCUED");
-
                     isBestRescued = (bRes != null && bRes.booleanValue());
 
                 }
 
-
-
                 if (bestDerelict == null) {
-
                     bestDerelict = ent;
-
                     bestDistSq = dSq;
-
                 } else if (isBestRescued && !isThisRescued) {
-
                     bestDerelict = ent;
-
                     bestDistSq = dSq;
-
                 } else if (isBestRescued == isThisRescued && dSq < bestDistSq) {
-
                     bestDerelict = ent;
-
                     bestDistSq = dSq;
 
                 }
 
             } else if (bestDerelict == null) {
-
                 bestDerelict = ent;
 
             }
 
         }
 
-
-
         if (bestDerelict == null) return;
-
         activeDerelictEntity = bestDerelict;
-
-
-
         Vector2f dLoc = bestDerelict.getLocation();
-
         if (dLoc == null) return;
-
-
-
         String hullName = (String) bestDerelict.getCustomData().get("DERELICT_NAME");
-
         if (hullName == null) hullName = IS_RUSSIAN ? "Остов корабля" : "Derelict ship";
-
-
-
         Float curT = (Float) bestDerelict.getCustomData().get("DERELICT_HOLD_TIMER");
-
         float holdT = (curT != null) ? curT.floatValue() : 0f;
-
         Boolean rescued = (Boolean) bestDerelict.getCustomData().get("DERELICT_RESCUED");
-
         boolean isRescued = (rescued != null && rescued.booleanValue());
-
-
-
         String hullSizeStr = (String) bestDerelict.getCustomData().get("DERELICT_HULL_SIZE");
-
         String sizeTag = "";
-
         if ("CAPITAL_SHIP".equals(hullSizeStr)) sizeTag = IS_RUSSIAN ? " [Линкор]" : " [Capital]";
-
         else if ("CRUISER".equals(hullSizeStr)) sizeTag = IS_RUSSIAN ? " [Крейсер]" : " [Cruiser]";
-
         else if ("DESTROYER".equals(hullSizeStr)) sizeTag = IS_RUSSIAN ? " [Эсминец]" : " [Destroyer]";
-
         else if ("FRIGATE".equals(hullSizeStr)) sizeTag = IS_RUSSIAN ? " [Фрегат]" : " [Frigate]";
-
-
-
         String countSuffix = sizeTag + ((derelictCount > 1) ? (" [" + (isRescued ? rescuedCount : (derelictCount - rescuedCount)) + "/" + derelictCount + "]") : "");
-
         String title;
-
         String data;
-
-
-
         if (pLoc != null) {
-
             float dx = dLoc.x - pLoc.x;
-
             float dy = dLoc.y - pLoc.y;
-
             float dist = (float) Math.sqrt(dx * dx + dy * dy);
-
-
-
             float angleDeg = (float) Math.toDegrees(Math.atan2(dy, dx));
-
             if (angleDeg < 0) angleDeg += 360f;
-
             float relAngle = angleDeg - playerShip.getFacing();
-
             while (relAngle > 180f) relAngle -= 360f;
-
             while (relAngle < -180f) relAngle += 360f;
-
-
-
             int clock = Math.round((90f - relAngle) / 30f);
-
             while (clock <= 0) clock += 12;
-
             while (clock > 12) clock -= 12;
-
-
-
             String arrow = "↑";
-
             if (relAngle > -22.5f && relAngle <= 22.5f) arrow = "↑";
-
             else if (relAngle > 22.5f && relAngle <= 67.5f) arrow = "↖";
-
             else if (relAngle > 67.5f && relAngle <= 112.5f) arrow = "←";
-
             else if (relAngle > 112.5f && relAngle <= 157.5f) arrow = "↙";
-
             else if (relAngle < -22.5f && relAngle >= -67.5f) arrow = "↗";
-
             else if (relAngle < -67.5f && relAngle >= -112.5f) arrow = "→";
-
             else if (relAngle < -112.5f && relAngle >= -157.5f) arrow = "↘";
-
             else arrow = "↓";
-
-
-
             if (isRescued) {
-
                 title = (IS_RUSSIAN ? ("ОСТОВ СПАСЕН: " + hullName) : ("RESCUED: " + hullName)) + countSuffix;
-
                 data = IS_RUSSIAN ?
-
                     String.format("%s Дист: %d ед. (на %d ч.) | СИСТЕМЫ СТАБИЛЬНЫ", arrow, (int)dist, clock) :
-
                     String.format("%s Dist: %d su (%d o'clock) | SYSTEMS STABLE", arrow, (int)dist, clock);
-
             } else {
                 int pct = Math.min(100, Math.round((holdT / derelictRescueHoldTime) * 100f));
                 Float lastHeldT = (Float) bestDerelict.getCustomData().get("DERELICT_MAGNET_HELD_TIME");
                 boolean beingHeld = (lastHeldT != null && (totalCombatTime - lastHeldT.floatValue()) < 0.35f);
-
                 title = (IS_RUSSIAN ? ("СИГНАЛ SOS: " + hullName) : ("SOS SIGNAL: " + hullName)) + countSuffix;
                 if (beingHeld) {
                     data = IS_RUSSIAN ?
@@ -3822,106 +2608,55 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
             }
 
         } else {
-
             title = (IS_RUSSIAN ? ("ОСТОВ: " + hullName) : ("DERELICT: " + hullName)) + countSuffix;
-
             data = isRescued ?
-
                 (IS_RUSSIAN ? "Системы стабилизированы" : "Systems stabilized") :
-
                 (IS_RUSSIAN ? String.format("Стабилизация: %d/%d с", (int)holdT, (int)derelictRescueHoldTime) : String.format("Hold: %d/%d s", (int)holdT, (int)derelictRescueHoldTime));
 
         }
 
-
-
         try {
-
             engine.maintainStatusForPlayerShip("DA_DERELICT_HUD", "graphics/icons/intel/log_to_derelict_ship.png", title, data, false);
-
         } catch (Throwable t) {}
 
     }
 
-
-
     public void summonDerelictNearPlayer() {
-
         if (engine == null || !engine.isSimulation()) return;
-
-
-
         Vector2f spawnLoc = new Vector2f(0f, 0f);
-
         Vector2f driftVel = new Vector2f(0f, 0f);
-
-
-
         ShipAPI playerShip = engine.getPlayerShip();
-
         if (playerShip != null && playerShip.getLocation() != null) {
-
             float playerFacingRad = (float) Math.toRadians(playerShip.getFacing());
-
             float dist = 750f + random.nextFloat() * 250f;
-
             float spawnAngle = playerFacingRad + (random.nextFloat() - 0.5f) * 0.5f;
-
             spawnLoc.x = playerShip.getLocation().x + (float) Math.cos(spawnAngle) * dist;
-
             spawnLoc.y = playerShip.getLocation().y + (float) Math.sin(spawnAngle) * dist;
-
-
-
             float driftAngle = random.nextFloat() * 6.28f;
-
             float driftSpeed = 35f + random.nextFloat() * 25f;
-
             driftVel.x = (float) Math.cos(driftAngle) * driftSpeed;
-
             driftVel.y = (float) Math.sin(driftAngle) * driftSpeed;
-
         } else {
-
             spawnLoc.x = (random.nextFloat() - 0.5f) * 600f;
-
             spawnLoc.y = (random.nextFloat() - 0.5f) * 600f;
-
             driftVel.x = (random.nextFloat() - 0.5f) * 40f;
-
             driftVel.y = (random.nextFloat() - 0.5f) * 40f;
 
         }
 
-
-
         CombatEntityAPI derelict = spawnDerelictAtLocation(spawnLoc.x, spawnLoc.y, driftVel.x, driftVel.y);
-
         if (derelict != null) {
-
             String hullName = (String) derelict.getCustomData().get("DERELICT_NAME");
-
             try {
-
                 Global.getSoundPlayer().playUISound("ui_rep_raise", 1.0f, 1.0f);
-
             } catch (Throwable t) {}
-
-
-
             if (engine.getCombatUI() != null) {
-
                 String msg = IS_RUSSIAN ?
-
                     ("СЕНСОРЫ: Обнаружен заброшенный корабль (" + hullName + ")!") :
-
                     ("SENSORS: Derelict ship detected (" + hullName + ")!");
-
                 engine.getCombatUI().addMessage(1, msg, new Color(80, 255, 160));
 
             }
-
-
 
             engine.addSmoothParticle(spawnLoc, driftVel, 250f, 1.0f, 1.4f, new Color(80, 230, 255, 240));
 
@@ -3929,139 +2664,69 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     }
 
-
-
     public void summonContainerNearPlayer() {
-
         if (engine == null || !engine.isSimulation()) return;
-
-
-
         Vector2f spawnLoc = new Vector2f(0f, 0f);
-
         Vector2f driftVel = new Vector2f(0f, 0f);
-
-
-
         ShipAPI playerShip = engine.getPlayerShip();
-
         if (playerShip != null && playerShip.getLocation() != null) {
-
             float playerFacingRad = (float) Math.toRadians(playerShip.getFacing());
-
             float dist = 650f + random.nextFloat() * 200f;
-
             float spawnAngle = playerFacingRad + (random.nextFloat() - 0.5f) * 0.4f;
-
             spawnLoc.x = playerShip.getLocation().x + (float) Math.cos(spawnAngle) * dist;
-
             spawnLoc.y = playerShip.getLocation().y + (float) Math.sin(spawnAngle) * dist;
-
-
-
             float driftAngle = random.nextFloat() * 6.28f;
-
             float driftSpeed = 25f + random.nextFloat() * 20f;
-
             driftVel.x = (float) Math.cos(driftAngle) * driftSpeed;
-
             driftVel.y = (float) Math.sin(driftAngle) * driftSpeed;
-
         } else {
-
             spawnLoc.x = (random.nextFloat() - 0.5f) * 500f;
-
             spawnLoc.y = (random.nextFloat() - 0.5f) * 500f;
-
             driftVel.x = (random.nextFloat() - 0.5f) * 30f;
-
             driftVel.y = (random.nextFloat() - 0.5f) * 30f;
 
         }
 
-
-
         String[] lootTypes = new String[] { "CACHE", "PROBE", "CRYO_POD", "NAV_BUOY", "MOTHERSHIP_ENGINE", "FIGHTER" };
-
         String chosenLootType = lootTypes[random.nextInt(lootTypes.length)];
-
-
-
         CombatEntityAPI container = spawnOtherEasterEggAtLocation(spawnLoc.x, spawnLoc.y, driftVel.x, driftVel.y, chosenLootType);
-
         if (container != null) {
-
             try {
-
                 Global.getSoundPlayer().playUISound("ui_cargo_transfer", 1.0f, 1.0f);
-
             } catch (Throwable t) {}
-
-
-
             String typeLabel;
-
             Color alertCol;
-
             if ("CACHE".equals(chosenLootType)) {
-
                 typeLabel = IS_RUSSIAN ? "Грузовой тайник снабжения Домена" : "Domain Supply Cache";
-
                 alertCol = new Color(255, 215, 60);
-
             } else if ("PROBE".equals(chosenLootType)) {
-
                 typeLabel = IS_RUSSIAN ? "Геологоразведочный зонд Домена" : "Domain Survey Probe";
-
                 alertCol = new Color(80, 230, 255);
-
             } else if ("CRYO_POD".equals(chosenLootType)) {
-
                 typeLabel = IS_RUSSIAN ? "Аварийная криокапсула выживших" : "Emergency Cryo Stasis Pod";
-
                 alertCol = new Color(60, 255, 140);
-
             } else if ("NAV_BUOY".equals(chosenLootType)) {
-
                 typeLabel = IS_RUSSIAN ? "Навигационно-сенсорный буй" : "Navigational Sensor Buoy";
-
                 alertCol = new Color(190, 130, 255);
-
             } else if ("FIGHTER".equals(chosenLootType)) {
-
                 String fName = (String) container.getCustomData().get("FIGHTER_WING_NAME");
-
                 typeLabel = IS_RUSSIAN ?
-
                     ("Дрейфующий истребитель (" + (fName != null ? fName : "Крыло") + ")") :
-
                     ("Drifting Fighter (" + (fName != null ? fName : "Wing") + ")");
-
                 alertCol = new Color(100, 240, 255);
-
             } else {
-
                 typeLabel = IS_RUSSIAN ? "Древний двигатель флагмана" : "Ancient Flagship Engine Debris";
-
                 alertCol = new Color(200, 215, 230);
 
             }
 
-
-
             if (engine.getCombatUI() != null) {
-
                 String msg = IS_RUSSIAN ?
-
                     ("СЕНСОРЫ: По экстренному вызову [;] обнаружен " + typeLabel + "!") :
-
                     ("SENSORS: Summoned container via [;] detected (" + typeLabel + ")!");
-
                 engine.getCombatUI().addMessage(1, msg, alertCol);
 
             }
-
-
 
             engine.addSmoothParticle(spawnLoc, driftVel, 220f, 1.0f, 1.2f, alertCol);
 
@@ -4069,36 +2734,17 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     }
 
-
-
     private void maintainVelocity(CombatEntityAPI ast) {
-
         if (ast == null) return;
-
         if (ast.getCustomData().containsKey("DA_NO_MAINTAIN_VELOCITY")) return;
-
         if (ast.getCustomData().containsKey("IS_EASTER_EGG")) return;
-
-
-
         Vector2f vel = ast.getVelocity();
-
         if (vel == null) return;
-
-
-
         Object bvxObj = ast.getCustomData().get(BASE_VX_KEY);
-
         Object bvyObj = ast.getCustomData().get(BASE_VY_KEY);
-
         if (bvxObj instanceof Float && bvyObj instanceof Float) {
-
             float bvx = ((Float) bvxObj).floatValue();
-
             float bvy = ((Float) bvyObj).floatValue();
-
-
-
             if (ast.getCustomData().containsKey("DA_IS_MEGALITH")) {
                 vel.x = bvx;
                 vel.y = bvy;
@@ -4106,13 +2752,9 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
             }
 
             float currentSpeedSq = vel.x * vel.x + vel.y * vel.y;
-
             float targetSpeedSq = bvx * bvx + bvy * bvy;
-
             if (currentSpeedSq < targetSpeedSq * 0.7f) {
-
                 vel.x = bvx;
-
                 vel.y = bvy;
 
             }
@@ -4120,8 +2762,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         }
 
     }
-
-
 
     /**
 
@@ -4142,7 +2782,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         stream.beamSpread = 450f + random.nextFloat() * 150f;
         stream.timeElapsed = 0f;
         stream.totalSpawnDuration = (count * stream.burstInterval) + 1.2f;
-
         float swarmSpeed = Math.max(600f, streamSpeed * 1.15f);
         stream.lifetime = (18000f / swarmSpeed) + stream.totalSpawnDuration + 5f;
 
@@ -4154,7 +2793,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         // Transit trajectory passing across the sector towards opposite side
         float exitAngle = entryAngle + (float) Math.PI + (random.nextFloat() - 0.5f) * 0.5f;
         Vector2f endPt = getRectangleBoundaryPoint(focalCX, focalCY, halfW, halfH, exitAngle);
-
         float dx = endPt.x - startPt.x;
         float dy = endPt.y - startPt.y;
         float dist = (float) Math.sqrt(dx * dx + dy * dy);
@@ -4180,163 +2818,94 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         if (engine == null || !engine.isSimulation()) return;
         ShipAPI playerShip = getPlayerShipSafely();
         if (playerShip == null || playerShip.getLocation() == null) return;
-
         float halfW = engine.getMapWidth() * 0.5f;
         float halfH = engine.getMapHeight() * 0.5f;
         float focalCX = 0f;
         float focalCY = 0f;
-
         triggerOpenSpaceTransitSwarm(focalCX, focalCY, halfW, halfH);
         showLimitFeedback(IS_RUSSIAN ? "ТЕСТ: Запущен транзитный рой!" : "TEST: Transit swarm launched!", Color.CYAN);
     }
 
     private void spawnOpenSpaceMeteor(float focalCX, float focalCY, float halfW, float halfH) {
-
         float speed = Math.min(streamSpeed, 400.0f) * (0.8f + random.nextFloat() * 0.4f);
-
         float off = 120f;
-
         float spawnX = 0f;
-
         float spawnY = 0f;
-
         float vx = 0f;
-
         float vy = 0f;
-
-
-
         switch (avalancheDirection) {
-
             case RIGHT_TO_LEFT:
 
                 spawnX = focalCX + halfW + off;
-
                 spawnY = focalCY + (random.nextFloat() - 0.5f) * (halfH * 2.0f);
-
                 vx = -speed;
-
                 vy = (random.nextFloat() - 0.5f) * 40.0f;
-
                 break;
-
             case LEFT_TO_RIGHT:
 
                 spawnX = focalCX - halfW - off;
-
                 spawnY = focalCY + (random.nextFloat() - 0.5f) * (halfH * 2.0f);
-
                 vx = speed;
-
                 vy = (random.nextFloat() - 0.5f) * 40.0f;
-
                 break;
-
             case BOTTOM_TO_TOP:
 
                 spawnX = focalCX + (random.nextFloat() - 0.5f) * (halfW * 2.0f);
-
                 spawnY = focalCY - halfH - off;
-
                 vx = (random.nextFloat() - 0.5f) * 40.0f;
-
                 vy = speed;
-
                 break;
-
             case TOP_TO_BOTTOM:
 
                 spawnX = focalCX + (random.nextFloat() - 0.5f) * (halfW * 2.0f);
-
                 spawnY = focalCY + halfH + off;
-
                 vx = (random.nextFloat() - 0.5f) * 40.0f;
-
                 vy = -speed;
-
                 break;
 
         }
 
-
-
         // Rare Easter Eggs in Open Space (scaled down 5-10x to preserve quiet, atmospheric deep space)
-
         if (openSpaceEasterEggMult > 0f) {
-
             float roll = random.nextFloat();
-
             float openDerelictChance = derelictSpawnChance * openSpaceEasterEggMult;
-
             float openResourceChance = resourceEasterEggChance * openSpaceEasterEggMult;
-
             float openDebrisChance = debrisEasterEggChance * openSpaceEasterEggMult;
-
-
-
             boolean derelictAlreadyInPlay = (activeDerelictEntity != null && !activeDerelictEntity.isExpired() && engine.isEntityInPlay(activeDerelictEntity));
-
-
-
             if (!derelictAlreadyInPlay && roll < openDerelictChance) {
-
                 Vector2f target = calculateEasterEggTarget(focalCX, focalCY);
-
                 Vector2f pt = calculateEasterEggSpawnPoint(target, focalCX, focalCY, halfW, halfH, random.nextFloat() * 6.28f);
-
                 float dx = target.x - pt.x;
-
                 float dy = target.y - pt.y;
-
                 float dLen = (float) Math.sqrt(dx * dx + dy * dy);
-
                 float spd = 75.0f; // Derelict cruising speed (gentle 60-100 u/s drift)
 
                 float evx = (dLen > 0.001f) ? (dx / dLen) * spd : -spd;
-
                 float evy = (dLen > 0.001f) ? (dy / dLen) * spd : 0f;
-
                 spawnDerelictEasterEgg(pt.x, pt.y, evx, evy);
-
                 return;
-
             } else if (roll < (openDerelictChance + openResourceChance)) {
-
                 Vector2f target = calculateEasterEggTarget(focalCX, focalCY);
-
                 Vector2f pt = calculateEasterEggSpawnPoint(target, focalCX, focalCY, halfW, halfH, random.nextFloat() * 6.28f);
-
                 float dx = target.x - pt.x;
-
                 float dy = target.y - pt.y;
-
                 float dLen = (float) Math.sqrt(dx * dx + dy * dy);
-
                 float spd = 250.0f; // Resource containers cruising speed
 
                 float evx = (dLen > 0.001f) ? (dx / dLen) * spd : -spd;
-
                 float evy = (dLen > 0.001f) ? (dy / dLen) * spd : 0f;
-
                 spawnOtherEasterEgg(pt.x, pt.y, evx, evy, true);
-
                 return;
-
             } else if (roll < (openDerelictChance + openResourceChance + openDebrisChance)) {
-
                 float spd = 400.0f; // Debris and explosive tanks cruising speed
 
                 float ratio = spd / Math.max(1f, speed);
-
                 spawnOtherEasterEgg(spawnX, spawnY, vx * ratio, vy * ratio, false);
-
                 return;
 
             }
 
         }
-
-
 
         // Natural space debris and ship wreckage tumbling among the flowing asteroids
         if (debrisEasterEggChance > 0f && random.nextFloat() < (debrisEasterEggChance * 0.12f)) {
@@ -4345,7 +2914,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         }
 
         int type = rollAsteroidType(false);
-
         CombatEntityAPI ast = spawnSingleAsteroidEntity(type, spawnX, spawnY, vx, vy, 0);
         if (ast != null) {
             ast.setCustomData("DA_IS_BACKGROUND", Boolean.TRUE);
@@ -4359,7 +2927,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         // Full battlefield distribution including top and bottom edges
         float spawnX = focalCX + (random.nextFloat() - 0.5f) * (halfW * 2.0f);
         float spawnY = focalCY + (random.nextFloat() - 0.5f) * (halfH * 2.0f);
-
         float vx = 0f;
         float vy = 0f;
         switch (avalancheDirection) {
@@ -4377,8 +2944,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         }
     }
 
-
-
     /**
 
      * RULE 1: Spawns ambient background avalanche rocks in the CONSTANT battle direction.
@@ -4387,14 +2952,12 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
      */
 
-
     // =========================================================================
     // COLOSSAL MEGALITH BOULDERS & GRAVITATIONAL ARC TRAJECTORY
     // =========================================================================
 
     public CombatEntityAPI spawnMegalithBoulder(float spawnX, float spawnY, float vx, float vy, float radius, float arcRateDeg) {
         if (engine == null) return null;
-
         String[] bigSprites = new String[] {
             "graphics/asteroids/asteroid_big00.png",
             "graphics/asteroids/asteroid_big01.png",
@@ -4404,7 +2967,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         try {
             Global.getSettings().loadTexture(spritePath);
         } catch (Throwable t) {}
-
         CombatEntityAPI entity = null;
         try {
             entity = engine.spawnAsteroid(spritePath, spawnX, spawnY, vx, vy, false);
@@ -4414,7 +2976,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
             } catch (Throwable t2) {}
         }
         if (entity == null) return null;
-
         float dispW = radius * 2.0f;
         float dispH = radius * 2.0f;
         if (entity instanceof CombatAsteroidAPI) {
@@ -4442,17 +3003,17 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         // Collision radius tightly follows the stone outline so ships visibly touch the rock with zero invisible air gap
         float megalithCollisionRadius = Math.max(40f, radius * 1.02f);
         entity.setCollisionRadius(megalithCollisionRadius);
-        // Mass scales with radius squared: colossal planetary bedrock inertia!
-        // Massive bedrock: ensures vanilla BasicShipAI.avoidAsteroidCollisions recognizes
-        // megaliths as immovable giants exceeding even Battleships and Stations!
-        float mass = Math.max(120000f, (radius * radius) * 2.5f + 25000f);
+
+        // Mass scales with radius: colossal planetary bedrock inertia!
+        // At 18,000 - 48,000 mass, it vastly exceeds any ship or starbase (Paragon is 2,500 mass, Station is 10,000 mass),
+        // guaranteeing that vanilla BasicShipAI.avoidAsteroidCollisions treats megaliths with maximum avoidance priority.
+        // It also prevents absurd kinetic damage spikes in vanilla collision solver if an unexpected contact occurs.
+        float mass = Math.max(18000f, (radius * radius) * 0.25f + 12000f);
         entity.setMass(mass);
 
-        // Durability: Colossal bedrock fortress (+500% base HP pool)!
-        // Massive planetary bedrock: ~30,000 to ~52,000 HP! Immune to normal asteroid collisions.
+        // Durability: Planetary stone core. Destructible by fleet weapon fire, unlocking rare derelict ships and loot!
         float baseHp = (9000f + radius * 120f) * 1.5f;
         entity.setHitpoints(baseHp);
-
         entity.setFacing(random.nextFloat() * 360f);
         entity.setAngularVelocity((random.nextFloat() - 0.5f) * 12.0f); // majestic slow tumble
 
@@ -4464,18 +3025,131 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         entity.setCustomData("DA_MEGALITH_SPEED", Float.valueOf((float) Math.sqrt(vx * vx + vy * vy)));
         entity.setCustomData("DA_ARC_RATE", Float.valueOf((float) Math.toRadians(arcRateDeg)));
 
+        // Safe initial placement: push away from any existing megalith within contact distance so they never spawn overlapping
+        List<CombatEntityAPI> currentAsteroids = engine.getAsteroids();
+        if (currentAsteroids != null) {
+            for (CombatEntityAPI other : currentAsteroids) {
+                if (other != null && other != entity && other.getCustomData().containsKey("DA_IS_MEGALITH") && !other.isExpired()) {
+                    float dx = entity.getLocation().x - other.getLocation().x;
+                    float dy = entity.getLocation().y - other.getLocation().y;
+                    float d = (float) Math.sqrt(dx * dx + dy * dy);
+                    float minSafe = megalithCollisionRadius + other.getCollisionRadius() + 50f;
+                    if (d < minSafe) {
+                        float nx = (d > 0.01f) ? (dx / d) : 1f;
+                        float ny = (d > 0.01f) ? (dy / d) : 0f;
+                        float push = minSafe - d + 30f;
+                        entity.getLocation().x += nx * push;
+                        entity.getLocation().y += ny * push;
+                    }
+                }
+            }
+        }
+
         return entity;
+    }
+
+    private void resolveMegalithCollisions(List<CombatEntityAPI> asteroids) {
+        if (asteroids == null || asteroids.size() < 2) return;
+        List<CombatEntityAPI> megs = null;
+        for (int i = 0; i < asteroids.size(); i++) {
+            CombatEntityAPI a = asteroids.get(i);
+            if (a != null && a.getCustomData().containsKey("DA_IS_MEGALITH") && !a.isExpired()) {
+                if (megs == null) megs = new ArrayList<CombatEntityAPI>();
+                megs.add(a);
+            }
+        }
+        if (megs == null || megs.size() < 2) return;
+
+        // Multi-pass relaxation solver (3 iterations): guarantees zero overlapping pairs even in multi-megalith clusters
+        for (int pass = 0; pass < 3; pass++) {
+            for (int i = 0; i < megs.size(); i++) {
+                CombatEntityAPI m1 = megs.get(i);
+                Vector2f loc1 = m1.getLocation();
+                Vector2f vel1 = m1.getVelocity();
+                if (loc1 == null || vel1 == null) continue;
+                float r1 = m1.getCollisionRadius();
+                for (int j = i + 1; j < megs.size(); j++) {
+                    CombatEntityAPI m2 = megs.get(j);
+                    Vector2f loc2 = m2.getLocation();
+                    Vector2f vel2 = m2.getVelocity();
+                    if (loc2 == null || vel2 == null) continue;
+                    float r2 = m2.getCollisionRadius();
+                    float dx = loc2.x - loc1.x;
+                    float dy = loc2.y - loc1.y;
+                    float minDist = r1 + r2;
+                    float safeDist = minDist + 25.0f; // Predictive separation buffer
+                    float distSq = dx * dx + dy * dy;
+                    if (distSq < safeDist * safeDist) {
+                        float dist = (float) Math.sqrt(distSq);
+                        float nx = (dist > 0.01f) ? (dx / dist) : 1f;
+                        float ny = (dist > 0.01f) ? (dy / dist) : 0f;
+
+                        // Untether both from rigid scripted trajectory so they naturally bounce apart
+                        m1.getCustomData().put("DA_NO_MAINTAIN_VELOCITY", Boolean.TRUE);
+                        m2.getCustomData().put("DA_NO_MAINTAIN_VELOCITY", Boolean.TRUE);
+
+                        // Position separation: enforce distance >= minDist + 30.0f
+                        // Because dist is strictly > minDist, Starsector's internal collision detection
+                        // com.fs.util.A.circleCircleCollision returns null, completely preventing
+                        // internal collision solver (C.class) from applying any kinetic damage between them!
+                        float targetDist = safeDist + 5.0f;
+                        if (dist < targetDist) {
+                            float pushNeeded = targetDist - dist;
+                            float sep = pushNeeded * 0.5f;
+                            loc1.x -= nx * sep;
+                            loc1.y -= ny * sep;
+                            loc2.x += nx * sep;
+                            loc2.y += ny * sep;
+                        }
+
+                        // Relative velocity along collision normal
+                        float rvx = vel2.x - vel1.x;
+                        float rvy = vel2.y - vel1.y;
+                        float velAlongNormal = rvx * nx + rvy * ny;
+
+                        // Only reflect velocities on first relaxation pass if heading towards each other
+                        if (pass == 0 && velAlongNormal < 0f) {
+                            float restitution = 0.70f;
+                            float impulse = -(1.0f + restitution) * velAlongNormal * 0.5f;
+                            vel1.x -= nx * impulse;
+                            vel1.y -= ny * impulse;
+                            vel2.x += nx * impulse;
+                            vel2.y += ny * impulse;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     public void spawnPreSeededMegalith(float halfW, float halfH) {
         if (engine == null) return;
-
         float radius = megalithMinRadius + random.nextFloat() * (megalithMaxRadius - megalithMinRadius);
         float speed = megalithMinSpeed + random.nextFloat() * (megalithMaxSpeed - megalithMinSpeed);
 
         // Pre-seeded megaliths spawn spread out across the battlefield
         float spawnX = (random.nextFloat() - 0.5f) * (halfW * 1.8f);
         float spawnY = (random.nextFloat() - 0.5f) * (halfH * 1.8f);
+
+        // Ensure pre-seeded megaliths do not spawn overlapping each other
+        List<CombatEntityAPI> existingAsteroidsPre = engine.getAsteroids();
+        for (int attempt = 0; attempt < 25; attempt++) {
+            boolean tooClose = false;
+            if (existingAsteroidsPre != null) {
+                for (CombatEntityAPI existing : existingAsteroidsPre) {
+                    if (existing != null && existing.getCustomData().containsKey("DA_IS_MEGALITH")) {
+                        float d = Misc.getDistance(new Vector2f(spawnX, spawnY), existing.getLocation());
+                        if (d < radius + existing.getCollisionRadius() + 350f) {
+                            tooClose = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (!tooClose) break;
+            spawnX = (random.nextFloat() - 0.5f) * (halfW * 1.8f);
+            spawnY = (random.nextFloat() - 0.5f) * (halfH * 1.8f);
+        }
 
         float vx = 0f;
         float vy = 0f;
@@ -4532,7 +3206,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     public void spawnNaturalMegalith(float focalCX, float focalCY, float halfW, float halfH) {
         if (engine == null) return;
-
         float radius = megalithMinRadius + random.nextFloat() * (megalithMaxRadius - megalithMinRadius);
         float speed = megalithMinSpeed + random.nextFloat() * (megalithMaxSpeed - megalithMinSpeed);
 
@@ -4542,6 +3215,28 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         Vector2f startPt = getRectangleBoundaryPoint(focalCX, focalCY, halfW + off, halfH + off, entryAngle);
         float spawnX = startPt.x;
         float spawnY = startPt.y;
+
+        // Ensure natural megaliths do not spawn directly on top of another entering megalith
+        List<CombatEntityAPI> existingAsteroidsNat = engine.getAsteroids();
+        for (int attempt = 0; attempt < 15; attempt++) {
+            boolean tooClose = false;
+            if (existingAsteroidsNat != null) {
+                for (CombatEntityAPI existing : existingAsteroidsNat) {
+                    if (existing != null && existing.getCustomData().containsKey("DA_IS_MEGALITH")) {
+                        float d = Misc.getDistance(new Vector2f(spawnX, spawnY), existing.getLocation());
+                        if (d < radius + existing.getCollisionRadius() + 350f) {
+                            tooClose = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (!tooClose) break;
+            entryAngle = random.nextFloat() * (float) (Math.PI * 2.0);
+            startPt = getRectangleBoundaryPoint(focalCX, focalCY, halfW + off, halfH + off, entryAngle);
+            spawnX = startPt.x;
+            spawnY = startPt.y;
+        }
 
         float vx = 0f;
         float vy = 0f;
@@ -4594,22 +3289,17 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         if (engine == null || !engine.isSimulation()) return;
         ShipAPI playerShip = getPlayerShipSafely();
         if (playerShip == null || playerShip.getLocation() == null) return;
-
         float playerFacingRad = (float) Math.toRadians(playerShip.getFacing());
         float dist = 800f + random.nextFloat() * 250f;
         float spawnAngle = playerFacingRad + (random.nextFloat() - 0.5f) * 0.4f;
-
         float spawnX = playerShip.getLocation().x + (float) Math.cos(spawnAngle) * dist;
         float spawnY = playerShip.getLocation().y + (float) Math.sin(spawnAngle) * dist;
-
         float moveAngle = spawnAngle + 3.14159f + (random.nextFloat() - 0.5f) * 0.6f;
         float speed = megalithMinSpeed + random.nextFloat() * (megalithMaxSpeed - megalithMinSpeed);
         float vx = (float) Math.cos(moveAngle) * speed;
         float vy = (float) Math.sin(moveAngle) * speed;
-
         float radius = megalithMinRadius + random.nextFloat() * (megalithMaxRadius - megalithMinRadius);
         float arcRate = 0f;
-
         CombatEntityAPI megalith = spawnMegalithBoulder(spawnX, spawnY, vx, vy, radius, arcRate);
         if (megalith != null && engine.getCombatUI() != null) {
             try {
@@ -4664,8 +3354,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         spawnSingleAsteroidEntity(type, spawnX, spawnY, vx, vy, 0);
     }
 
-
-
     /**
 
      * Solves exact ray intersection with the map bounding rectangle:
@@ -4677,36 +3365,18 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
      */
 
     private Vector2f getRectangleBoundaryPoint(float focalCX, float focalCY, float halfW, float halfH, float angle) {
-
         float W = halfW + 150f;
-
         float H = halfH + 150f;
-
         float cosA = (float) Math.cos(angle);
-
         float sinA = (float) Math.sin(angle);
-
-
-
         float absCos = Math.abs(cosA) > 1e-4f ? Math.abs(cosA) : 1e-4f;
-
         float absSin = Math.abs(sinA) > 1e-4f ? Math.abs(sinA) : 1e-4f;
-
-
-
         float tX = W / absCos;
-
         float tY = H / absSin;
-
         float t = Math.min(tX, tY);
-
-
-
         return new Vector2f(focalCX + t * cosA, focalCY + t * sinA);
 
     }
-
-
 
     /**
 
@@ -4723,29 +3393,18 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
      */
 
     private Vector2f calculateEasterEggTarget(float focalCX, float focalCY) {
-
         ShipAPI player = (engine != null) ? engine.getPlayerShip() : null;
-
         if (player != null && player.isAlive() && !player.isHulk() && random.nextFloat() < 0.40f) {
-
             Vector2f pLoc = player.getLocation();
-
             Vector2f pVel = player.getVelocity();
-
             if (pLoc != null) {
 
                 // Predict where player will be in 3.5 - 6.0 seconds
-
                 float leadSec = 3.5f + random.nextFloat() * 2.5f;
-
                 float leadX = (pVel != null) ? pVel.x * leadSec : 0f;
-
                 float leadY = (pVel != null) ? pVel.y * leadSec : 0f;
-
                 float tx = pLoc.x + leadX + (random.nextFloat() - 0.5f) * 450f;
-
                 float ty = pLoc.y + leadY + (random.nextFloat() - 0.5f) * 450f;
-
                 return new Vector2f(tx, ty);
 
             }
@@ -4756,26 +3415,18 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     }
 
-
-
     private Vector2f calculateEasterEggSpawnPoint(Vector2f target, float focalCX, float focalCY, float halfW, float halfH, float baseAngle) {
-
         float off = 200f;
-
         switch (avalancheDirection) {
-
             case RIGHT_TO_LEFT:
 
                 return new Vector2f(focalCX + halfW + off, target.y + (random.nextFloat() - 0.5f) * 400f);
-
             case LEFT_TO_RIGHT:
 
                 return new Vector2f(focalCX - halfW - off, target.y + (random.nextFloat() - 0.5f) * 400f);
-
             case TOP_TO_BOTTOM:
 
                 return new Vector2f(target.x + (random.nextFloat() - 0.5f) * 400f, focalCY + halfH + off);
-
             case BOTTOM_TO_TOP:
 
                 return new Vector2f(target.x + (random.nextFloat() - 0.5f) * 400f, focalCY - halfH - off);
@@ -4786,18 +3437,13 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     }
 
-
-
-
     // =========================================================================
     // DYNAMIC ASTEROID DIRECTOR: LIVING CYCLES
     // =========================================================================
 
     private void advanceDirector(float amount, float focalCX, float focalCY, float halfW, float halfH) {
         if (!isInAsteroidField) return;
-
         directorStateTimer += amount;
-
         if (directorCycleMode == 1) {
             currentDirectorState = DirectorState.TORRENT;
             return;
@@ -4818,7 +3464,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                     }
                 }
                 break;
-
             case BURST:
                 // Fast brisk wave
                 if (directorStateTimer >= directorStateDuration) {
@@ -4830,7 +3475,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                     }
                 }
                 break;
-
             case FORMATION:
                 // Geometric formation wave is active
                 if (activeStreams.isEmpty()) {
@@ -4853,7 +3497,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                     }
                 }
                 break;
-
             case LULL:
                 // Spawner paused: old rocks clear out, pure silence / calm reigns (only megaliths drift by)
                 if (directorStateTimer >= directorStateDuration) {
@@ -4876,7 +3519,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
     private void transitionToDirectorState(DirectorState newState, float focalCX, float focalCY, float halfW, float halfH) {
         currentDirectorState = newState;
         directorStateTimer = 0f;
-
         switch (newState) {
             case TORRENT:
                 directorStateDuration = 18.0f + random.nextFloat() * 12.0f; // 18 - 30 seconds
@@ -4909,86 +3551,49 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
             streamCount = 3; // 12% triple cross (rarest)
         }
 
-
-
         float baseEntryAngle = random.nextFloat() * (float) (Math.PI * 2.0);
-
-
 
         // Roll for Easter Egg (Derelict Ship, Resource Cache/Probe/Pod/Fighter, or Debris/Explosive Tank)
 
         // High-value items preferentially drift across player's operational zone for exciting gameplay!
-
         if (random.nextFloat() < derelictSpawnChance) {
-
             Vector2f target = calculateEasterEggTarget(focalCX, focalCY);
-
             Vector2f pt = calculateEasterEggSpawnPoint(target, focalCX, focalCY, halfW, halfH, baseEntryAngle);
-
             float dx = target.x - pt.x;
-
             float dy = target.y - pt.y;
-
             float dLen = (float) Math.sqrt(dx * dx + dy * dy);
-
             float spd = 75.0f; // Derelict cruising speed (gentle 60-100 u/s drift)
 
             float vx = (dLen > 0.001f) ? (dx / dLen) * spd : -spd;
-
             float vy = (dLen > 0.001f) ? (dy / dLen) * spd : 0f;
-
             spawnDerelictEasterEgg(pt.x, pt.y, vx, vy);
-
         } else if (random.nextFloat() < resourceEasterEggChance) {
-
             Vector2f target = calculateEasterEggTarget(focalCX, focalCY);
-
             Vector2f pt = calculateEasterEggSpawnPoint(target, focalCX, focalCY, halfW, halfH, baseEntryAngle);
-
             float dx = target.x - pt.x;
-
             float dy = target.y - pt.y;
-
             float dLen = (float) Math.sqrt(dx * dx + dy * dy);
-
             float spd = 250.0f; // Resource containers cruising speed
 
             float vx = (dLen > 0.001f) ? (dx / dLen) * spd : -spd;
-
             float vy = (dLen > 0.001f) ? (dy / dLen) * spd : 0f;
-
             spawnOtherEasterEgg(pt.x, pt.y, vx, vy, true);
-
         } else if (random.nextFloat() < debrisEasterEggChance) {
-
             float entryAngle = baseEntryAngle + (random.nextFloat() - 0.5f) * 0.4f;
-
             Vector2f pt = getRectangleBoundaryPoint(focalCX, focalCY, halfW, halfH, entryAngle);
-
             float dx = focalCX - pt.x;
-
             float dy = focalCY - pt.y;
-
             float dLen = (float) Math.sqrt(dx * dx + dy * dy);
-
             float spd = 400.0f; // Debris and explosive tanks cruising speed
 
             float vx = (dLen > 0.001f) ? (dx / dLen) * spd : -spd;
-
             float vy = (dLen > 0.001f) ? (dy / dLen) * spd : 0f;
-
             spawnOtherEasterEgg(pt.x, pt.y, vx, vy, false);
 
         }
 
-
-
-
-
         // Pick base figure type for this wave
-
         FigureType[] allFigures = FigureType.values();
-
         FigureType waveFigureType = allFigures[random.nextInt(allFigures.length)];
 
         // Heavy rock budget for 300-capacity battles:
@@ -5006,17 +3611,11 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         }
 
         // Query eligible alive ships for 5% targeted snipe roll
-
         List<ShipAPI> eligibleShips = new ArrayList<ShipAPI>();
-
         List<ShipAPI> allShips = engine.getShips();
-
         if (allShips != null) {
-
             for (ShipAPI ship : allShips) {
-
                 if (ship != null && ship.isAlive() && !ship.isHulk() && !ship.isShuttlePod()) {
-
                     eligibleShips.add(ship);
 
                 }
@@ -5025,26 +3624,18 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
         }
 
-
-
         boolean anyTargeted = false;
-
-
-
         for (int i = 0; i < streamCount; i++) {
-
             ActiveFigureStream stream = new ActiveFigureStream();
 
             // Combinations of distinct formation scenarios across streams
             FigureType streamFigureType = (streamCount == 1) ? waveFigureType : allFigures[random.nextInt(allFigures.length)];
             stream.type = streamFigureType;
-
             int rocksThisStream = rocksPerStream;
             if (streamFigureType == FigureType.DUAL_RAILS || streamFigureType == FigureType.EXPANDING_FAN) {
                 rocksThisStream += Math.round(20 * capScale);
             }
             stream.rocksRemaining = rocksThisStream;
-
             float bInterval = 0.016f;
             if (streamFigureType == FigureType.COMET_SWARM) {
                 bInterval = 0.008f;
@@ -5052,163 +3643,89 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                 bInterval = 0.012f; // Dense rapid salvo for dual pillars and shotgun blast
             }
             stream.burstInterval = bInterval;
-
             stream.beamSpread = beamWidth;
-
             stream.timeElapsed = 0f;
-
             stream.totalSpawnDuration = (rocksPerStream * stream.burstInterval) + 1.5f;
-
             stream.lifetime = (18000f / Math.max(streamSpeed, 400f)) + stream.totalSpawnDuration + 6f;
 
-
-
             // Distinct angles across the boundary
-
             float entryAngle = baseEntryAngle + i * (float) (Math.PI * 2.0 / streamCount) + (random.nextFloat() - 0.5f) * 0.35f;
 
-
-
             // Precise boundary point along map rectangle (no out-of-bounds stalling!)
-
             Vector2f startPt = getRectangleBoundaryPoint(focalCX, focalCY, halfW, halfH, entryAngle);
-
             stream.origin.set(startPt.x, startPt.y);
 
-
-
             // 5% Chance: lock vector directly towards ANY random alive ship!
-
             boolean isThisStreamTargeted = (random.nextFloat() < targetedSnipeChance) && !eligibleShips.isEmpty();
-
-
-
             if (isThisStreamTargeted) {
-
                 ShipAPI target = eligibleShips.get(random.nextInt(eligibleShips.size()));
-
                 stream.isTargeted = true;
-
                 stream.targetShip = target;
-
                 stream.type = FigureType.LANCE_BEAM;
-
                 anyTargeted = true;
-
-
-
                 float tx = target.getLocation().x;
-
                 float ty = target.getLocation().y;
-
                 float dx = tx - startPt.x;
-
                 float dy = ty - startPt.y;
-
                 float dist = (float) Math.sqrt(dx * dx + dy * dy);
-
                 if (dist > 0.001f) {
-
                     stream.velocity.set((dx / dist) * streamSpeed, (dy / dist) * streamSpeed);
-
                 } else {
-
                     stream.velocity.set(-streamSpeed, 0f);
 
                 }
 
-
-
                 showTargetedAlert(target);
-
             } else {
 
                 // Arbitrary line across the battlefield towards opposite/interior area
-
                 float targetX = focalCX + (random.nextFloat() - 0.5f) * (halfW * 1.2f);
-
                 float targetY = focalCY + (random.nextFloat() - 0.5f) * (halfH * 1.2f);
-
-
-
                 float dx = targetX - startPt.x;
-
                 float dy = targetY - startPt.y;
-
                 float dist = (float) Math.sqrt(dx * dx + dy * dy);
-
                 if (dist > 0.001f) {
-
                     stream.velocity.set((dx / dist) * streamSpeed, (dy / dist) * streamSpeed);
-
                 } else {
-
                     stream.velocity.set(-streamSpeed, 0f);
 
                 }
 
             }
 
-
-
             // Perpendicular unit vector for width
-
             float vx = stream.velocity.x;
-
             float vy = stream.velocity.y;
-
             float norm = (float) Math.sqrt(vx * vx + vy * vy);
-
             if (norm > 0.001f) {
-
                 stream.perp.set(-vy / norm, vx / norm);
-
             } else {
-
                 stream.perp.set(0f, 1f);
 
             }
-
-
 
             activeStreams.add(stream);
 
         }
 
-
-
         // Paced non-spammy combat announcements
-
         if (!anyTargeted) {
-
             if (IS_RUSSIAN) {
-
                 if (streamCount == 1) {
-
                     notifyWaveIncoming("СЕНСОРЫ: " + waveFigureType.getDisplayName().toUpperCase() + " прорезает сектор!");
-
                 } else if (streamCount == 2) {
-
                     notifyWaveIncoming("СЕНСОРЫ: ДВОЙНОЙ ЗАЛП — 2 волны (" + waveFigureType.getDisplayName() + ") с разных углов!");
-
                 } else {
-
                     notifyWaveIncoming("СЕНСОРЫ: ТРОЙНОЙ ШКВАЛ — 3 волны (" + waveFigureType.getDisplayName() + ") пересекают сектор!");
 
                 }
 
             } else {
-
                 if (streamCount == 1) {
-
                     notifyWaveIncoming("SENSORS: " + waveFigureType.getDisplayName().toUpperCase() + " sweeping across sector!");
-
                 } else if (streamCount == 2) {
-
                     notifyWaveIncoming("SENSORS: DUAL CONVERGENCE — 2 " + waveFigureType.getDisplayName() + " waves converging!");
-
                 } else {
-
                     notifyWaveIncoming("SENSORS: TRIPLE CROSS-BARRAGE — 3 " + waveFigureType.getDisplayName() + " waves intersecting!");
 
                 }
@@ -5219,21 +3736,12 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     }
 
-
-
     private void spawnStreamAsteroid(ActiveFigureStream stream) {
-
         float spawnX = 0f;
-
         float spawnY = 0f;
-
         float vx = stream.velocity.x;
-
         float vy = stream.velocity.y;
-
         int type = rollAsteroidType(stream.type == FigureType.HEAVY_MEGALITHS);
-
-
 
         // Visual Trail type:
 
@@ -5242,124 +3750,67 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         // 3: Glowing cyan comet trail for Comet Swarm!
 
         // 1: Golden cosmic spark trail for Lance Beam!
-
         int trailType = 0;
-
         if (stream.isTargeted) {
-
             trailType = 2;
-
         } else if (stream.type == FigureType.COMET_SWARM) {
-
             trailType = 3;
-
         } else if (stream.type == FigureType.LANCE_BEAM) {
-
             trailType = 1;
 
         }
 
-
-
         switch (stream.type) {
-
             case LANCE_BEAM:
 
                 // Thick concentrated beam with both lateral spread and longitudinal depth
-
                 float lateral = (random.nextFloat() - 0.5f) * stream.beamSpread;
-
                 float longitudinal = (random.nextFloat() - 0.5f) * 200f;
-
                 float norm = (float) Math.sqrt(vx * vx + vy * vy);
-
                 float normVx = (norm > 0.001f) ? (vx / norm) : 0f;
-
                 float normVy = (norm > 0.001f) ? (vy / norm) : 0f;
-
-
-
                 spawnX = stream.origin.x + stream.perp.x * lateral + normVx * longitudinal;
-
                 spawnY = stream.origin.y + stream.perp.y * lateral + normVy * longitudinal;
-
                 break;
-
-
-
             case COMET_SWARM:
 
                 // Massive dense cloud cluster of radius ~850u
-
                 float ang = random.nextFloat() * (float) (Math.PI * 2.0);
-
                 float r = (float) Math.sqrt(random.nextFloat()) * 850.0f; // Uniform circle distribution
 
                 spawnX = stream.origin.x + (float) Math.cos(ang) * r;
-
                 spawnY = stream.origin.y + (float) Math.sin(ang) * r;
-
                 vx += (random.nextFloat() - 0.5f) * 45.0f;
-
                 vy += (random.nextFloat() - 0.5f) * 45.0f;
-
                 break;
-
-
-
             case DUAL_RAILS:
 
                 // Parallel rails spaced 1600 units apart
-
                 float railOffset = random.nextBoolean() ? -800f : 800f;
-
                 float railJitter = (random.nextFloat() - 0.5f) * 350f;
-
                 spawnX = stream.origin.x + stream.perp.x * (railOffset + railJitter);
-
                 spawnY = stream.origin.y + stream.perp.y * (railOffset + railJitter);
-
                 break;
-
-
-
             case EXPANDING_FAN:
 
                 // Conical fan spreading at +-22 degrees
-
                 float spreadAngle = (random.nextFloat() - 0.5f) * 0.40f;
-
                 float baseAngle = (float) Math.atan2(stream.velocity.y, stream.velocity.x) + spreadAngle;
-
                 vx = streamSpeed * (float) Math.cos(baseAngle);
-
                 vy = streamSpeed * (float) Math.sin(baseAngle);
-
                 float fanJitter = (random.nextFloat() - 0.5f) * 350f;
-
                 spawnX = stream.origin.x + stream.perp.x * fanJitter;
-
                 spawnY = stream.origin.y + stream.perp.y * fanJitter;
-
                 break;
-
-
-
             case HEAVY_MEGALITHS:
 
                 type = (random.nextFloat() < 0.55f) ? 2 : 3;
-
                 float megaJitter = (random.nextFloat() - 0.5f) * stream.beamSpread;
-
                 spawnX = stream.origin.x + stream.perp.x * megaJitter;
-
                 spawnY = stream.origin.y + stream.perp.y * megaJitter;
-
                 break;
 
         }
-
-
 
         CombatEntityAPI ast = spawnSingleAsteroidEntity(type, spawnX, spawnY, vx, vy, trailType);
         if (ast != null) {
@@ -5368,46 +3819,25 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     }
 
-
-
     private CombatEntityAPI spawnSingleAsteroidEntity(int type, float x, float y, float vx, float vy, int trailType) {
-
         CombatEntityAPI ast = engine.spawnAsteroid(type, x, y, vx, vy);
-
         if (ast != null) {
-
             if (asteroidHealthMult > 0f && asteroidHealthMult != 1.0f) {
-
                 ast.setHitpoints(ast.getHitpoints() * asteroidHealthMult);
 
             }
 
             ast.getVelocity().set(vx, vy);
-
             ast.setFacing(random.nextFloat() * 360f);
-
             ast.setAngularVelocity((random.nextFloat() - 0.5f) * 55f);
-
-
-
             ast.setCustomData(TRACKED_KEY, Boolean.TRUE);
-
             ast.setCustomData(SPAWN_TIME_KEY, Float.valueOf(totalCombatTime));
-
             ast.setCustomData(BASE_VX_KEY, Float.valueOf(vx));
-
             ast.setCustomData(BASE_VY_KEY, Float.valueOf(vy));
-
-
-
             if (enableParticleTrails) {
-
                 if (trailType > 0) {
-
                     ast.setCustomData(TRAIL_TYPE_KEY, Integer.valueOf(trailType));
-
                 } else if (random.nextFloat() < particleTrailChance) {
-
                     ast.setCustomData(TRAIL_TYPE_KEY, Integer.valueOf(1)); // Normal golden spark
 
                 }
@@ -5420,179 +3850,102 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     }
 
-
-
     private int rollAsteroidType(boolean forceHeavy) {
-
         if (forceHeavy) return (random.nextFloat() < 0.55f) ? 2 : 3;
-
         float r = random.nextFloat();
-
         if (r < 0.45f) return 0;
-
         if (r < 0.75f) return 1;
-
         if (r < 0.93f) return 2;
-
         return 3;
 
     }
 
-
-
     private void showInitialNotification(ShipAPI player) {
         if (engine == null || !engine.isSimulation()) return;
-
         try {
-
             if (isInAsteroidField) {
-
                 engine.addFloatingText(
-
                     player.getLocation(),
-
                     (IS_RUSSIAN ? "ОПАСНОСТЬ: АСТЕРОИДНЫЙ ПОЯС (" : "HAZARD: ASTEROID BELT (") + getAvalancheDirectionLabel() + ")",
-
                     24f,
-
                     new Color(255, 120, 60),
-
                     player,
-
                     0.35f,
-
                     3.5f
-
                 );
 
                 // Silenced: only floating text is shown above ship, matching normal campaign behavior
             }
 
-        } catch (Throwable t) {
-
-        }
+        } catch (Throwable t) {}
 
     }
-
-
 
     private void notifyWaveIncoming(String text) {
         // Silenced: no extra clutter messages during combat
     }
 
-
-
     private void showLimitFeedback(String text, Color color) {
-
         try {
-
             ShipAPI player = getPlayerShipSafely();
-
             if (player != null && !isTitleScreen) {
-
                 engine.addFloatingText(
-
                     player.getLocation(),
-
                     text,
-
                     22f,
-
                     color,
-
                     player,
-
                     0.25f,
-
                     2.5f
-
                 );
 
             }
 
             if (engine.getCombatUI() != null && !isTitleScreen) {
-
                 engine.getCombatUI().addMessage(1, text, color);
 
             }
 
-        } catch (Throwable t) {
-
-        }
+        } catch (Throwable t) {}
 
     }
 
-
-
     private void showTargetedAlert(ShipAPI ship) {
-
         try {
-
             if (ship == null || isTitleScreen) return;
-
-
-
             boolean isPlayer = (engine != null && ship == engine.getPlayerShip());
-
-
-
             if (isPlayer) {
-
                 engine.addFloatingText(
-
                     ship.getLocation(),
-
                     IS_RUSSIAN ? "ОПАСНОСТЬ: МЕТЕОРИТНЫЙ ШКВАЛ ПО КУРСУ!" : "COLLISION ALERT: METEOR BARRAGE ON COURSE!",
-
                     26f,
-
                     new Color(255, 40, 40),
-
                     ship,
-
                     0.35f,
-
                     4.0f
-
                 );
-
             } else {
-
                 engine.addFloatingText(
-
                     ship.getLocation(),
-
                     IS_RUSSIAN ? "ОПАСНОЕ СБЛИЖЕНИЕ: ГРАД АСТЕРОИДОВ!" : "HAZARD: METEOR STREAM ON COURSE!",
-
                     20f,
-
                     new Color(255, 90, 50),
-
                     ship,
-
                     0.35f,
-
                     3.0f
-
                 );
 
             }
 
-        } catch (Throwable t) {
-
-        }
+        } catch (Throwable t) {}
 
     }
-
-
 
     // =========================================================================
 
     // FLEET AI COLLISION AVOIDANCE & DEFENSE SYSTEM
 
     // =========================================================================
-
-
 
     /**
 
@@ -5638,53 +3991,32 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         try {
             return engine.isUIAutopilotOn();
         } catch (Throwable t) {}
-
         return true;
     }
 
-
-
     private void advanceAIAvoidance(float amount) {
-
         if (engine == null || engine.isPaused()) return;
-
-
-
         advanceShipStates(amount);
 
-
-
         // Continuous formation wave corridor evasion while streams cross the sector
-
         if (enableEarlySnipeEvasion) {
-
             advanceActiveStreamsEvasion(amount);
 
         }
 
-        // Gentle contour avoidance for colossal megaliths and derelict hulks
-        if (enableMicroDodge) {
-
+        // Colossal megaliths and derelict hulks anti-ramming, turbo acceleration interceptor & contour avoidance
+        if (enableMicroDodge || enableMegalithBoulders) {
             advanceColossalObstacleAvoidance(amount);
 
         }
 
-
-
         // Advance imminent threats TTL
-
         if (!imminentThreats.isEmpty()) {
-
             java.util.Iterator<Map.Entry<ShipAPI, ImminentThreatData>> it = imminentThreats.entrySet().iterator();
-
             while (it.hasNext()) {
-
                 Map.Entry<ShipAPI, ImminentThreatData> entry = it.next();
-
                 entry.getValue().ttl -= amount;
-
                 if (entry.getValue().ttl <= 0f || entry.getValue().threat == null || entry.getValue().threat.isExpired()) {
-
                     it.remove();
 
                 }
@@ -5693,39 +4025,21 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
         }
 
-
-
         // 1. Always refresh fast threats cache so PD and Evasion have fresh coordinates
-
         fastThreats.clear();
-
         List<CombatEntityAPI> asteroids = engine.getAsteroids();
-
         if (asteroids != null && !asteroids.isEmpty()) {
-
             final float minSpeedSq = aiMinThreatVelocity * aiMinThreatVelocity;
-
             for (int i = 0; i < asteroids.size(); i++) {
-
                 CombatEntityAPI ast = asteroids.get(i);
-
                 if (ast == null || ast.isExpired()) continue;
-
-
-
                 Vector2f vel = ast.getVelocity();
-
                 if (vel == null) continue;
-
-
-
                 boolean isMegalith = ast.getCustomData().containsKey("DA_IS_MEGALITH");
                 boolean isEasterEgg = ast.getCustomData().containsKey("IS_EASTER_EGG");
                 boolean isHeavy = (ast.getCollisionRadius() >= 65f || ast.getMass() >= 2500f);
                 float speedSq = vel.x * vel.x + vel.y * vel.y;
-
                 if (speedSq >= minSpeedSq || isMegalith || isEasterEgg || isHeavy) {
-
                     fastThreats.add(ast);
 
                 }
@@ -5734,170 +4048,83 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
         }
 
-
-
         // 2. Ensure Point Defense weapons are decorated with AsteroidPDAutofirePlugin
-
         if (enablePDTargeting) {
-
             updateWrappedShips();
 
         }
 
-
-
         // 3. Evasion tick timer check
-
         aiTickTimer += amount;
-
         if (aiTickTimer < aiMaxCheckInterval) {
-
             return;
 
         }
 
         aiTickTimer = 0.0f;
-
-
-
         if (fastThreats.isEmpty()) return;
-
-
-
         List<ShipAPI> ships = engine.getShips();
-
         if (ships == null || ships.isEmpty()) return;
 
-
-
         // Dynamic lookahead distance based on current asteroid stream velocity
-
         float effectiveLookaheadTime = Math.max(aiLookaheadTime, 3.2f);
-
         float effectiveLookaheadDist = (Math.max(streamSpeed, 1200f) * effectiveLookaheadTime) + 600f;
-
-
-
         for (int sIdx = 0; sIdx < ships.size(); sIdx++) {
-
             ShipAPI ship = ships.get(sIdx);
-
             if (ship == null || !ship.isAlive() || ship.isHulk()) continue;
 
-
-
             // Never hijack direct manual control of the player ship (only evade if in automatic mode / autopilot)
-
             if (isShipManualPlayerControlled(ship)) {
-
                 continue;
 
             }
-
-
 
             ShipAvoidanceState state = shipStates.get(ship);
-
             if (state != null && state.cooldown > 0.05f) {
-
                 continue;
 
             }
 
-
-
             Vector2f shipLoc = ship.getLocation();
-
             Vector2f shipVel = ship.getVelocity();
-
             if (shipLoc == null || shipVel == null) continue;
-
-
-
             float shipRadius = ship.getCollisionRadius();
-
             float checkDist = shipRadius + effectiveLookaheadDist;
-
             float checkDistSq = checkDist * checkDist;
-
-
-
             CombatEntityAPI worstThreat = null;
-
             float lowestTimeToCollision = Float.MAX_VALUE;
-
             float worstDodgeDir = 0f;
-
-
-
             for (int tIdx = 0; tIdx < fastThreats.size(); tIdx++) {
-
                 CombatEntityAPI threat = fastThreats.get(tIdx);
-
                 Vector2f tLoc = threat.getLocation();
-
                 Vector2f tVel = threat.getVelocity();
-
-
-
                 float dx = tLoc.x - shipLoc.x;
-
                 float dy = tLoc.y - shipLoc.y;
-
                 float distSq = dx * dx + dy * dy;
-
                 if (distSq > checkDistSq) continue;
-
-
-
                 float rvx = tVel.x - shipVel.x;
-
                 float rvy = tVel.y - shipVel.y;
-
                 float relSpeedSq = rvx * rvx + rvy * rvy;
-
                 boolean isSpecialThreat = threat.getCustomData().containsKey("DA_IS_MEGALITH") ||
                                          threat.getCustomData().containsKey("IS_EASTER_EGG") ||
                                          threat.getCollisionRadius() >= 65f ||
                                          threat.getMass() >= 2500f;
-
                 float minVelThreshold = isSpecialThreat ? 30.0f : aiMinThreatVelocity;
                 if (relSpeedSq < (minVelThreshold * minVelThreshold)) continue;
-
-
-
                 float dot = dx * rvx + dy * rvy;
-
                 if (dot >= 0f) continue; // Moving away
 
-
-
                 float tCpa = -dot / relSpeedSq;
-
                 if (tCpa <= 0.01f || tCpa > effectiveLookaheadTime) continue;
-
-
-
                 float cpaX = dx + rvx * tCpa;
-
                 float cpaY = dy + rvy * tCpa;
-
                 float cpaDistSq = cpaX * cpaX + cpaY * cpaY;
-
-
-
                 float threatRadius = threat.getCollisionRadius();
-
                 float totalSafeRadius = shipRadius + threatRadius + aiSafetyMargin;
-
                 if (cpaDistSq < totalSafeRadius * totalSafeRadius) {
-
                     if (tCpa < lowestTimeToCollision) {
-
                         lowestTimeToCollision = tCpa;
-
                         worstThreat = threat;
-
                         worstDodgeDir = (rvx * dy - rvy * dx);
 
                     }
@@ -5906,22 +4133,14 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
             }
 
-
-
             if (worstThreat != null) {
 
                 // Register in registry for PD interceptors
-
                 imminentThreats.put(ship, new ImminentThreatData(worstThreat, lowestTimeToCollision, 0.35f));
 
-
-
                 // Evasive maneuvering: ONLY for AI ships (never hijack player manual controls!)
-
                 if (!isShipManualPlayerControlled(ship)) {
-
                     if (state == null || state.cooldown <= 0.05f) {
-
                         executeEvasiveReaction(ship, worstThreat, worstDodgeDir, lowestTimeToCollision);
 
                     }
@@ -5934,80 +4153,46 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     }
 
-
-
     private void advanceShipStates(float amount) {
-
         if (shipStates.isEmpty()) return;
-
-
-
         List<ShipAPI> deadOrExpired = null;
-
         for (Map.Entry<ShipAPI, ShipAvoidanceState> entry : shipStates.entrySet()) {
-
             ShipAPI ship = entry.getKey();
-
             ShipAvoidanceState state = entry.getValue();
-
-
-
             if (!ship.isAlive() || ship.isHulk()) {
-
                 if (deadOrExpired == null) deadOrExpired = new ArrayList<ShipAPI>();
-
                 deadOrExpired.add(ship);
-
                 continue;
 
             }
 
-
-
             if (state.cooldown > 0f) {
-
                 state.cooldown -= amount;
-
-
-
                 boolean isPlayerManual = isShipManualPlayerControlled(ship);
-
                 if (isPlayerManual) {
 
                     // Instantly release control to the player if manual steering was engaged!
-
                     state.activeCommand = null;
-
                     state.activeThrustCommand = null;
-
                     state.activeTurnCommand = null;
-
                     state.escapeDirX = 0f;
-
                     state.escapeDirY = 0f;
-
                     state.cooldown = 0f;
-
                     continue;
 
                 }
 
-
-
                 if (state.activeCommand != null && state.cooldown > 0f) {
-
                     ship.giveCommand(state.activeCommand, null, 0);
 
                 }
 
                 if (state.activeThrustCommand != null && state.cooldown > 0f) {
-
                     ship.giveCommand(state.activeThrustCommand, null, 0);
 
                 }
 
                 if (state.activeTurnCommand != null && state.cooldown > 0f) {
-
                     ship.giveCommand(state.activeTurnCommand, null, 0);
 
                 }
@@ -6018,60 +4203,37 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                     if (accel > 0f) {
                         Vector2f vel = ship.getVelocity();
                         if (vel != null) {
-                            vel.x += state.escapeDirX * accel * 0.95f * amount;
-                            vel.y += state.escapeDirY * accel * 0.95f * amount;
+                            vel.x += state.escapeDirX * accel * 1.15f * amount;
+                            vel.y += state.escapeDirY * accel * 1.15f * amount;
                         }
                     }
                 }
 
-
-
                 if (enableShieldReaction && ship.getShield() != null && ship.getShield().getType() == ShieldType.OMNI) {
-
                     ShieldAPI shield = ship.getShield();
-
                     float currentFacing = shield.getFacing();
-
                     float angleDiff = getShortestRotation(currentFacing, state.targetAngle);
-
-
-
                     float turnRate = shield.getRingRotationRate();
-
                     if (turnRate <= 0f) turnRate = 180f;
-
                     float maxTurn = turnRate * amount;
-
-
-
                     float step = Math.max(-maxTurn, Math.min(maxTurn, angleDiff));
-
                     float newFacing = normalizeAngle(currentFacing + step);
-
                     shield.forceFacing(newFacing);
 
                 }
 
             } else {
-
                 state.targetThreat = null;
-
                 state.activeCommand = null;
-
                 state.activeThrustCommand = null;
-
                 state.activeTurnCommand = null;
 
             }
 
         }
 
-
-
         if (deadOrExpired != null) {
-
             for (ShipAPI dead : deadOrExpired) {
-
                 shipStates.remove(dead);
 
             }
@@ -6079,8 +4241,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         }
 
     }
-
-
 
     /**
 
@@ -6091,35 +4251,17 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
      */
 
     private void applyEvasiveManeuver(ShipAPI ship, float escapeWorldX, float escapeWorldY, float duration) {
-
         if (ship == null || isShipManualPlayerControlled(ship)) return;
-
-
-
         float facingRad = (float) Math.toRadians(ship.getFacing());
-
         float fwdX = (float) Math.cos(facingRad);
-
         float fwdY = (float) Math.sin(facingRad);
-
         float leftX = -fwdY;
-
         float leftY = fwdX;
-
-
-
         float dotLeft = escapeWorldX * leftX + escapeWorldY * leftY;
-
         float dotFwd = escapeWorldX * fwdX + escapeWorldY * fwdY;
-
-
-
         ShipAvoidanceState state = shipStates.get(ship);
-
         if (state == null) {
-
             state = new ShipAvoidanceState();
-
             shipStates.put(ship, state);
 
         }
@@ -6128,43 +4270,25 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         state.escapeDirX = escapeWorldX;
         state.escapeDirY = escapeWorldY;
 
-
-
         // Lateral thruster burn
-
         if (Math.abs(dotLeft) >= 0.05f) {
-
             ShipCommand strafeCmd = (dotLeft > 0f) ? ShipCommand.STRAFE_LEFT : ShipCommand.STRAFE_RIGHT;
-
             state.activeCommand = strafeCmd;
-
             ship.giveCommand(strafeCmd, null, 0);
-
         } else {
-
             state.activeCommand = null;
 
         }
 
-
-
         // Longitudinal thruster burn (accelerate away or reverse clear of trajectory)
-
         if (Math.abs(dotFwd) >= 0.08f) {
-
             ShipCommand thrustCmd = (dotFwd > 0f) ? ShipCommand.ACCELERATE : ShipCommand.DECELERATE;
-
             state.activeThrustCommand = thrustCmd;
-
             ship.giveCommand(thrustCmd, null, 0);
-
         } else {
-
             state.activeThrustCommand = null;
 
         }
-
-
 
         // Turning assistance for heavier ships with slow strafe
         float desiredFacing = computeAngle(0f, 0f, escapeWorldX, escapeWorldY);
@@ -6186,52 +4310,29 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     }
 
-
-
     private void executeEvasiveReaction(ShipAPI ship, CombatEntityAPI threat, float crossDir, float timeToImpact) {
-
-        if (stateIsNull(ship)) {
+        if (!shipStates.containsKey(ship) || shipStates.get(ship) == null) { // inlined stateIsNull()
 
             shipStates.put(ship, new ShipAvoidanceState());
 
         }
 
         ShipAvoidanceState state = shipStates.get(ship);
-
         state.cooldown = Math.max(aiDodgeCooldown, 0.45f);
-
         state.targetThreat = threat;
-
-
-
         Vector2f sLoc = ship.getLocation();
-
         Vector2f tLoc = threat.getLocation();
-
         float angleToRock = computeAngle(sLoc.x, sLoc.y, tLoc.x, tLoc.y);
-
         state.targetAngle = angleToRock;
-
-
-
         boolean isPlayerManual = isShipManualPlayerControlled(ship);
-
         if (isPlayerManual) return;
 
-
-
         // Phase Cloak Reaction:
-
         if (enablePhaseReaction && ship.getPhaseCloak() != null && !ship.getPhaseCloak().isActive()) {
-
             if (ship.getFluxTracker() != null && ship.getFluxTracker().getFluxLevel() < 0.80f) {
-
                 ship.giveCommand(ShipCommand.TOGGLE_SHIELD_OR_PHASE_CLOAK, null, 0);
-
                 ShipwideAIFlags flags = ship.getAIFlags();
-
                 if (flags != null) {
-
                     flags.setFlag(AIFlags.STAY_PHASED, Math.max(0.4f, timeToImpact + 0.2f));
 
                 }
@@ -6242,100 +4343,57 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
         }
 
-
-
         // Kinetic Thruster Evasion: works for ALL AI ships (Frigates, Destroyers, Cruisers, Capitals)!
-
         if (enableMicroDodge) {
-
             Vector2f tVel = threat.getVelocity();
-
             Vector2f sVel = ship.getVelocity();
-
             float rvx = tVel.x - sVel.x;
-
             float rvy = tVel.y - sVel.y;
-
             float rSpeed = (float) Math.sqrt(rvx * rvx + rvy * rvy);
-
             if (rSpeed > 10f) {
-
                 float uX = rvx / rSpeed;
-
                 float uY = rvy / rSpeed;
-
                 float perpX = -uY;
-
                 float perpY = uX;
-
-
-
                 float dx = sLoc.x - tLoc.x;
-
                 float dy = sLoc.y - tLoc.y;
-
                 float signedLateral = dx * perpX + dy * perpY;
-
                 float escapeDir = (signedLateral >= 0f) ? 1.0f : -1.0f;
-
                 float escapeWorldX = perpX * escapeDir;
-
                 float escapeWorldY = perpY * escapeDir;
-
-
-
                 applyEvasiveManeuver(ship, escapeWorldX, escapeWorldY, Math.max(0.6f, timeToImpact + 0.35f));
 
             }
 
         }
 
-
-
         // Shields Reaction:
-
         if (enableShieldReaction && ship.getShield() != null) {
-
             ShieldAPI shield = ship.getShield();
-
-
-
             if (shield.getType() == ShieldType.OMNI) {
-
                 if (shield.isOff() && ship.getFluxTracker() != null && ship.getFluxTracker().getFluxLevel() < 0.85f) {
-
                     ship.giveCommand(ShipCommand.TOGGLE_SHIELD_OR_PHASE_CLOAK, null, 0);
 
                 }
 
                 ShipwideAIFlags flags = ship.getAIFlags();
-
                 if (flags != null) {
-
                     flags.setFlag(AIFlags.KEEP_SHIELDS_ON, Math.max(0.35f, timeToImpact + 0.2f));
-
                     flags.setFlag(AIFlags.HAS_INCOMING_DAMAGE, 0.35f);
 
                 }
 
             } else if (shield.getType() == ShieldType.FRONT) {
-
                 float diff = Math.abs(getShortestRotation(ship.getFacing(), angleToRock));
-
                 if (diff <= shield.getArc() * 0.5f + 15.0f) {
-
                     if (shield.isOff() && ship.getFluxTracker() != null && ship.getFluxTracker().getFluxLevel() < 0.85f) {
-
                         ship.giveCommand(ShipCommand.TOGGLE_SHIELD_OR_PHASE_CLOAK, null, 0);
 
                     }
 
                     ShipwideAIFlags flags = ship.getAIFlags();
-
                     if (flags != null) {
-
                         flags.setFlag(AIFlags.KEEP_SHIELDS_ON, Math.max(0.35f, timeToImpact + 0.2f));
-
                         flags.setFlag(AIFlags.HAS_INCOMING_DAMAGE, 0.35f);
 
                     }
@@ -6353,8 +4411,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     }
 
-
-
     /**
 
      * Continuous formation corridor clearing for ALL figure waves (Lance, Swarm, Rails, Fan, Megaliths).
@@ -6363,13 +4419,51 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
      */
 
+    private static boolean isMobilityOrBurnSystem(ShipSystemAPI system) {
+        if (system == null) return false;
+        String id = system.getId();
+        if (id != null) {
+            String lower = id.toLowerCase();
+            if (lower.contains("burn") || lower.contains("drive") || lower.contains("jet") 
+                || lower.contains("lunge") || lower.contains("infernium") || lower.contains("orion") 
+                || lower.contains("burst") || lower.contains("boost") || lower.contains("teleport") 
+                || lower.contains("displace")) {
+                return true;
+            }
+        }
+        ShipSystemSpecAPI spec = system.getSpecAPI();
+        if (spec != null && spec.hasTag("movement")) {
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean isSystemActiveOrCharging(ShipSystemAPI system) {
+        if (system == null) return false;
+        if (system.isOn() || system.isActive() || system.isChargeup() || system.isStateActive()) {
+            return true;
+        }
+        ShipSystemAPI.SystemState state = system.getState();
+        return state == ShipSystemAPI.SystemState.IN || state == ShipSystemAPI.SystemState.ACTIVE;
+    }
+
+    private static void cancelBurnOrMobilitySystem(ShipAPI ship, ShipSystemAPI system) {
+        if (ship == null || system == null) return;
+        try {
+            system.deactivate();
+        } catch (Throwable t) {}
+        try {
+            ShipSystemAPI.SystemState st = system.getState();
+            if (st == ShipSystemAPI.SystemState.IN || st == ShipSystemAPI.SystemState.ACTIVE) {
+                ship.giveCommand(ShipCommand.USE_SYSTEM, null, 0);
+            }
+        } catch (Throwable t2) {}
+    }
 
     private void advanceColossalObstacleAvoidance(float amount) {
         if (engine == null || engine.isPaused()) return;
-
         List<CombatEntityAPI> asteroids = engine.getAsteroids();
         if (asteroids == null || asteroids.isEmpty()) return;
-
         List<CombatEntityAPI> colossals = null;
         for (int i = 0; i < asteroids.size(); i++) {
             CombatEntityAPI ast = asteroids.get(i);
@@ -6384,89 +4478,143 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         }
 
         if (colossals == null || colossals.isEmpty()) return;
-
         List<ShipAPI> ships = engine.getShips();
         if (ships == null || ships.isEmpty()) return;
-
         for (int sIdx = 0; sIdx < ships.size(); sIdx++) {
             ShipAPI ship = ships.get(sIdx);
             if (ship == null || !ship.isAlive() || ship.isHulk()) continue;
 
             // Never hijack direct manual control of the player ship
             if (isShipManualPlayerControlled(ship)) continue;
-
-            ShipAvoidanceState state = shipStates.get(ship);
-            if (state != null && state.cooldown > 0.08f) continue;
-
             Vector2f shipLoc = ship.getLocation();
             Vector2f shipVel = ship.getVelocity();
             if (shipLoc == null || shipVel == null) continue;
-
             float shipRadius = ship.getCollisionRadius();
-
+            float shipFacing = ship.getFacing();
+            float facingRad = (float) Math.toRadians(shipFacing);
+            float fwdX = (float) Math.cos(facingRad);
+            float fwdY = (float) Math.sin(facingRad);
+            ShipSystemAPI sys = ship.getSystem();
+            boolean hasMobility = isMobilityOrBurnSystem(sys);
+            boolean sysOn = isSystemActiveOrCharging(sys);
             CombatEntityAPI closestColossal = null;
+            CombatEntityAPI burnThreatColossal = null;
             float bestSteerX = 0f;
             float bestSteerY = 0f;
             float lowestTimeToImpact = Float.MAX_VALUE;
             boolean isProximityEscape = false;
-
+            float minBurnThreatDist = Float.MAX_VALUE;
             for (int cIdx = 0; cIdx < colossals.size(); cIdx++) {
                 CombatEntityAPI obs = colossals.get(cIdx);
                 Vector2f obsLoc = obs.getLocation();
                 if (obsLoc == null) continue;
-
                 float obsRadius = obs.getCollisionRadius();
                 float toObsX = obsLoc.x - shipLoc.x;
                 float toObsY = obsLoc.y - shipLoc.y;
                 float distSq = toObsX * toObsX + toObsY * toObsY;
-
-                // Generous safety contour buffer: ship radius + obstacle radius + 280 units
-                float safeDist = shipRadius + obsRadius + 280f;
-                float safeDistSq = safeDist * safeDist;
-
                 float dist = (float) Math.sqrt(distSq);
-
-                // Proximity safety: ship is within safe contour or dangerously close
-                if (distSq < safeDistSq) {
-                    float awayX = (dist > 0.001f) ? -toObsX / dist : 1f;
-                    float awayY = (dist > 0.001f) ? -toObsY / dist : 0f;
-
-                    closestColossal = obs;
-                    bestSteerX = awayX;
-                    bestSteerY = awayY;
-                    lowestTimeToImpact = 0.4f;
-                    isProximityEscape = true;
-                    break;
-                }
-
-                // Lookahead zone: up to 2200 units past safe buffer
-                float maxScanDist = safeDist + 2200f;
-                if (distSq > maxScanDist * maxScanDist) continue;
-
+                boolean isMegalith = obs.getCustomData().containsKey("DA_IS_MEGALITH");
                 Vector2f obsVel = obs.getVelocity();
                 float ovX = (obsVel != null) ? obsVel.x : 0f;
                 float ovY = (obsVel != null) ? obsVel.y : 0f;
-
                 float rvx = ovX - shipVel.x;
                 float rvy = ovY - shipVel.y;
+                float dotClosing = toObsX * rvx + toObsY * rvy;
+
+                // Megalith Danger Zone: 480 units safety buffer around the stone perimeter,
+                // plus extra approach corridor lookahead (up to 320 units) if closing towards each other.
+                float zoneMargin = isMegalith ? 480f : 280f;
+                float approachBonus = 0f;
+                if (dotClosing < 0f && isMegalith) {
+                    float relSpd = (float) Math.sqrt(rvx * rvx + rvy * rvy);
+                    approachBonus = Math.min(320f, relSpd * 1.8f);
+                }
+
+                float safeDist = shipRadius + obsRadius + zoneMargin + approachBonus;
+                float safeDistSq = safeDist * safeDist;
+
+                // 1. Proximity Zone: ship is within the danger zone perimeter
+                if (distSq < safeDistSq) {
+                    float awayX = (dist > 0.001f) ? -toObsX / dist : 1f;
+                    float awayY = (dist > 0.001f) ? -toObsY / dist : 0f;
+                    boolean isCurrMegalith = (closestColossal != null) && closestColossal.getCustomData().containsKey("DA_IS_MEGALITH");
+                    boolean override = (closestColossal == null)
+                                       || (isMegalith && !isCurrMegalith)
+                                       || (dist < lowestTimeToImpact && (!isCurrMegalith || isMegalith));
+                    if (override) {
+                        closestColossal = obs;
+                        burnThreatColossal = obs;
+                        bestSteerX = awayX;
+                        bestSteerY = awayY;
+                        lowestTimeToImpact = 0.4f;
+                        isProximityEscape = true;
+                    }
+                    continue;
+                }
+
+                // 2. Forward Lookahead Corridor (matches vanilla friendly-avoidance logic):
+                // Lookahead distance based on burn/mobility speeds (up to 3.0s corridor)
+                float lookaheadD = sysOn ? Math.max(2500f, Math.max(shipVel.length(), ship.getMaxSpeed() + 300f) * 3.0f)
+                                         : (hasMobility ? Math.max(1800f, (ship.getMaxSpeed() + 250f) * 2.8f)
+                                                        : Math.max(1000f, (ship.getMaxSpeed() + 100f) * 2.0f));
+                float maxScanDist = Math.max(safeDist + 2200f, lookaheadD + obsRadius);
+                if (distSq > maxScanDist * maxScanDist) continue;
+
+                // Forward projection along ship nose
+                float projFwd = toObsX * fwdX + toObsY * fwdY;
+                float lateralMargin = shipRadius + obsRadius + 140f;
+
+                // If obstacle is ahead within lookahead corridor
+                if (projFwd > 0f && projFwd < lookaheadD) {
+                    float latDistSq = distSq - (projFwd * projFwd);
+                    if (latDistSq < lateralMargin * lateralMargin) {
+                        // The megalith directly blocks the ship's forward path!
+                        if (dist < minBurnThreatDist) {
+                            minBurnThreatDist = dist;
+                            burnThreatColossal = obs;
+                        }
+                    }
+                }
+
+                // Multi-step trajectory projection (like vanilla super() in Burn Drive AI)
+                // Test checkpoints at 1.0s, 2.0s, 3.0s along current or potential forward velocity
+                float testSpeed = sysOn ? Math.max(shipVel.length(), ship.getMaxSpeed() + 300f)
+                                        : (hasMobility ? (ship.getMaxSpeed() + 250f) : ship.getMaxSpeed());
+                float testVx = fwdX * testSpeed;
+                float testVy = fwdY * testSpeed;
+                for (float t = 1.0f; t <= 3.0f; t += 1.0f) {
+                    float shipFutureX = shipLoc.x + testVx * t;
+                    float shipFutureY = shipLoc.y + testVy * t;
+                    float obsFutureX = obsLoc.x + ovX * t;
+                    float obsFutureY = obsLoc.y + ovY * t;
+                    float fdx = obsFutureX - shipFutureX;
+                    float fdy = obsFutureY - shipFutureY;
+                    if (fdx * fdx + fdy * fdy < lateralMargin * lateralMargin) {
+                        if (dist < minBurnThreatDist) {
+                            minBurnThreatDist = dist;
+                            burnThreatColossal = obs;
+                        }
+                        break;
+                    }
+                }
+
+                // 3. Dynamic Velocity CPA (for general flight collision avoidance)
                 float relSpdSq = rvx * rvx + rvy * rvy;
                 if (relSpdSq < 16f) continue; // Relative speed < 4 u/s, effectively static
 
-                float dot = toObsX * rvx + toObsY * rvy;
-                if (dot >= 0f) continue; // Diverging / moving away
+                if (dotClosing >= 0f) continue; // Diverging / moving away
 
-                float tCpa = -dot / relSpdSq;
+                float tCpa = -dotClosing / relSpdSq;
                 if (tCpa <= 0.01f || tCpa > 8.0f) continue; // Up to 8.0s lookahead window for capital/cruiser safety
 
                 float cpaX = toObsX + rvx * tCpa;
                 float cpaY = toObsY + rvy * tCpa;
                 float cpaDistSq = cpaX * cpaX + cpaY * cpaY;
-
                 if (cpaDistSq < safeDistSq) {
-                    if (tCpa < lowestTimeToImpact) {
+                    boolean isCurrMegalith = (closestColossal != null) && closestColossal.getCustomData().containsKey("DA_IS_MEGALITH");
+                    if (!isProximityEscape && (tCpa < lowestTimeToImpact || (isMegalith && !isCurrMegalith))) {
                         lowestTimeToImpact = tCpa;
                         closestColossal = obs;
-
                         float rSpd = (float) Math.sqrt(relSpdSq);
                         float uX = rvx / rSpd;
                         float uY = rvy / rSpd;
@@ -6483,35 +4631,56 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                 }
             }
 
-            if (closestColossal != null) {
-                // Burn Drive & Mobility System Interceptor:
-                // If ship is using a system (like Burn Drive) that accelerates it into the megalith, cancel it!
-                if (ship.getSystem() != null && ship.getSystem().isActive()) {
-                    float facingRad = (float) Math.toRadians(ship.getFacing());
-                    float fwdX = (float) Math.cos(facingRad);
-                    float fwdY = (float) Math.sin(facingRad);
-                    Vector2f obsLoc = closestColossal.getLocation();
-                    if (obsLoc != null) {
-                        float toObsX = obsLoc.x - shipLoc.x;
-                        float toObsY = obsLoc.y - shipLoc.y;
-                        float dotNose = toObsX * fwdX + toObsY * fwdY;
-                        if (dotNose > 0f) { // Nose pointed towards obstacle
-                            ship.giveCommand(ShipCommand.USE_SYSTEM, null, 0); // Disengage Burn Drive / system!
-                            ship.giveCommand(ShipCommand.DECELERATE, null, 0);
-                        }
-                    }
+            // =========================================================================
+            // PART 1: TURBO ACCELERATION & BURN DRIVE INTERCEPTOR (Pre-activation & Active)
+            // =========================================================================
+            if (burnThreatColossal != null) {
+                Vector2f bLoc = burnThreatColossal.getLocation();
+                float toBX = bLoc.x - shipLoc.x;
+                float toBY = bLoc.y - shipLoc.y;
+                float dotNose = toBX * fwdX + toBY * fwdY;
+
+                // A. Active Emergency Cancel:
+                // If ship is currently running or charging up Burn Drive / mobility system towards the megalith
+                if (hasMobility && sysOn && dotNose > 0f) {
+                    cancelBurnOrMobilitySystem(ship, sys);
+                    ship.giveCommand(ShipCommand.DECELERATE, null, 0);
+
+                    // Emergency steering deflection: steer away from the obstacle
+                    float lateralOffset = toBX * (-fwdY) + toBY * (fwdX);
+                    ShipCommand turnCmd = (lateralOffset >= 0f) ? ShipCommand.TURN_RIGHT : ShipCommand.TURN_LEFT;
+                    ShipCommand strafeCmd = (lateralOffset >= 0f) ? ShipCommand.STRAFE_RIGHT : ShipCommand.STRAFE_LEFT;
+                    ship.giveCommand(turnCmd, null, 0);
+                    ship.giveCommand(strafeCmd, null, 0);
                 }
 
-                // AI Flags: Prevent pursuit charges through the megalith and back-off hazards
+                // B. Pre-Activation Veto & Navigation AI Flags:
+                // Apply the exact vanilla logic: set BACK_OFF and DO_NOT_PURSUE so the ship AI
+                // strictly refuses to trigger Burn Drive, and slows down/steers clear!
                 ShipwideAIFlags flags = ship.getAIFlags();
                 if (flags != null) {
-                    flags.setFlag(AIFlags.DO_NOT_PURSUE, 1.2f);
-                    flags.setFlag(AIFlags.WANTED_TO_SLOW_DOWN, 0.8f);
-                    flags.setFlag(AIFlags.DO_NOT_BACK_OFF, 0.5f);
+                    flags.setFlag(AIFlags.DO_NOT_PURSUE, 0.75f);
+                    flags.setFlag(AIFlags.WANTED_TO_SLOW_DOWN, 0.75f);
+                    // BACK_OFF forces vanilla Burn Drive AI (A.class line 202) to abort system activation!
+                    if (dotNose > 0f) {
+                        flags.setFlag(AIFlags.BACK_OFF, 0.50f);
+                    }
+                    flags.unsetFlag(AIFlags.DO_NOT_BACK_OFF);
                 }
+            }
 
-                float duration = isProximityEscape ? 0.50f : Math.max(0.40f, Math.min(0.85f, lowestTimeToImpact * 0.40f));
-                applyColossalGlidingManeuver(ship, bestSteerX, bestSteerY, duration, lowestTimeToImpact);
+            // =========================================================================
+            // PART 2: CONTOUR GLIDING & SHIELD REACTION (CPA Avoidance & Megalith Zone)
+            // =========================================================================
+            ShipAvoidanceState state = shipStates.get(ship);
+            if (closestColossal != null) {
+                boolean isMegalithThreat = closestColossal.getCustomData().containsKey("DA_IS_MEGALITH");
+                // In proximity escape or megalith danger zone: ALWAYS update every frame dynamically
+                // so side approaches never get delayed or forgotten!
+                if (isProximityEscape || state == null || state.cooldown <= 0.08f) {
+                    float duration = isProximityEscape ? 0.35f : Math.max(0.40f, Math.min(0.85f, lowestTimeToImpact * 0.40f));
+                    applyColossalGlidingManeuver(ship, bestSteerX, bestSteerY, duration, lowestTimeToImpact, isMegalithThreat);
+                }
 
                 // Omni and front shield reactions when closing with colossal rocks
                 if (enableShieldReaction && ship.getShield() != null) {
@@ -6523,7 +4692,7 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                             shipStates.put(ship, state);
                         }
                         state.targetAngle = angleToObs;
-
+                        if (state.cooldown < 1.0f) state.cooldown = 1.0f;
                         if (ship.getShield().getType() == ShieldType.OMNI) {
                             if (ship.getShield().isOff() && ship.getFluxTracker() != null && ship.getFluxTracker().getFluxLevel() < 0.85f) {
                                 ship.giveCommand(ShipCommand.TOGGLE_SHIELD_OR_PHASE_CLOAK, null, 0);
@@ -6542,18 +4711,15 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         }
     }
 
-    private void applyColossalGlidingManeuver(ShipAPI ship, float escapeWorldX, float escapeWorldY, float duration, float timeToImpact) {
+    private void applyColossalGlidingManeuver(ShipAPI ship, float escapeWorldX, float escapeWorldY, float duration, float timeToImpact, boolean isMegalithThreat) {
         if (ship == null || isShipManualPlayerControlled(ship)) return;
-
         float facingRad = (float) Math.toRadians(ship.getFacing());
         float fwdX = (float) Math.cos(facingRad);
         float fwdY = (float) Math.sin(facingRad);
         float leftX = -fwdY;
         float leftY = fwdX;
-
         float dotLeft = escapeWorldX * leftX + escapeWorldY * leftY;
         float dotFwd = escapeWorldX * fwdX + escapeWorldY * fwdY;
-
         ShipAvoidanceState state = shipStates.get(ship);
         if (state == null) {
             state = new ShipAvoidanceState();
@@ -6563,8 +4729,8 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         state.escapeDirX = escapeWorldX;
         state.escapeDirY = escapeWorldY;
 
-        // Lateral thruster burn to gently glide around contour
-        if (Math.abs(dotLeft) >= 0.05f) {
+        // 1. Lateral thruster burn to clear danger path
+        if (Math.abs(dotLeft) >= 0.04f) {
             ShipCommand strafeCmd = (dotLeft > 0f) ? ShipCommand.STRAFE_LEFT : ShipCommand.STRAFE_RIGHT;
             state.activeCommand = strafeCmd;
             ship.giveCommand(strafeCmd, null, 0);
@@ -6572,241 +4738,152 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
             state.activeCommand = null;
         }
 
-        // Longitudinal throttle: decelerate if heading directly towards obstacle to give room to clear
-        if (dotFwd < -0.10f) {
-            state.activeThrustCommand = ShipCommand.DECELERATE;
-            ship.giveCommand(ShipCommand.DECELERATE, null, 0);
-        } else if (dotFwd > 0.20f) {
-            state.activeThrustCommand = ShipCommand.ACCELERATE;
-            ship.giveCommand(ShipCommand.ACCELERATE, null, 0);
+        // 2. Main engine throttle & acceleration ("хоть ускорением хоть как"):
+        // For megaliths, ALWAYS engage main engines to power away from the colossal rock
+        if (isMegalithThreat) {
+            if (dotFwd >= -0.20f) {
+                state.activeThrustCommand = ShipCommand.ACCELERATE;
+                ship.giveCommand(ShipCommand.ACCELERATE, null, 0);
+            } else {
+                state.activeThrustCommand = ShipCommand.DECELERATE;
+                ship.giveCommand(ShipCommand.DECELERATE, null, 0);
+            }
         } else {
-            state.activeThrustCommand = null;
+            if (dotFwd < -0.10f) {
+                state.activeThrustCommand = ShipCommand.DECELERATE;
+                ship.giveCommand(ShipCommand.DECELERATE, null, 0);
+            } else if (dotFwd > 0.20f) {
+                state.activeThrustCommand = ShipCommand.ACCELERATE;
+                ship.giveCommand(ShipCommand.ACCELERATE, null, 0);
+            } else {
+                state.activeThrustCommand = null;
+            }
         }
 
-        // Polite, smooth avoidance steering:
-        // Destroyers, Cruisers & Capital ships have slower lateral strafe; a gentle turn aligns their main engines with escape route
-        boolean needsTurnAssist = (ship.getHullSize() == ShipAPI.HullSize.DESTROYER || ship.getHullSize() == ShipAPI.HullSize.CRUISER || ship.getHullSize() == ShipAPI.HullSize.CAPITAL_SHIP);
-        if (needsTurnAssist && timeToImpact < 6.0f && Math.abs(dotLeft) > 0.10f) {
-            ShipCommand turnCmd = (dotLeft > 0f) ? ShipCommand.TURN_LEFT : ShipCommand.TURN_RIGHT;
-            state.activeTurnCommand = turnCmd;
-            ship.giveCommand(turnCmd, null, 0);
-        } else {
-            state.activeTurnCommand = null;
+        // 3. Turning Maneuver:
+        // Turn towards the escape vector so main engines accelerate directly out of the danger path
+        if (isMegalithThreat || timeToImpact < 6.0f) {
+            if (Math.abs(dotLeft) > 0.06f) {
+                ShipCommand turnCmd = (dotLeft > 0f) ? ShipCommand.TURN_LEFT : ShipCommand.TURN_RIGHT;
+                state.activeTurnCommand = turnCmd;
+                ship.giveCommand(turnCmd, null, 0);
+            } else {
+                state.activeTurnCommand = null;
+            }
         }
 
-        // Polite AI coordination: cooperate with vanilla Starsector fleet AI
+        // 4. Polite AI coordination: cooperate smoothly with vanilla Starsector fleet AI
         ShipwideAIFlags flags = ship.getAIFlags();
         if (flags != null) {
-            flags.setFlag(AIFlags.DO_NOT_BACK_OFF, 0.45f); // Do not reverse blindly into hazards behind
+            flags.setFlag(AIFlags.WANTED_TO_SLOW_DOWN, 0.35f);
+            flags.setFlag(AIFlags.DO_NOT_PURSUE, 0.35f);
             flags.setFlag(AIFlags.HAS_INCOMING_DAMAGE, 0.35f);
-            if (timeToImpact < 3.5f) {
-                flags.setFlag(AIFlags.KEEP_SHIELDS_ON, Math.min(0.6f, duration));
+            if (isMegalithThreat || timeToImpact < 3.5f) {
+                flags.setFlag(AIFlags.KEEP_SHIELDS_ON, Math.min(0.5f, duration));
             }
         }
     }
 
     private void advanceActiveStreamsEvasion(float amount) {
-
         if (!enableEarlySnipeEvasion || activeStreams.isEmpty() || engine == null) return;
-
         List<ShipAPI> ships = engine.getShips();
-
         if (ships == null || ships.isEmpty()) return;
-
-
-
         for (int strIdx = 0; strIdx < activeStreams.size(); strIdx++) {
-
             ActiveFigureStream stream = activeStreams.get(strIdx);
-
             if (stream == null) continue;
-
-
-
             Vector2f oLoc = stream.origin;
-
             Vector2f vel = stream.velocity;
-
             float speed = (float) Math.sqrt(vel.x * vel.x + vel.y * vel.y);
-
             if (speed < 100f) speed = Math.max(streamSpeed, 400f);
-
-
-
             float dirX = vel.x / speed;
-
             float dirY = vel.y / speed;
-
             float perpX = -dirY;
-
             float perpY = dirX;
-
-
-
             for (int sIdx = 0; sIdx < ships.size(); sIdx++) {
-
                 ShipAPI ship = ships.get(sIdx);
-
                 if (ship == null || !ship.isAlive() || ship.isHulk()) continue;
-
-
-
                 Vector2f sLoc = ship.getLocation();
-
                 if (sLoc == null) continue;
-
-
-
                 float dx = sLoc.x - oLoc.x;
-
                 float dy = sLoc.y - oLoc.y;
-
-
-
                 float proj = dx * dirX + dy * dirY;
-
                 if (proj <= -250f) continue; // Behind origin buffer
 
-
-
                 // Precise wave timing: time until wave front arrives, and time until wave tail clears
-
                 float timeToFront = (proj / speed) - stream.timeElapsed;
-
                 float timeToTail = timeToFront + stream.totalSpawnDuration;
 
-
-
                 // Active reaction window: wave is approaching within 7.0 seconds, and has not yet cleared
-
                 if (timeToFront > 7.0f || timeToTail < -0.8f) continue;
-
-
-
                 float signedLateral = dx * perpX + dy * perpY;
-
                 float lateralDist = Math.abs(signedLateral);
-
                 float shipRadius = ship.getCollisionRadius();
-
-
-
                 float dangerHalfWidth = 0f;
-
                 boolean inDanger = false;
-
                 float escapeDir = (signedLateral >= 0f) ? 1.0f : -1.0f;
-
-
-
                 switch (stream.type) {
-
                     case LANCE_BEAM:
 
                     case HEAVY_MEGALITHS:
 
                         dangerHalfWidth = (stream.beamSpread * 0.5f) + shipRadius + 100f;
-
                         inDanger = (lateralDist < dangerHalfWidth);
-
                         break;
-
                     case COMET_SWARM:
 
                         dangerHalfWidth = 900f + shipRadius + 100f;
-
                         inDanger = (lateralDist < dangerHalfWidth);
-
                         break;
-
                     case DUAL_RAILS:
 
                         float distToRailLeft = Math.abs(signedLateral - (-800f));
-
                         float distToRailRight = Math.abs(signedLateral - 800f);
-
                         dangerHalfWidth = 260f + shipRadius + 80f;
-
                         if (distToRailLeft < dangerHalfWidth) {
-
                             inDanger = true;
-
                             escapeDir = (signedLateral >= -800f) ? 1.0f : -1.0f;
-
                         } else if (distToRailRight < dangerHalfWidth) {
-
                             inDanger = true;
-
                             escapeDir = (signedLateral >= 800f) ? 1.0f : -1.0f;
 
                         }
 
                         break;
-
                     case EXPANDING_FAN:
 
                         dangerHalfWidth = (proj * 0.24f) + shipRadius + 100f;
-
                         inDanger = (lateralDist < dangerHalfWidth);
-
                         break;
 
                 }
 
-
-
                 if (!inDanger) continue;
 
-
-
                 // Player flagship in manual control: never hijack helm!
-
                 if (isShipManualPlayerControlled(ship)) {
-
                     continue;
 
                 }
 
-
-
                 // AI Ships: execute evasive burn out of the stream path
-
                 float escapeWorldX = perpX * escapeDir;
-
                 float escapeWorldY = perpY * escapeDir;
-
-
-
                 float evadeDuration = Math.min(3.5f, Math.max(0.8f, timeToTail + 0.3f));
-
                 applyEvasiveManeuver(ship, escapeWorldX, escapeWorldY, evadeDuration);
 
-
-
                 // Shield orientation for incoming stream
-
                 if (enableShieldReaction && ship.getShield() != null) {
-
                     float angleToOrigin = computeAngle(sLoc.x, sLoc.y, oLoc.x, oLoc.y);
-
                     ShipAvoidanceState state = shipStates.get(ship);
-
                     if (state == null) {
-
                         state = new ShipAvoidanceState();
-
                         shipStates.put(ship, state);
 
                     }
 
                     state.targetAngle = angleToOrigin;
-
                     if (state.cooldown < 1.0f) state.cooldown = 1.0f;
-
-
-
                     if (ship.getShield().isOff() && ship.getFluxTracker() != null && ship.getFluxTracker().getFluxLevel() < 0.85f) {
-
                         if (ship.getShield().getType() == ShieldType.OMNI) {
                             ship.giveCommand(ShipCommand.TOGGLE_SHIELD_OR_PHASE_CLOAK, null, 0);
                         } else if (ship.getShield().getType() == ShieldType.FRONT) {
@@ -6826,77 +4903,35 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     }
 
-
-
     private void updateWrappedShips() {
-
         if (!enablePDTargeting || engine == null) return;
-
         List<ShipAPI> ships = engine.getShips();
-
         if (ships == null || ships.isEmpty()) return;
-
-
-
         for (int s = 0; s < ships.size(); s++) {
-
             ShipAPI ship = ships.get(s);
-
             if (ship == null || !ship.isAlive() || ship.isHulk()) continue;
-
-
-
             List<WeaponGroupAPI> groups = ship.getWeaponGroupsCopy();
-
             if (groups == null || groups.isEmpty()) continue;
-
-
-
             for (int g = 0; g < groups.size(); g++) {
-
                 WeaponGroupAPI group = groups.get(g);
-
                 if (group == null) continue;
-
-
-
                 List<WeaponAPI> weapons = group.getWeaponsCopy();
-
                 List<AutofireAIPlugin> aiPlugins = group.getAIPlugins();
-
                 if (weapons == null || aiPlugins == null) continue;
-
-
-
                 int count = Math.min(weapons.size(), aiPlugins.size());
-
                 for (int i = 0; i < count; i++) {
-
                     WeaponAPI weapon = weapons.get(i);
-
                     AutofireAIPlugin currentAI = aiPlugins.get(i);
-
-
-
                     if (currentAI instanceof AsteroidPDAutofirePlugin) {
-
                         continue;
 
                     }
 
-
-
                     if (weapon != null && isPDWeapon(weapon)) {
-
                         AsteroidPDAutofirePlugin wrapper = new AsteroidPDAutofirePlugin(currentAI, weapon);
-
                         try {
-
                             aiPlugins.set(i, wrapper);
-
-                        } catch (Throwable t) {
-
-                        }
+                        } catch (Throwable t) {}
 
                     }
 
@@ -6908,17 +4943,11 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     }
 
-
-
     public static boolean isPDWeapon(WeaponAPI weapon) {
-
         if (weapon == null) return false;
-
         return weapon.hasAIHint(AIHints.PD) || weapon.hasAIHint(AIHints.PD_ALSO) || weapon.hasAIHint(AIHints.PD_ONLY);
 
     }
-
-
 
     /**
 
@@ -6927,174 +4956,96 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
      */
 
     public static CombatEntityAPI findBestThreatForWeapon(WeaponAPI weapon) {
-
         if (instance == null || weapon == null) return null;
-
         ShipAPI ship = weapon.getShip();
-
         if (ship == null || !ship.isAlive() || ship.isHulk()) return null;
-
-
-
         List<CombatEntityAPI> threats = instance.fastThreats;
-
         if (threats == null || threats.isEmpty()) return null;
-
-
-
         Vector2f wLoc = weapon.getLocation();
-
         Vector2f sLoc = ship.getLocation();
-
         Vector2f sVel = ship.getVelocity();
-
         if (wLoc == null || sLoc == null || sVel == null) return null;
-
-
-
         float shipRadius = ship.getCollisionRadius();
-
         float weaponRange = weapon.getRange();
-
         float maxTrackRange = Math.max(weaponRange * 2.2f, 1100.0f);
-
         float maxTrackDistSq = maxTrackRange * maxTrackRange;
-
-
-
         CombatEntityAPI bestThreat = null;
-
         float bestScore = Float.MAX_VALUE;
-
-
-
         for (int i = 0; i < threats.size(); i++) {
-
             CombatEntityAPI ast = threats.get(i);
-
             if (ast == null || ast.isExpired()) continue;
 
-
+            // Point Defense must NEVER target colossal megaliths or easter eggs (wastes flux/ammo)
+            if (ast.getCustomData().containsKey("DA_IS_MEGALITH") || 
+                ast.getCustomData().containsKey("IS_EASTER_EGG") || 
+                ast.getCollisionRadius() >= 120.0f) {
+                continue;
+            }
 
             Vector2f aLoc = ast.getLocation();
-
             Vector2f aVel = ast.getVelocity();
-
             if (aLoc == null || aVel == null) continue;
-
-
-
             float dx = aLoc.x - wLoc.x;
-
             float dy = aLoc.y - wLoc.y;
-
             float distSq = dx * dx + dy * dy;
-
             if (distSq > maxTrackDistSq) continue;
 
-
-
             // Mount arc reachability check
-
             if (weapon.distanceFromArc(aLoc) > 28.0f) continue;
 
-
-
             // Relative closing velocity
-
             float rvx = aVel.x - sVel.x;
-
             float rvy = aVel.y - sVel.y;
-
             float relSpeedSq = rvx * rvx + rvy * rvy;
-
             if (relSpeedSq < 10000.0f) continue; // Minimum 100 u/s closing
 
-
-
             float sdx = aLoc.x - sLoc.x;
-
             float sdy = aLoc.y - sLoc.y;
-
             float dot = sdx * rvx + sdy * rvy;
-
             if (dot >= 0f) continue; // Moving away from the ship
 
-
-
             float tCpa = -dot / relSpeedSq;
-
             if (tCpa <= 0.01f || tCpa > 3.0f) continue;
-
-
-
             float cpaX = sdx + rvx * tCpa;
-
             float cpaY = sdy + rvy * tCpa;
-
             float cpaDistSq = cpaX * cpaX + cpaY * cpaY;
-
-
-
             float safeRad = shipRadius + ast.getCollisionRadius() + 80.0f;
-
             boolean isCollisionCourse = (cpaDistSq <= safeRad * safeRad);
-
-
-
             if (instance.pdCriticalThreatsOnly && !isCollisionCourse) {
-
                 if (cpaDistSq > (safeRad + 140.0f) * (safeRad + 140.0f)) {
-
                     continue;
 
                 }
 
             }
 
-
-
             float score = isCollisionCourse ? tCpa : (distSq / 1000000.0f + 5.0f);
-
             if (score < bestScore) {
-
                 bestScore = score;
-
                 bestThreat = ast;
 
             }
 
         }
 
-
-
         return bestThreat;
 
     }
-
-
 
     public static class AsteroidDamageModifier implements DamageTakenModifier {
 
         @Override
 
         public String modifyDamageTaken(Object paramObject, CombatEntityAPI target, DamageAPI damage, Vector2f point, boolean paramBoolean) {
-
             if (target == null || damage == null) return null;
 
-
-
             // 1. Asteroid collision damage to ships
-
             if (target instanceof ShipAPI) {
-
                 ShipAPI targetShip = (ShipAPI) target;
                 CombatEntityAPI source = (paramObject instanceof CombatEntityAPI) ? (CombatEntityAPI) paramObject : null;
                 boolean isAsteroidOrCollision = (source != null && (source.getCollisionClass() == CollisionClass.ASTEROID || source.getCustomData().containsKey(TRACKED_KEY)))
                     || (paramObject == null && damage.getType() == com.fs.starfarer.api.combat.DamageType.KINETIC);
-
                 if (isAsteroidOrCollision) {
-
                     if (source != null && (source.getCustomData().containsKey("DA_IS_MEGALITH") || source.getCustomData().containsKey("IS_EASTER_EGG"))) {
                         // Ship collided with megalith or derelict hulk: untether from scripted rails so it becomes a free physical body!
                         source.getCustomData().put("DA_NO_MAINTAIN_VELOCITY", Boolean.TRUE);
@@ -7111,7 +5062,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                             if (sData instanceof Float) spawnTime = (Float) sData;
                         }
                         float timeSinceSpawn = (spawnTime != null) ? (instance.totalCombatTime - spawnTime.floatValue()) : instance.totalCombatTime;
-
                         if (timeSinceSpawn >= 0f && timeSinceSpawn < instance.deploymentSafetyDuration) {
                             damage.getModifier().modifyMult("da_deployment_safety", instance.stationAsteroidDamageMult);
                             if (source != null && source.getCustomData().containsKey("DA_IS_MEGALITH")) {
@@ -7175,19 +5125,12 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                         // Collision damage remains heavy, dangerous and physical, just giving 30% more survivability.
                         if (contactingMegalith) {
                             damage.getModifier().modifyMult("da_megalith_cushion", 0.70f);
-
-                            if (instance != null && instance.engine != null && point != null) {
-                                instance.engine.addHitParticle(point, new Vector2f(0f, 0f), 80f, 0.5f, 0.35f, new Color(130, 220, 255, 220));
-                            }
                             return "da_megalith_cushion";
                         }
 
                         float mult = getAsteroidCollisionDamageMult();
-
                         if (Math.abs(mult - 1.0f) > 0.01f) {
-
                             damage.getModifier().modifyMult("da_asteroid_collision", mult);
-
                             return "da_asteroid_collision";
 
                         }
@@ -7196,24 +5139,17 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
                         // Easter egg collided with a ship! Disable velocity correction permanently
                         source.getCustomData().put("DA_NO_MAINTAIN_VELOCITY", Boolean.TRUE);
-
                         String eggType = (String) source.getCustomData().get("EASTER_EGG_TYPE");
                         if ("EXPLOSIVE_TANK".equals(eggType) && instance != null) {
-
                             instance.triggerTankExplosion(source, (ShipAPI) target);
-
                         } else if ("DERELICT".equals(eggType)) {
 
                             // Derelict hulk soft-scrape protection: 90% collision damage reduction so ships don't wreck themselves!
                             damage.getModifier().modifyMult("da_derelict_scrape", 0.10f);
                             return "da_derelict_scrape";
-
                         } else if (instance != null) {
-
                             damage.getModifier().modifyMult("da_salvage_pickup", 0.0f);
-
                             instance.triggerSalvagePickup(source, (ShipAPI) target);
-
                             return "da_salvage_pickup";
 
                         }
@@ -7223,8 +5159,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                 }
 
             }
-
-
 
             // 1.5. Megalith Asteroid Immunity & Interactive Physical Untethering
             if (target.getCustomData().containsKey("DA_IS_MEGALITH")) {
@@ -7273,52 +5207,30 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
                 if (isAsteroidOrMegalithSource) {
                     damage.getModifier().modifyMult("da_megalith_asteroid_immunity", 0.0f);
-                    if (instance != null && instance.engine != null && point != null) {
-                        instance.engine.addHitParticle(point, new Vector2f(0f, 0f), 65f, 0.4f, 0.35f, new Color(220, 210, 195, 200));
-                        instance.engine.addSmoothParticle(point, new Vector2f(0f, 0f), 90f, 0.6f, 0.5f, new Color(190, 180, 170, 140));
-                    }
                     return "da_megalith_asteroid_immunity";
                 }
             }
 
             // 2. Arrival protection and interaction triggers for Easter Eggs & Derelicts
-
             if (target.getCustomData().containsKey("IS_EASTER_EGG")) {
-
                 String eggType = (String) target.getCustomData().get("EASTER_EGG_TYPE");
-
-
-
                 if ("DERELICT".equals(eggType)) {
-
                     boolean engaged = Boolean.TRUE.equals(target.getCustomData().get("DERELICT_PLAYER_ENGAGED"));
-
                     if (!engaged) {
-
                         ShipAPI sourceShip = extractShipFromSource(paramObject);
-
                         if (sourceShip != null && isPlayerSideShip(sourceShip)) {
-
                             target.getCustomData().put("DERELICT_PLAYER_ENGAGED", Boolean.TRUE);
-
                             engaged = true;
 
                         }
 
                     }
 
-
-
                     // Before player/ally engagement: immune to damage from asteroids and debris impacts
-
                     if (!engaged && paramObject instanceof CombatEntityAPI) {
-
                         CombatEntityAPI source = (CombatEntityAPI) paramObject;
-
                         if (source.getCollisionClass() == CollisionClass.ASTEROID || source.getCustomData().containsKey(TRACKED_KEY)) {
-
                             damage.getModifier().modifyMult("da_derelict_arrival_immunity", 0.0f);
-
                             return "da_derelict_arrival_immunity";
 
                         }
@@ -7326,23 +5238,14 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                     }
 
                 } else {
-
                     if (paramObject instanceof ShipAPI || paramObject instanceof DamagingProjectileAPI || paramObject instanceof BeamAPI || paramObject instanceof MissileAPI) {
-
                         target.getCustomData().put("DA_NO_MAINTAIN_VELOCITY", Boolean.TRUE);
-
                         if (paramObject instanceof ShipAPI && instance != null) {
-
                             if ("EXPLOSIVE_TANK".equals(eggType)) {
-
                                 instance.triggerTankExplosion(target, (ShipAPI) paramObject);
-
                             } else {
-
                                 damage.getModifier().modifyMult("da_salvage_pickup", 0.0f);
-
                                 instance.triggerSalvagePickup(target, (ShipAPI) paramObject);
-
                                 return "da_salvage_pickup";
 
                             }
@@ -7351,18 +5254,11 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
                     }
 
-
-
                     if (paramObject instanceof CombatEntityAPI) {
-
                         CombatEntityAPI source = (CombatEntityAPI) paramObject;
-
                         if (source.getCollisionClass() == CollisionClass.ASTEROID || source.getCustomData().containsKey(TRACKED_KEY)) {
-
                             if (!source.getCustomData().containsKey("IS_EASTER_EGG")) {
-
                                 damage.getModifier().modifyMult("da_egg_rubbing_immunity", 0.0f);
-
                                 return "da_egg_rubbing_immunity";
 
                             }
@@ -7375,20 +5271,12 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
             }
 
-
-
             // 3. Point Defense shatter bonus against normal asteroids
-
             if (target.getCollisionClass() == CollisionClass.ASTEROID || target.getCustomData().containsKey(TRACKED_KEY)) {
-
                 if (!target.getCustomData().containsKey("IS_EASTER_EGG") && !target.getCustomData().containsKey("DA_IS_MEGALITH") && isPDSource(paramObject)) {
-
                     float mult = getPDAsteroidDamageMult();
-
                     if (mult > 1.0f) {
-
                         damage.getModifier().modifyMult("da_pd_shatter", mult);
-
                         return "da_pd_shatter";
 
                     }
@@ -7397,48 +5285,29 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
             }
 
-
-
             return null;
 
         }
 
     }
 
-
-
     public static float getPDAsteroidDamageMult() {
-
         return instance != null ? instance.pdAsteroidDamageMult : 8.0f;
 
     }
 
-
-
         public static ShipAPI extractShipFromSource(Object paramObject) {
-
         if (paramObject instanceof ShipAPI) {
-
             return (ShipAPI) paramObject;
-
         } else if (paramObject instanceof DamagingProjectileAPI) {
-
             DamagingProjectileAPI proj = (DamagingProjectileAPI) paramObject;
-
             if (proj.getSource() instanceof ShipAPI) return (ShipAPI) proj.getSource();
-
             if (proj.getWeapon() != null) return proj.getWeapon().getShip();
-
         } else if (paramObject instanceof BeamAPI) {
-
             return ((BeamAPI) paramObject).getSource();
-
         } else if (paramObject instanceof MissileAPI) {
-
             return ((MissileAPI) paramObject).getSource();
-
         } else if (paramObject instanceof WeaponAPI) {
-
             return ((WeaponAPI) paramObject).getShip();
 
         }
@@ -7447,20 +5316,12 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     }
 
-
-
     public static WeaponAPI extractWeaponFromSource(Object paramObject) {
-
         if (paramObject instanceof DamagingProjectileAPI) {
-
             return ((DamagingProjectileAPI) paramObject).getWeapon();
-
         } else if (paramObject instanceof BeamAPI) {
-
             return ((BeamAPI) paramObject).getWeapon();
-
         } else if (paramObject instanceof WeaponAPI) {
-
             return (WeaponAPI) paramObject;
 
         }
@@ -7469,28 +5330,18 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     }
 
-
-
     public static boolean isPDSource(Object paramObject) {
-
         WeaponAPI w = extractWeaponFromSource(paramObject);
-
         if (w != null) {
-
             return isPDWeapon(w);
 
         }
 
         if (paramObject instanceof MissileAPI) {
-
             MissileAPI m = (MissileAPI) paramObject;
-
             if (m.getWeaponSpec() != null && m.getWeaponSpec().getAIHints() != null) {
-
                 return m.getWeaponSpec().getAIHints().contains(AIHints.PD) || 
-
                        m.getWeaponSpec().getAIHints().contains(AIHints.PD_ALSO) || 
-
                        m.getWeaponSpec().getAIHints().contains(AIHints.PD_ONLY);
 
             }
@@ -7501,108 +5352,56 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     }
 
-
-
     // --- Static Interop Methods for AsteroidPDAutofirePlugin ---
 
     public static boolean isPDTargetingEnabled() {
-
         return instance != null && instance.enablePDTargeting;
 
     }
 
-
-
     public static boolean isPDFluxExceeded(ShipAPI ship) {
-
         if (instance == null || !instance.enablePDFluxSafety || ship == null) return false;
-
         if (ship.getFluxTracker() == null) return false;
-
         return ship.getFluxTracker().getFluxLevel() >= instance.pdMaxFluxThreshold;
 
     }
 
-
-
     public static boolean isShipUnderManualPlayerControl(ShipAPI ship) {
-
         return instance != null && instance.isShipManualPlayerControlled(ship);
 
     }
 
-    private boolean stateIsNull(ShipAPI ship) {
-
-        return !shipStates.containsKey(ship) || shipStates.get(ship) == null;
-
-    }
-
-
+    // REMOVED: stateIsNull() — was a trivial one-line wrapper, inlined at call site
 
     private static float computeAngle(float fromX, float fromY, float toX, float toY) {
-
         float angle = (float) Math.toDegrees(Math.atan2(toY - fromY, toX - fromX));
-
         if (angle < 0f) angle += 360f;
-
         return angle;
 
     }
 
-
-
     private static float getShortestRotation(float from, float to) {
-
         float diff = (to - from) % 360f;
-
         if (diff > 180f) diff -= 360f;
-
         if (diff < -180f) diff += 360f;
-
         return diff;
 
     }
 
-
-
-    private static void updateFixedShieldFacingCommand(ShipAPI ship, ShipAvoidanceState state) {
-        if (state != null) state.activeTurnCommand = null;
-    }
+    // REMOVED: updateFixedShieldFacingCommand — dead code, was never called
     private static float normalizeAngle(float angle) {
-
         angle = angle % 360f;
-
         if (angle < 0f) angle += 360f;
-
         return angle;
 
     }
 
-
-
-
-
     public static float getAsteroidCollisionDamageMult() {
-
         return instance != null ? instance.asteroidCollisionDamageMult : 1.0f;
 
     }
 
-
-
-    @Deprecated
-
-    public static class EasterEggRenderer extends BaseCombatLayeredRenderingPlugin {
-
-        public EasterEggRenderer(String spritePath, float radius, DynamicAsteroidsCombatPlugin parent) {
-
-            super(CombatEngineLayers.ASTEROIDS_LAYER);
-
-        }
-
-    }
-
-
+    // REMOVED: @Deprecated EasterEggRenderer — dead inner class, empty body, never used
 
         public static class DerelictSalvageRecord {
 
@@ -7620,25 +5419,16 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
         public boolean destroyed = false;
 
-
-
         public DerelictSalvageRecord(String variantId, String hullName, float rescueChance, float minDmodProb, float maxDmodProb) {
-
             this.variantId = variantId;
-
             this.hullName = hullName;
-
             this.rescueChance = rescueChance;
-
             this.minDmodProb = minDmodProb;
-
             this.maxDmodProb = maxDmodProb;
 
         }
 
     }
-
-
 
     public static class DerelictRecoveryCampaignListener extends BaseCampaignEventListener implements com.fs.starfarer.api.EveryFrameScript {
 
@@ -7649,8 +5439,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         public static final List<DerelictSalvageRecord> pendingDeliveries = new ArrayList<DerelictSalvageRecord>();
 
         private boolean processed = false;
-
-
 
         public static synchronized void ensureRegistered() {
             try {
@@ -7677,34 +5465,21 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
             }
         }
 
-
-
         public static synchronized void clearQueue() {
-
             pendingDeliveries.clear();
-
             if (instance != null) {
-
                 instance.processed = false;
 
             }
 
         }
 
-
-
         public static synchronized void queueForRecovery(DerelictSalvageRecord rec) {
-
             if (rec == null || rec.variantId == null) return;
-
             ensureRegistered();
-
             for (DerelictSalvageRecord existing : pendingDeliveries) {
-
                 if (rec.variantId.equals(existing.variantId)) {
-
                     log.info("Dynamic Asteroids: Derelict [" + rec.variantId + "] already in pendingDeliveries queue, updating.");
-
                     return;
 
                 }
@@ -7712,187 +5487,112 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
             }
 
             pendingDeliveries.add(rec);
-
             log.info("Dynamic Asteroids: QUEUED derelict [" + rec.variantId + "] (" + rec.hullName + ") for direct fleet transfer! (Queue count: " + pendingDeliveries.size() + ")");
 
         }
 
-
-
         public DerelictRecoveryCampaignListener() {
-
             super(true); // transient
 
         }
 
-
-
         @Override
 
         public void reportPlayerEngagement(EngagementResultAPI result) {
-
             log.info("Dynamic Asteroids: reportPlayerEngagement called by Sector battle resolver.");
-
             deliverAllPendingToFleet();
 
         }
 
-
-
         @Override
         public boolean isDone() {
+            // Must return false so the transient campaign listener remains active across all battles during the session
             return false;
         }
-
-
 
         @Override
 
         public boolean runWhilePaused() {
-
             return true;
 
         }
 
-
-
         @Override
 
         public void advance(float amount) {
-
             if (!pendingDeliveries.isEmpty()) {
-
                 log.info("Dynamic Asteroids: EveryFrameScript.advance delivering " + pendingDeliveries.size() + " pending derelict(s) on campaign map.");
-
                 deliverAllPendingToFleet();
 
             }
 
         }
 
-
-
         private synchronized void deliverAllPendingToFleet() {
-
             if (pendingDeliveries.isEmpty()) return;
-
             try {
-
                 if (Global.getSector() == null) return;
-
                 CampaignFleetAPI playerFleet = Global.getSector().getPlayerFleet();
-
                 if (playerFleet == null) return;
-
-
-
                 log.info("Dynamic Asteroids: Executing direct fleet delivery for " + pendingDeliveries.size() + " derelict(s)...");
-
-
-
                 Random rnd = new Random();
-
                 List<DerelictSalvageRecord> toProcess = new ArrayList<DerelictSalvageRecord>(pendingDeliveries);
-
                 pendingDeliveries.clear();
-
                 processed = true;
-
-
-
                 for (DerelictSalvageRecord rec : toProcess) {
-
                     if (rec == null || rec.variantId == null) continue;
-
                     log.info("Dynamic Asteroids: Processing delivery for [" + rec.variantId + "], rescueChance=" + rec.rescueChance);
-
-
-
                     if (rec.rescueChance <= 0f) {
-
                         log.info("Dynamic Asteroids: Rescue chance <= 0, skipping.");
-
                         continue;
 
                     }
 
                     if (rec.rescueChance < 1.0f && rnd.nextFloat() > rec.rescueChance) {
-
                         log.info("Dynamic Asteroids: Rescue chance roll failed (" + rec.rescueChance + "), derelict lost.");
-
                         continue;
 
                     }
 
-
-
                     FleetMemberAPI member = null;
-
                     try {
-
                         member = Global.getFactory().createFleetMember(FleetMemberType.SHIP, rec.variantId);
-
                     } catch (Throwable t) {
-
                         log.error("Dynamic Asteroids: Failed to create fleet member for [" + rec.variantId + "]: " + t.getMessage(), t);
 
                     }
 
                     if (member == null) continue;
-
-
-
                     member.setOwner(0);
 
-
-
                     // Apply standard Starsector recovery rules (weapons, d-mods, s-mods)
-
                     try {
-
                         FleetEncounterContext.prepareShipForRecovery(member, false, false, true, rec.minDmodProb, rec.maxDmodProb, rnd);
-
                     } catch (Throwable t) {
-
                         log.error("Dynamic Asteroids: prepareShipForRecovery error: " + t.getMessage());
 
                     }
 
-
-
                     if (rec.destroyed) {
-
                         try {
-
                             com.fs.starfarer.api.impl.campaign.DModManager.addDMods(member, true, 2 + rnd.nextInt(3), rnd);
-
                             com.fs.starfarer.api.impl.campaign.DModManager.setDHull(member.getVariant());
-
                         } catch (Throwable t2) {}
-
                     } else if (rec.outOfBounds) {
-
                         try {
-
                             com.fs.starfarer.api.impl.campaign.DModManager.addDMods(member, true, 1 + rnd.nextInt(2), rnd);
-
                             com.fs.starfarer.api.impl.campaign.DModManager.setDHull(member.getVariant());
-
                         } catch (Throwable t2) {}
 
                     }
 
-
-
                     member.getRepairTracker().setCR(0.40f);
-
                     playerFleet.getFleetData().addFleetMember(member);
                     try {
                         playerFleet.getFleetData().setSyncNeeded();
                         playerFleet.getFleetData().syncIfNeeded();
                         playerFleet.getFleetData().updateCargoCapacities();
                     } catch (Throwable syncErr) {}
-
                     log.info("Dynamic Asteroids: >>> SUCCESS! Successfully added " + member.getShipName() + " [" + rec.variantId + "] directly to player fleet! Total fleet size: " + playerFleet.getFleetData().getMembersListCopy().size());
                     try {
                         if (Global.getSector() != null && Global.getSector().getCampaignUI() != null) {
@@ -7906,7 +5606,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                 }
 
             } catch (Throwable t) {
-
                 log.error("Dynamic Asteroids: Error in deliverAllPendingToFleet: " + t.getMessage(), t);
 
             }
@@ -7915,31 +5614,18 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     }
 
-
-
     public void triggerTankExplosion(CombatEntityAPI tank, ShipAPI hitShip) {
-
         if (tank == null || tank.isExpired() || engine == null) return;
-
         removeEasterEggEntity(tank);
-
-
-
         Vector2f loc = tank.getLocation();
-
         if (loc == null) return;
-
-
-
         try {
-
             DamagingExplosionSpec spec = new DamagingExplosionSpec(
                 0.25f, 480f, 220f, 3200f, 1500f,
                 CollisionClass.HITS_SHIPS_AND_ASTEROIDS, CollisionClass.HITS_SHIPS_AND_ASTEROIDS,
                 4f, 8f, 1.0f, 80,
                 new Color(255, 70, 20, 255), new Color(255, 190, 60, 230)
             );
-
             spec.setDamageType(com.fs.starfarer.api.combat.DamageType.HIGH_EXPLOSIVE);
             spec.setMaxEMPDamage(1800f);
             spec.setMinEMPDamage(800f);
@@ -7954,17 +5640,11 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
             }
 
             Global.getSoundPlayer().playSound("explosion_ship", 1.0f, 1.0f, loc, new Vector2f());
-
-
-
             if (engine.getCombatUI() != null && !isTitleScreen) {
-
                 String shipLabel = (hitShip != null) ? hitShip.getName() : null;
-
                 String msg = (shipLabel != null) ?
                     (IS_RUSSIAN ? ("ДЕТОНАЦИЯ: Взрывоопасный бак с горючим разнёс " + shipLabel + "!") : ("DETONATION: Explosive volatile fuel tank detonated against " + shipLabel + "!")) :
                     (IS_RUSSIAN ? "ВЗРЫВ: Взрывоопасный бак сдетонировал мощным фугасным зарядом!" : "EXPLOSION: Volatile fuel tank detonated in a massive high-explosive blast!");
-
                 engine.getCombatUI().addMessage(1, msg, new Color(255, 70, 30));
 
             }
@@ -7973,36 +5653,20 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     }
 
-
-
     public void triggerSalvagePickup(CombatEntityAPI entity, ShipAPI ship) {
-
         if (entity == null || entity.isExpired() || engine == null) return;
-
         String eggType = (String) entity.getCustomData().get("EASTER_EGG_TYPE");
 
-
-
         // Before player engagement: allow asteroid impact vector deflection but cap speed magnitude to cruising speed (250)
-
         if ("DERELICT".equals(eggType)) {
-
             boolean engaged = Boolean.TRUE.equals(entity.getCustomData().get("DERELICT_PLAYER_ENGAGED"));
-
             if (!engaged) {
-
                 Vector2f vel = entity.getVelocity();
-
                 if (vel != null) {
-
                     float curSpeedSq = vel.x * vel.x + vel.y * vel.y;
-
                     float maxCruising = 250.0f;
-
                     if (curSpeedSq > maxCruising * maxCruising) {
-
                         float curSpeed = (float) Math.sqrt(curSpeedSq);
-
                         vel.scale(maxCruising / curSpeed);
 
                     }
@@ -8014,51 +5678,27 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         }
 
         Vector2f loc = entity.getLocation();
-
         removeEasterEggEntity(entity);
-
         if (loc == null) return;
-
-
-
         try {
-
             Global.getSoundPlayer().playUISound("ui_cargo_transfer", 1.0f, 1.0f);
-
         } catch (Throwable t) {}
-
-
-
         for (int i = 0; i < 14; i++) {
-
             float angle = random.nextFloat() * 6.28f;
-
             float spd = 60f + random.nextFloat() * 120f;
-
             Vector2f pVel = new Vector2f((float)Math.cos(angle) * spd, (float)Math.sin(angle) * spd);
-
             engine.addHitParticle(loc, pVel, 8f + random.nextFloat() * 10f, 0.9f, 0.35f, new Color(255, 220, 100, 240));
 
         }
 
-
-
         if ("CACHE".equals(eggType)) {
-
             int supplies = 35 + random.nextInt(36);
-
             int fuel = 20 + random.nextInt(31);
-
             try {
-
                 if (engine.isInCampaign() && Global.getSector() != null && Global.getSector().getPlayerFleet() != null) {
-
                     CargoAPI cargo = Global.getSector().getPlayerFleet().getCargo();
-
                     if (cargo != null) {
-
                         cargo.addSupplies(supplies);
-
                         cargo.addFuel(fuel);
 
                     }
@@ -8066,39 +5706,23 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                 }
 
             } catch (Throwable t) {}
-
-
-
             String txt = IS_RUSSIAN ?
-
                 ("ТАЙНИК СОБРАН: +" + supplies + " припасов, +" + fuel + " топлива!") :
-
                 ("CACHE RECOVERED: +" + supplies + " supplies, +" + fuel + " fuel!");
-
             engine.addFloatingText(loc, txt, 22f, new Color(255, 215, 60), entity, 0.3f, 3.0f);
-
             if (engine.getCombatUI() != null && !isTitleScreen) {
-
                 engine.getCombatUI().addMessage(1, txt, new Color(255, 215, 60));
 
             }
 
         } else if ("PROBE".equals(eggType)) {
-
             int metals = 60 + random.nextInt(61);
-
             int rareMetals = 20 + random.nextInt(26);
-
             try {
-
                 if (engine.isInCampaign() && Global.getSector() != null && Global.getSector().getPlayerFleet() != null) {
-
                     CargoAPI cargo = Global.getSector().getPlayerFleet().getCargo();
-
                     if (cargo != null) {
-
                         cargo.addCommodity("metals", metals);
-
                         cargo.addCommodity("rare_metals", rareMetals);
 
                     }
@@ -8106,39 +5730,23 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                 }
 
             } catch (Throwable t) {}
-
-
-
             String txt = IS_RUSSIAN ?
-
                 ("ЗОНД ИССЛЕДОВАН: Данные датчиков, +" + metals + " металлов, +" + rareMetals + " редких металлов!") :
-
                 ("PROBE SALVAGED: Sensor data, +" + metals + " metals, +" + rareMetals + " rare metals!");
-
             engine.addFloatingText(loc, txt, 22f, new Color(80, 230, 255), entity, 0.3f, 3.0f);
-
             if (engine.getCombatUI() != null && !isTitleScreen) {
-
                 engine.getCombatUI().addMessage(1, txt, new Color(80, 230, 255));
 
             }
 
         } else if ("CRYO_POD".equals(eggType)) {
-
             int crew = 12 + random.nextInt(17);
-
             int supplies = 15 + random.nextInt(16);
-
             try {
-
                 if (engine.isInCampaign() && Global.getSector() != null && Global.getSector().getPlayerFleet() != null) {
-
                     CargoAPI cargo = Global.getSector().getPlayerFleet().getCargo();
-
                     if (cargo != null) {
-
                         cargo.addCrew(crew);
-
                         cargo.addSupplies(supplies);
 
                     }
@@ -8146,39 +5754,23 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                 }
 
             } catch (Throwable t) {}
-
-
-
             String txt = IS_RUSSIAN ?
-
                 ("КРИОКАПСУЛА СПАСЕНА: +" + crew + " выживших членов экипажа, +" + supplies + " припасов!") :
-
                 ("CRYO POD SALVAGED: +" + crew + " rescued crew members, +" + supplies + " supplies!");
-
             engine.addFloatingText(loc, txt, 22f, new Color(60, 255, 140), entity, 0.3f, 3.0f);
-
             if (engine.getCombatUI() != null && !isTitleScreen) {
-
                 engine.getCombatUI().addMessage(1, txt, new Color(60, 255, 140));
 
             }
 
         } else if ("NAV_BUOY".equals(eggType)) {
-
             int machinery = 15 + random.nextInt(16);
-
             int volatiles = 15 + random.nextInt(16);
-
             try {
-
                 if (engine.isInCampaign() && Global.getSector() != null && Global.getSector().getPlayerFleet() != null) {
-
                     CargoAPI cargo = Global.getSector().getPlayerFleet().getCargo();
-
                     if (cargo != null) {
-
                         cargo.addCommodity("heavy_machinery", machinery);
-
                         cargo.addCommodity("volatiles", volatiles);
 
                     }
@@ -8186,43 +5778,24 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                 }
 
             } catch (Throwable t) {}
-
-
-
             String txt = IS_RUSSIAN ?
-
                 ("БУЙ ДЕМОНТИРОВАН: +" + machinery + " тяжёлого оборудования, +" + volatiles + " летучих веществ!") :
-
                 ("BUOY DECONSTRUCTED: +" + machinery + " heavy machinery, +" + volatiles + " volatiles!");
-
             engine.addFloatingText(loc, txt, 22f, new Color(190, 130, 255), entity, 0.3f, 3.0f);
-
             if (engine.getCombatUI() != null && !isTitleScreen) {
-
                 engine.getCombatUI().addMessage(1, txt, new Color(190, 130, 255));
 
             }
 
         } else if ("FIGHTER".equals(eggType)) {
-
             String wingId = (String) entity.getCustomData().get("FIGHTER_WING_ID");
-
             String wingName = (String) entity.getCustomData().get("FIGHTER_WING_NAME");
-
             if (wingName == null && wingId != null) wingName = wingId;
-
             if (wingName == null) wingName = IS_RUSSIAN ? "Истребитель" : "Fighter";
-
-
-
             try {
-
                 if (engine.isInCampaign() && Global.getSector() != null && Global.getSector().getPlayerFleet() != null) {
-
                     CargoAPI cargo = Global.getSector().getPlayerFleet().getCargo();
-
                     if (cargo != null && wingId != null) {
-
                         cargo.addFighters(wingId, 1);
 
                     }
@@ -8230,45 +5803,26 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                 }
 
             } catch (Throwable t) {}
-
-
-
             String txt = IS_RUSSIAN ?
-
                 ("ИСТРЕБИТЕЛЬ ЭВАКУИРОВАН: " + wingName + " (чип LPC в трюме)!") :
-
                 ("FIGHTER RECOVERED: " + wingName + " (LPC added to cargo)!");
-
             engine.addFloatingText(loc, txt, 22f, new Color(100, 240, 255), entity, 0.3f, 3.5f);
-
             if (engine.getCombatUI() != null && !isTitleScreen) {
-
                 String logMsg = IS_RUSSIAN ?
-
                     ("СЕНСОРЫ: Истребитель " + wingName + " взят на борт и законсервирован в трюме!") :
-
                     ("SENSORS: Fighter " + wingName + " secured and stored in fleet cargo!");
-
                 engine.getCombatUI().addMessage(1, logMsg, new Color(100, 240, 255));
 
             }
 
         } else {
-
             int metals = 60 + random.nextInt(41);
-
             int rareMetals = 15 + random.nextInt(16);
-
             try {
-
                 if (engine.isInCampaign() && Global.getSector() != null && Global.getSector().getPlayerFleet() != null) {
-
                     CargoAPI cargo = Global.getSector().getPlayerFleet().getCargo();
-
                     if (cargo != null) {
-
                         cargo.addCommodity("metals", metals);
-
                         cargo.addCommodity("rare_metals", rareMetals);
 
                     }
@@ -8276,19 +5830,11 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                 }
 
             } catch (Throwable t) {}
-
-
-
             String txt = IS_RUSSIAN ?
-
                 ("ДРЕВНИЙ ДВИГАТЕЛЬ РАЗОБРАН: +" + metals + " металлов, +" + rareMetals + " редких металлов!") :
-
                 ("ANCIENT ENGINE DISMANTLED: +" + metals + " metals, +" + rareMetals + " rare metals!");
-
             engine.addFloatingText(loc, txt, 20f, new Color(200, 215, 230), entity, 0.3f, 2.5f);
-
             if (engine.getCombatUI() != null && !isTitleScreen) {
-
                 engine.getCombatUI().addMessage(1, txt, new Color(200, 215, 230));
 
             }
@@ -8297,215 +5843,118 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     }
 
-
-
     public void triggerSalvageDestruction(CombatEntityAPI entity) {
-
         if (entity == null || entity.isExpired() || engine == null) return;
-
         String eggType = (String) entity.getCustomData().get("EASTER_EGG_TYPE");
-
         Vector2f loc = entity.getLocation();
-
         removeEasterEggEntity(entity);
-
         if (loc == null) return;
-
-
-
         Color dustColor = new Color(140, 130, 115, 130);
-
         float radius = Math.max(30f, entity.getCollisionRadius());
-
         engine.addSmokeParticle(loc, new Vector2f(), radius * 1.2f, 0.5f, 0.8f, dustColor);
-
-
-
         try {
-
             Global.getSoundPlayer().playSound("explosion_small", 1.0f, 1.0f, loc, new Vector2f());
-
         } catch (Throwable t) {}
-
-
-
         if ("CACHE".equals(eggType)) {
-
             int supplies = 10 + random.nextInt(16);
-
             try {
-
                 if (engine.isInCampaign() && Global.getSector() != null && Global.getSector().getPlayerFleet() != null) {
-
                     CargoAPI cargo = Global.getSector().getPlayerFleet().getCargo();
-
                     if (cargo != null) cargo.addSupplies(supplies);
 
                 }
 
             } catch (Throwable t) {}
-
-
-
             String txt = IS_RUSSIAN ?
-
                 ("ТАЙНИК ВСКРЫТ ОГНЕМ: Уцелело +" + supplies + " припасов!") :
-
                 ("CACHE BREACHED: Salvaged +" + supplies + " supplies!");
-
             engine.addFloatingText(loc, txt, 20f, new Color(255, 180, 60), entity, 0.3f, 2.5f);
-
             if (engine.getCombatUI() != null && !isTitleScreen) {
-
                 engine.getCombatUI().addMessage(1, txt, new Color(255, 180, 60));
 
             }
 
         } else if ("PROBE".equals(eggType)) {
-
             int metals = 25 + random.nextInt(26);
-
             try {
-
                 if (engine.isInCampaign() && Global.getSector() != null && Global.getSector().getPlayerFleet() != null) {
-
                     CargoAPI cargo = Global.getSector().getPlayerFleet().getCargo();
-
                     if (cargo != null) cargo.addCommodity("metals", metals);
 
                 }
 
             } catch (Throwable t) {}
-
-
-
             String txt = IS_RUSSIAN ?
-
                 ("ЗОНД УНИЧТОЖЕН: Подобрано +" + metals + " металлов") :
-
                 ("PROBE DESTROYED: Gathered +" + metals + " metals");
-
             engine.addFloatingText(loc, txt, 20f, new Color(120, 200, 240), entity, 0.3f, 2.5f);
-
         } else if ("CRYO_POD".equals(eggType)) {
-
             int supplies = 8 + random.nextInt(9);
-
             try {
-
                 if (engine.isInCampaign() && Global.getSector() != null && Global.getSector().getPlayerFleet() != null) {
-
                     CargoAPI cargo = Global.getSector().getPlayerFleet().getCargo();
-
                     if (cargo != null) cargo.addSupplies(supplies);
 
                 }
 
             } catch (Throwable t) {}
-
-
-
             String txt = IS_RUSSIAN ?
-
                 ("КРИОКАПСУЛА РАЗРУШЕНА: Экипаж погиб, уцелело +" + supplies + " припасов") :
-
                 ("CRYO POD DESTROYED: Crew lost, salvaged +" + supplies + " supplies");
-
             engine.addFloatingText(loc, txt, 20f, new Color(255, 120, 100), entity, 0.3f, 2.5f);
-
         } else if ("NAV_BUOY".equals(eggType)) {
-
             int machinery = 8 + random.nextInt(9);
-
             try {
-
                 if (engine.isInCampaign() && Global.getSector() != null && Global.getSector().getPlayerFleet() != null) {
-
                     CargoAPI cargo = Global.getSector().getPlayerFleet().getCargo();
-
                     if (cargo != null) cargo.addCommodity("heavy_machinery", machinery);
 
                 }
 
             } catch (Throwable t) {}
-
-
-
             String txt = IS_RUSSIAN ?
-
                 ("БУЙ ВЗОРВАН: Подобрано +" + machinery + " оборудования") :
-
                 ("BUOY DESTROYED: Gathered +" + machinery + " machinery");
-
             engine.addFloatingText(loc, txt, 20f, new Color(180, 140, 240), entity, 0.3f, 2.5f);
-
         } else if ("FIGHTER".equals(eggType)) {
-
             String wingName = (String) entity.getCustomData().get("FIGHTER_WING_NAME");
-
             if (wingName == null) wingName = IS_RUSSIAN ? "Истребитель" : "Fighter";
-
             int metals = 5 + random.nextInt(6);
-
             try {
-
                 if (engine.isInCampaign() && Global.getSector() != null && Global.getSector().getPlayerFleet() != null) {
-
                     CargoAPI cargo = Global.getSector().getPlayerFleet().getCargo();
-
                     if (cargo != null) cargo.addCommodity("metals", metals);
 
                 }
 
             } catch (Throwable t) {}
-
-
-
             String txt = IS_RUSSIAN ?
-
                 ("ИСТРЕБИТЕЛЬ РАЗРУШЕН ОГНЕМ: Чип LPC сгорел, собрано +" + metals + " металлов") :
-
                 ("FIGHTER DESTROYED BY FIRE: LPC lost, salvaged +" + metals + " metals");
-
             engine.addFloatingText(loc, txt, 20f, new Color(255, 120, 90), entity, 0.3f, 2.8f);
-
             if (engine.getCombatUI() != null && !isTitleScreen) {
-
                 engine.getCombatUI().addMessage(1, txt, new Color(255, 120, 90));
 
             }
 
         } else {
-
             int metals = 25 + random.nextInt(26);
-
             try {
-
                 if (engine.isInCampaign() && Global.getSector() != null && Global.getSector().getPlayerFleet() != null) {
-
                     CargoAPI cargo = Global.getSector().getPlayerFleet().getCargo();
-
                     if (cargo != null) cargo.addCommodity("metals", metals);
 
                 }
 
             } catch (Throwable t) {}
-
-
-
             String txt = IS_RUSSIAN ?
-
                 ("ОБЛОМКИ РАЗРУШЕНЫ: +" + metals + " металлов") :
-
                 ("DEBRIS DESTROYED: +" + metals + " metals");
-
             engine.addFloatingText(loc, txt, 18f, new Color(180, 195, 210), entity, 0.3f, 2.2f);
 
         }
 
     }
-
-
 
         private static boolean isEntityWithinShieldArc(ShipAPI ship, Vector2f targetLoc) {
         if (ship == null || targetLoc == null) return false;
@@ -8513,19 +5962,16 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
         ShieldAPI shield = ship.getShield();
         if (shield == null || !shield.isOn() || shield.isOff()) return false;
-
         float arc = shield.getArc();
         if (arc >= 359f) return true; // Omnidirectional 360 degree shield
 
         Vector2f shieldCenter = shield.getLocation();
         if (shieldCenter == null) shieldCenter = ship.getLocation();
         if (shieldCenter == null) return false;
-
         float toTargetX = targetLoc.x - shieldCenter.x;
         float toTargetY = targetLoc.y - shieldCenter.y;
         float angleToTarget = (float) Math.toDegrees(Math.atan2(toTargetY, toTargetX));
         if (angleToTarget < 0f) angleToTarget += 360f;
-
         float shieldFacing = shield.getFacing();
         float diff = Math.abs(getShortestRotation(shieldFacing, angleToTarget));
 
@@ -8536,30 +5982,24 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
     private void applyShieldMagnet(CombatEntityAPI entity, List<ShipAPI> ships, float amount) {
         if (!shieldMagnetEnabled || easterEggMagnetStrength <= 0f || amount <= 0f || entity == null) return;
         if (!Boolean.TRUE.equals(entity.getCustomData().get("IS_EASTER_EGG"))) return;
-
         Vector2f eggLoc = entity.getLocation();
         Vector2f eggVelocity = entity.getVelocity();
         if (eggLoc == null || eggVelocity == null) return;
-
         ShipAPI closestShieldedShip = null;
         float closestDistanceSq = Float.MAX_VALUE;
         float closestShipRange = 1350f;
-
         for (int i = 0; i < ships.size(); i++) {
             ShipAPI ship = ships.get(i);
             if (ship == null || !ship.isAlive() || ship.isHulk() || !isPlayerSideShip(ship)) continue;
-
             boolean shieldActive = (ship.getShield() != null && ship.getShield().isOn() && !ship.getShield().isOff());
             boolean phaseActive = ship.isPhased();
             if (!shieldActive && !phaseActive) continue;
-
             Vector2f shipLoc = ship.getLocation();
             if (shipLoc == null) continue;
 
             // Directional Shield Vector Check:
             // If shield has directional arc, only magnetize if target is within active shield arc cone!
             if (!isEntityWithinShieldArc(ship, eggLoc)) continue;
-
             float dx = shipLoc.x - eggLoc.x;
             float dy = shipLoc.y - eggLoc.y;
             float distanceSq = dx * dx + dy * dy;
@@ -8586,24 +6026,39 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         float dy = shipLoc.y - eggLoc.y;
         float distance = (float) Math.sqrt(closestDistanceSq);
         if (distance < 1f) distance = 1f;
-
         float nx = dx / distance;
         float ny = dy / distance;
 
-        // Safe hover & mooring boundary: keeps the object hovering gracefully outside the shield bubble
-        float shipEdge = (closestShieldedShip.getShield() != null && closestShieldedShip.getShield().isOn())
-            ? closestShieldedShip.getShield().getRadius()
-            : closestShieldedShip.getCollisionRadius();
+        String eggType = (String) entity.getCustomData().get("EASTER_EGG_TYPE");
+        boolean isDerelict = "DERELICT".equals(eggType);
+        boolean isExplosive = "EXPLOSIVE_TANK".equals(eggType);
+        boolean isUsefulPickup = !isDerelict && !isExplosive;
+
+        // Mooring & hover boundaries:
+        // Derelict hulks hover gracefully outside the shield bubble so ships don't crash into them.
+        // Useful salvage containers (metals, probes, caches, fighters) are reeled directly into the ship
+        // without braking at the shield perimeter!
         float targetRadius = entity.getCollisionRadius();
-        float safeHoverDistance = shipEdge + targetRadius + 45f;
+        float shipEdge;
+        float safeHoverDistance;
+        float moorDistance;
+        if (isUsefulPickup) {
+            shipEdge = closestShieldedShip.getCollisionRadius();
+            safeHoverDistance = 0f;
+            moorDistance = shipEdge * 0.35f;
+        } else {
+            shipEdge = (closestShieldedShip.getShield() != null && closestShieldedShip.getShield().isOn())
+                ? closestShieldedShip.getShield().getRadius()
+                : closestShieldedShip.getCollisionRadius();
+            safeHoverDistance = shipEdge + targetRadius + 45f;
+            moorDistance = safeHoverDistance + 20f;
+        }
 
         // Newtonian mass contrast tensor:
         float shipMass = Math.max(80f, closestShieldedShip.getMass());
         float targetMass = Math.max(50f, entity.getMass());
-
         float massRatioTarget;
         float massRatioShip;
-
         if (targetMass >= shipMass) {
             float ratio = shipMass / targetMass; // <= 1.0 (e.g. 200 / 2240 = 0.089)
             massRatioTarget = ratio * ratio * 0.35f; // Strongly reduced for heavy targets (< 0.3%)
@@ -8627,7 +6082,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         // 1. NON-LINEAR DISTANCE CURVE: [Edge = 10%] -> [10% Path = 20%] -> [Target = 100%]
         // Formula: F(p) = 0.10 + 0.90 * p^k, where k = log10(9) = 0.9542425f
         // =========================================================================
-        float moorDistance = safeHoverDistance + 20f;
         float effectiveMaxRange = Math.max(moorDistance + 80f, closestShipRange);
 
         // Size contrast factor: larger ship pulling smaller object allows higher closing speed
@@ -8636,7 +6090,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
         // Base max force from LunaLib/config (default 1400 u/s2)
         float maxConfigForce = Math.max(400.0f, easterEggMagnetStrength);
-
         if (distance > moorDistance) {
             // =====================================================================
             // APPROACH PHASE (Outside mooring perimeter):
@@ -8645,16 +6098,14 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
             float progress = (effectiveMaxRange - distance) / (effectiveMaxRange - moorDistance);
             if (progress < 0f) progress = 0f;
             else if (progress > 1f) progress = 1f;
-
             float forceNorm = 0.10f + 0.90f * (float) Math.pow(progress, 0.9542425);
             if (forceNorm > 1.0f) forceNorm = 1.0f;
-
             float currentTractiveForce = maxConfigForce * forceNorm;
             float maxAccelLimit = Math.max(300.0f, currentTractiveForce * Math.max(0.85f, sizeContrast * 0.65f));
-
-            float desiredClosingSpeed = Math.min(maxClosingSpeed, (distance - moorDistance) * 0.70f);
+            float desiredClosingSpeed = isUsefulPickup
+                ? Math.max(160.0f, Math.min(maxClosingSpeed, (distance - moorDistance) * 0.70f))
+                : Math.min(maxClosingSpeed, (distance - moorDistance) * 0.70f);
             float speedDeficit = desiredClosingSpeed - vRadial;
-
             if (speedDeficit > 0f) {
                 // Controlled inward closing step
                 float pullStep = Math.min(speedDeficit, maxAccelLimit * amount);
@@ -8664,8 +6115,8 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                     shipVel.x -= nx * (pullStep * massRatioShip);
                     shipVel.y -= ny * (pullStep * massRatioShip);
                 }
-            } else if (vRadial > desiredClosingSpeed + 15.0f) {
-                // Approach braking if closing in faster than desired
+            } else if (!isUsefulPickup && vRadial > desiredClosingSpeed + 15.0f) {
+                // Approach braking if closing in faster than desired (only for delicate objects like derelicts)
                 float brakeStep = Math.min(vRadial - desiredClosingSpeed, maxAccelLimit * 0.65f * amount);
                 eggVelocity.x -= nx * (brakeStep * massRatioTarget);
                 eggVelocity.y -= ny * (brakeStep * massRatioTarget);
@@ -8679,7 +6130,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
             float latVx = relVx - (vRadial * nx);
             float latVy = relVy - (vRadial * ny);
             float latDamp = Math.min(0.90f, 4.0f * amount);
-
             eggVelocity.x -= latVx * (latDamp * massRatioTarget);
             eggVelocity.y -= latVy * (latDamp * massRatioTarget);
             if (shipVel != null) {
@@ -8687,6 +6137,12 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                 shipVel.y += latVy * (latDamp * massRatioShip);
             }
         } else {
+            // Useful pickups (caches, probes, cryopods, fighters, metals) are collected when reeled in!
+            if (isUsefulPickup) {
+                triggerSalvagePickup(entity, closestShieldedShip);
+                return;
+            }
+
             // =====================================================================
             // MOORING & DAMPING PHASE (At or inside shield mooring perimeter):
             // Zero tractor pull! Pure velocity dissipation and speed synchronization.
@@ -8757,13 +6213,9 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
     }
 
     private static boolean isPlayerSideShip(ShipAPI ship) {
-
         if (ship == null || !ship.isAlive()) return false;
-
         if (instance != null && instance.engine != null && instance.engine.getPlayerShip() != null) {
-
             if (ship == instance.engine.getPlayerShip()) return true;
-
             if (ship.getOwner() == instance.engine.getPlayerShip().getOwner()) return true;
 
         }
@@ -8772,60 +6224,35 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     }
 
-
-
     private static float clampEasterEggSpeed(float speed) {
-
         if (Float.isNaN(speed) || Float.isInfinite(speed)) return 400.0f;
-
         return Math.max(100f, Math.min(3000f, speed));
 
     }
 
-
-
     private static float clampEasterEggMagnetStrength(float strength) {
-
         if (Float.isNaN(strength) || Float.isInfinite(strength)) return 3000.0f;
-
         return Math.max(0f, Math.min(10000f, strength));
 
     }
 
-
-
     private void setEasterEggSpeed(float newSpeed) {
-
         newSpeed = clampEasterEggSpeed(newSpeed);
-
         if (Math.abs(newSpeed - easterEggSpeed) < 1f) return;
-
-
-
         float speedRatio = newSpeed / easterEggSpeed;
-
         if (activeEasterEggEntities != null) {
-
             for (int i = 0; i < activeEasterEggEntities.size(); i++) {
-
                 CombatEntityAPI egg = activeEasterEggEntities.get(i);
-
                 if (egg == null) continue;
-
                 if (egg.getVelocity() != null) {
-
                     egg.getVelocity().scale(speedRatio);
 
                 }
 
                 Object bvx = egg.getCustomData().get(BASE_VX_KEY);
-
                 Object bvy = egg.getCustomData().get(BASE_VY_KEY);
-
                 if (bvx instanceof Float && bvy instanceof Float) {
-
                     egg.setCustomData(BASE_VX_KEY, Float.valueOf(((Float) bvx).floatValue() * speedRatio));
-
                     egg.setCustomData(BASE_VY_KEY, Float.valueOf(((Float) bvy).floatValue() * speedRatio));
 
                 }
@@ -8838,38 +6265,19 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     }
 
-
-
     public void advanceEasterEgg(CombatEntityAPI entity, float amount) {
-
         if (entity == null || entity.isExpired() || engine == null) return;
-
         if (!engine.isEntityInPlay(entity)) {
-
             removeEasterEggEntity(entity);
-
             return;
 
         }
 
-
-
         Vector2f loc = entity.getLocation();
-
         if (loc == null) return;
-
-
-
         String eggType = (String) entity.getCustomData().get("EASTER_EGG_TYPE");
-
-
-
         float halfW = engine.getMapWidth() * 0.5f;
-
         float halfH = engine.getMapHeight() * 0.5f;
-
-
-
         float focalCX = 0f;
         float focalCY = 0f;
         if (isTitleScreen) {
@@ -8888,10 +6296,8 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                            loc.x > focalCX + halfW ||
                            loc.y < focalCY - halfH ||
                            loc.y > focalCY + halfH);
-
         boolean hasEntered = entity.getCustomData().containsKey("DA_ENTERED_MAP");
         boolean shouldDespawn = false;
-
         if (!hasEntered) {
             if (!outside) {
                 entity.getCustomData().put("DA_ENTERED_MAP", Boolean.TRUE);
@@ -8926,37 +6332,24 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         }
 
         if (shouldDespawn) {
-
             Boolean wasRescued = (Boolean) entity.getCustomData().get("DERELICT_RESCUED");
-
             String vId = (String) entity.getCustomData().get("DERELICT_VARIANT_ID");
-
             String dName = (String) entity.getCustomData().get("DERELICT_NAME");
-
             if (wasRescued != null && wasRescued.booleanValue() && vId != null) {
-
                 DerelictSalvageRecord rec = derelictSalvageRecords.get(vId);
-
                 if (rec != null) {
-
                     rec.outOfBounds = true;
-
                     rec.rescueChance = 0.50f; // 50% recovery chance when knocked out of bounds
 
                     rec.minDmodProb = 0.40f;
-
                     rec.maxDmodProb = 0.65f;
 
                 }
 
                 if (engine.getCombatUI() != null) {
-
                     String msg = IS_RUSSIAN ?
-
                         ("Остов " + dName + " унесло за границу сектора! Маяки активны (Шанс эвакуации: 50%).") :
-
                         ("Derelict " + dName + " drifted beyond sector perimeter! Beacons active (Recovery chance: 50%).");
-
                     engine.getCombatUI().addMessage(1, msg, new Color(255, 140, 60));
 
                 }
@@ -8965,15 +6358,10 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
                 // If not stabilized and flew out of bounds, permanently lost!
                 derelictSalvageRecords.remove(vId);
-
                 if (engine.getCombatUI() != null) {
-
                     String msg = IS_RUSSIAN ?
-
                         ("Остов " + dName + " унесён в глубокий космос без стабилизации! Корабль безвозвратно потерян.") :
-
                         ("Derelict " + dName + " drifted into deep space unstabilized! Ship is permanently lost.");
-
                     engine.getCombatUI().addMessage(1, msg, new Color(255, 80, 80));
 
                 }
@@ -8981,77 +6369,45 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
             }
 
             removeEasterEggEntity(entity);
-
             return;
 
         }
 
-
-
         List<ShipAPI> ships = engine.getShips();
-
         if (ships != null && !ships.isEmpty()) {
-
             applyShieldMagnet(entity, ships, amount);
-
             float eRadius = entity.getCollisionRadius();
-
             for (int i = 0; i < ships.size(); i++) {
-
                 ShipAPI ship = ships.get(i);
-
                 if (ship == null || !ship.isAlive() || ship.isHulk()) continue;
-
-
-
                 Vector2f sLoc = ship.getLocation();
-
                 if (sLoc == null) continue;
-
-
-
                 float dx = sLoc.x - loc.x;
-
                 float dy = sLoc.y - loc.y;
-
                 float distSq = dx * dx + dy * dy;
 
-
-
                 // Active shields expand the effective gathering / contact radius
-
                 float shipEffectiveRadius = ship.getCollisionRadius();
-
                 if (ship.getShield() != null && ship.getShield().isOn()) {
-
                     shipEffectiveRadius = Math.max(shipEffectiveRadius, ship.getShield().getRadius());
 
                 }
 
-                float combinedRadius = shipEffectiveRadius + eRadius + 20f;
-
-
-
+                boolean isPickup = !"DERELICT".equals(eggType) && !"EXPLOSIVE_TANK".equals(eggType);
+                float contactMargin = isPickup ? 45f : 20f;
+                float combinedRadius = shipEffectiveRadius + eRadius + contactMargin;
                 if (distSq <= combinedRadius * combinedRadius) {
-
                     entity.getCustomData().put("DA_NO_MAINTAIN_VELOCITY", Boolean.TRUE);
-
                     if (isPlayerSideShip(ship) && "DERELICT".equals(eggType)) {
-
                         entity.getCustomData().put("DERELICT_PLAYER_ENGAGED", Boolean.TRUE);
 
                     }
 
                     if ("EXPLOSIVE_TANK".equals(eggType)) {
-
                         triggerTankExplosion(entity, ship);
-
                         return;
-
                     } else if (!"DERELICT".equals(eggType)) {
-
                         triggerSalvagePickup(entity, ship);
-
                         return;
 
                     }
@@ -9076,49 +6432,29 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         if ("DERELICT".equals(eggType)) {
 
             // Proximity notification when player ship enters visual range
-
             ShipAPI pShip = engine.getPlayerShip();
-
             if (pShip != null && pShip.getLocation() != null) {
-
                 float pdx = loc.x - pShip.getLocation().x;
-
                 float pdy = loc.y - pShip.getLocation().y;
-
                 float pDistSq = pdx * pdx + pdy * pdy;
-
                 if (pDistSq <= 1800f * 1800f) {
-
                     Boolean nearNotified = (Boolean) entity.getCustomData().get("DA_NEAR_NOTIFIED");
-
                     if (nearNotified == null || !nearNotified.booleanValue()) {
-
                         entity.getCustomData().put("DA_NEAR_NOTIFIED", Boolean.TRUE);
-
                         String hName = (String) entity.getCustomData().get("DERELICT_NAME");
-
                         if (engine.getCombatUI() != null && !isTitleScreen) {
-
                             String nearTxt = IS_RUSSIAN ?
-
                                 ("СЕНСОРЫ: Остов (" + hName + ") в зоне видимости! Защищайте его до стабилизации систем!") :
-
                                 ("SENSORS: Derelict (" + hName + ") in visual range! Protect it until systems stabilize!");
-
                             engine.getCombatUI().addMessage(1, nearTxt, new Color(255, 215, 60));
 
                         }
 
                         try {
-
                             queueDetectionSoundBurst();
-
                         } catch (Throwable t) {
-
                             try {
-
                                 Global.getSoundPlayer().playUISound("ui_radar_detect_vessel", 1.0f, 1.0f);
-
                             } catch (Throwable t2) {}
 
                         }
@@ -9129,52 +6465,30 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
             }
 
-
-
             // Glowing SOS beacon pulses in space
-
             Float lastPing = (Float) entity.getCustomData().get("DA_LAST_BEACON_PING");
-
             float now = totalCombatTime;
-
             if (lastPing == null || now - lastPing.floatValue() >= 1.35f) {
-
                 entity.getCustomData().put("DA_LAST_BEACON_PING", Float.valueOf(now));
-
                 Boolean rescued = (Boolean) entity.getCustomData().get("DERELICT_RESCUED");
-
                 boolean isRescued = (rescued != null && rescued.booleanValue());
-
                 Color pingCol = isRescued ? new Color(60, 255, 140, 210) : new Color(255, 215, 60, 230);
-
-
-
                 engine.addSmoothParticle(loc, entity.getVelocity(), 160f, 0.9f, 1.1f, pingCol);
-
                 for (int p = 0; p < 4; p++) {
-
                     float pAngle = random.nextFloat() * 6.28f;
-
                     float pSpd = 25f + random.nextFloat() * 45f;
-
                     Vector2f pVel = new Vector2f(entity.getVelocity().x + (float)Math.cos(pAngle)*pSpd, entity.getVelocity().y + (float)Math.sin(pAngle)*pSpd);
-
                     engine.addHitParticle(loc, pVel, 8f, 1.0f, 0.7f, pingCol);
 
                 }
 
             }
 
-
-
             boolean inBounds = Math.abs(loc.x) <= halfW && Math.abs(loc.y) <= halfH;
-
             Float curT = (Float) entity.getCustomData().get("DERELICT_HOLD_TIMER");
             float holdTimer = (curT != null ? curT.floatValue() : 0f);
-
             Float lastHeld = (Float) entity.getCustomData().get("DERELICT_MAGNET_HELD_TIME");
             boolean isMagnetHeld = inBounds && (lastHeld != null && (totalCombatTime - lastHeld.floatValue()) < 0.25f);
-
             if (isMagnetHeld) {
                 holdTimer += amount;
                 entity.getCustomData().put("DERELICT_HOLD_TIMER", Float.valueOf(holdTimer));
@@ -9182,143 +6496,78 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
             Boolean rescued = (Boolean) entity.getCustomData().get("DERELICT_RESCUED");
             if ((rescued == null || !rescued.booleanValue()) && holdTimer >= derelictRescueHoldTime) {
-
                     entity.getCustomData().put("DERELICT_RESCUED", Boolean.TRUE);
-
                     derelictRescueNotified = true;
-
                     rescuedDerelictHullName = (String) entity.getCustomData().get("DERELICT_NAME");
-
-
-
                     if (engine.isSimulation()) {
-
                         rescuedDerelictVariantId = null;
-
-
-
                         engine.addFloatingText(
-
                             loc,
-
                             IS_RUSSIAN ? "СИМУЛЯЦИЯ: СИСТЕМЫ СТАБИЛИЗИРОВАНЫ!" : "SIMULATION: SYSTEMS STABILIZED!",
-
                             22f,
-
                             new Color(80, 220, 255),
-
                             entity,
-
                             0.3f,
-
                             3.5f
-
                         );
-
-
-
                         if (engine.getCombatUI() != null) {
-
                             String msg = IS_RUSSIAN ?
-
                                 ("Симуляция: остов " + rescuedDerelictHullName + " стабилизирован (спасение в симуляции отключено).") :
-
                                 ("Simulation: hull " + rescuedDerelictHullName + " stabilized (recovery disabled in simulation).");
-
                             engine.getCombatUI().addMessage(1, msg, new Color(80, 220, 255));
 
                         }
 
                     } else {
-
                         String vId = (String) entity.getCustomData().get("DERELICT_VARIANT_ID");
-
                         rescuedDerelictVariantId = vId;
-
                         if (vId != null) {
-
                             if (!rescuedDerelictVariantIds.contains(vId)) {
-
                                 rescuedDerelictVariantIds.add(vId);
 
                             }
 
                             DerelictSalvageRecord rec = new DerelictSalvageRecord(
-
                                 vId, rescuedDerelictHullName, derelictRescueChance, 0.15f, 0.35f
-
                             );
-
                             derelictSalvageRecords.put(vId, rec);
-
                             DerelictRecoveryCampaignListener.queueForRecovery(rec);
 
                         }
 
-
-
                         engine.addFloatingText(
-
                             loc,
-
                             IS_RUSSIAN ? "КОРАБЛЬ СПАСЕН! СИСТЕМЫ СТАБИЛИЗИРОВАНЫ!" : "SHIP RESCUED! SYSTEMS STABILIZED!",
-
                             22f,
-
                             new Color(60, 255, 140),
-
                             entity,
-
                             0.3f,
-
                             3.5f
-
                         );
-
-
-
                         if (engine.getCombatUI() != null) {
-
                             String msg = IS_RUSSIAN ?
-
                                 ("Вы спасли заброшенный корабль: " + rescuedDerelictHullName + "!") :
-
                                 ("You rescued a derelict ship: " + rescuedDerelictHullName + "!");
-
                             engine.getCombatUI().addMessage(1, msg, new Color(60, 255, 140));
 
                         }
 
                     }
 
-
-
                     try {
-
                         Global.getSoundPlayer().playUISound("ui_intel_positive", 1.0f, 1.0f);
-
                     } catch (Throwable t) {}
 
                 }
 
-
-
             if (entity.getHitpoints() <= 0f) {
-
                 Boolean wasRescued = (Boolean) entity.getCustomData().get("DERELICT_RESCUED");
-
                 String dName = (String) entity.getCustomData().get("DERELICT_NAME");
-
                 String vId = (String) entity.getCustomData().get("DERELICT_VARIANT_ID");
-
                 if (wasRescued != null && wasRescued.booleanValue() && vId != null) {
-
                     DerelictSalvageRecord rec = derelictSalvageRecords.get(vId);
-
                     if (rec != null) {
-
                         rec.destroyed = true;
-
                         rec.rescueChance = 0.15f; // 15% recovery chance if shattered/destroyed
 
                         rec.minDmodProb = 0.75f;  // Severe D-mod damage penalty
@@ -9328,13 +6577,9 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                     }
 
                     if (engine.getCombatUI() != null) {
-
                         String msg = IS_RUSSIAN ?
-
                             ("Захваченный остов " + dName + " расколот в бою! (Шанс сборки обломков: 15%, повышенный износ).") :
-
                             ("Rescued hull " + dName + " was shattered! (Scrap recovery chance: 15%, severe damage).");
-
                         engine.getCombatUI().addMessage(1, msg, new Color(255, 75, 75));
 
                     }
@@ -9342,19 +6587,14 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                 }
 
                 removeEasterEggEntity(entity);
-
                 if (entity == activeDerelictEntity) activeDerelictEntity = null;
 
             }
 
         } else if (entity.getHitpoints() <= 0f) {
-
             if ("EXPLOSIVE_TANK".equals(eggType)) {
-
                 triggerTankExplosion(entity, null);
-
             } else {
-
                 triggerSalvageDestruction(entity);
 
             }
@@ -9364,8 +6604,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         }
 
     }
-
-
 
     private static List<String> cachedDerelictVariants = null;
 
@@ -9377,134 +6615,68 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     private static List<String> cachedCapitals = null;
 
-
-
     public synchronized void initDerelictPool() {
-
         if (cachedDerelictVariants != null && !cachedDerelictVariants.isEmpty()) return;
-
-
-
         cachedDerelictVariants = new ArrayList<String>();
-
         cachedFrigates = new ArrayList<String>();
-
         cachedDestroyers = new ArrayList<String>();
-
         cachedCruisers = new ArrayList<String>();
-
         cachedCapitals = new ArrayList<String>();
-
-
-
         try {
-
             List<String> allVarIds = Global.getSettings().getAllVariantIds();
-
             if (allVarIds != null) {
-
                 for (String vId : allVarIds) {
-
                     if (vId == null || vId.isEmpty()) continue;
-
                     ShipVariantAPI variant = null;
-
                     try {
-
                         variant = Global.getSettings().getVariant(vId);
-
                     } catch (Throwable t) { continue; }
-
                     if (variant == null) continue;
 
-
-
                     // 1. Direct API checks: strictly exclude stations and fighters
-
                     if (variant.isStation() || variant.isFighter()) continue;
-
-
-
                     ShipHullSpecAPI spec = variant.getHullSpec();
-
                     if (spec == null) continue;
 
-
-
                     // 2. Hull size check: only valid ship hull sizes (Frigate, Destroyer, Cruiser, Capital)
-
                     ShipAPI.HullSize size = spec.getHullSize();
-
                     if (size == null || size == ShipAPI.HullSize.FIGHTER || size == ShipAPI.HullSize.DEFAULT) continue;
-
-
 
                     // 3. Hints exclusion (Stations, Modules, Fighter wings, Unboardable targets)
 
                     EnumSet<ShipHullSpecAPI.ShipTypeHints> hints = spec.getHints();
-
                     if (hints != null) {
-
                         if (hints.contains(ShipHullSpecAPI.ShipTypeHints.STATION)) continue;
-
                         if (hints.contains(ShipHullSpecAPI.ShipTypeHints.MODULE)) continue;
-
                         if (hints.contains(ShipHullSpecAPI.ShipTypeHints.UNDER_PARENT)) continue;
-
                         if (hints.contains(ShipHullSpecAPI.ShipTypeHints.UNBOARDABLE)) continue;
 
                     }
 
-
-
                     // 4. Tags exclusion
-
                     if (spec.hasTag("station") || spec.hasTag("module") || spec.hasTag("module_hull_bar_only") || spec.hasTag("hide_in_codex")) continue;
 
-
-
                     // 5. Name string heuristic safety against modded station parts & platforms
-
                     String hIdLow = spec.getHullId().toLowerCase();
-
                     String vIdLow = vId.toLowerCase();
-
                     if (hIdLow.contains("station") || hIdLow.contains("module_") || hIdLow.startsWith("module")) continue;
-
                     if (vIdLow.contains("station") || vIdLow.contains("module_") || vIdLow.startsWith("module")) continue;
-
                     if (hIdLow.contains("platform") || hIdLow.contains("satellite") || hIdLow.contains("bastion")) continue;
-
                     if (hIdLow.contains("shuttlepod") || hIdLow.contains("escape_pod")) continue;
 
-
-
                     // 6. Ensure texture exists and is loadable
-
                     String spritePath = spec.getSpriteName();
-
                     if (spritePath == null || spritePath.isEmpty()) continue;
 
-
-
                     // Valid ship! Categorize by hull size
-
                     cachedDerelictVariants.add(vId);
-
                     if (size == ShipAPI.HullSize.FRIGATE) {
-
                         cachedFrigates.add(vId);
-
                     } else if (size == ShipAPI.HullSize.DESTROYER) {
-
                         cachedDestroyers.add(vId);
-
                     } else if (size == ShipAPI.HullSize.CRUISER) {
-
                         cachedCruisers.add(vId);
-
                     } else if (size == ShipAPI.HullSize.CAPITAL_SHIP) {
-
                         cachedCapitals.add(vId);
 
                     }
@@ -9514,23 +6686,13 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
             }
 
         } catch (Throwable t) {}
-
-
-
         if (cachedDerelictVariants.isEmpty()) {
-
             String[] fallbacks = new String[] {
-
                 "hound_d_Standard", "cerberus_d_Standard", "wayfarer_Standard",
-
                 "shepherd_Frontier", "lasher_d_CS", "buffalo_d_Standard", "dram_Light"
-
             };
-
             for (String f : fallbacks) {
-
                 cachedDerelictVariants.add(f);
-
                 cachedFrigates.add(f);
 
             }
@@ -9539,40 +6701,23 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     }
 
-
-
     public String pickRandomDerelictVariant() {
-
         initDerelictPool();
 
-
-
         // Size weighted distribution: Frigate 45%, Destroyer 30%, Cruiser 18%, Capital 7%
-
         float roll = random.nextFloat();
-
         if (roll < 0.45f && cachedFrigates != null && !cachedFrigates.isEmpty()) {
-
             return cachedFrigates.get(random.nextInt(cachedFrigates.size()));
-
         } else if (roll < 0.75f && cachedDestroyers != null && !cachedDestroyers.isEmpty()) {
-
             return cachedDestroyers.get(random.nextInt(cachedDestroyers.size()));
-
         } else if (roll < 0.93f && cachedCruisers != null && !cachedCruisers.isEmpty()) {
-
             return cachedCruisers.get(random.nextInt(cachedCruisers.size()));
-
         } else if (cachedCapitals != null && !cachedCapitals.isEmpty()) {
-
             return cachedCapitals.get(random.nextInt(cachedCapitals.size()));
 
         }
 
-
-
         if (cachedDerelictVariants != null && !cachedDerelictVariants.isEmpty()) {
-
             return cachedDerelictVariants.get(random.nextInt(cachedDerelictVariants.size()));
 
         }
@@ -9581,71 +6726,37 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     }
 
-
-
     private static List<String> cachedFighterWings = null;
 
-
-
     public synchronized void initFighterPool() {
-
         if (cachedFighterWings != null && !cachedFighterWings.isEmpty()) return;
-
         cachedFighterWings = new ArrayList<String>();
-
         try {
-
             List<FighterWingSpecAPI> allSpecs = Global.getSettings().getAllFighterWingSpecs();
-
             if (allSpecs != null) {
-
                 for (FighterWingSpecAPI spec : allSpecs) {
-
                     if (spec == null) continue;
-
                     String id = spec.getId();
-
                     if (id == null || id.isEmpty()) continue;
 
-
-
                     // Exclude non-salvageable, restricted, or hidden wings
-
                     if (spec.hasTag("no_drop") || spec.hasTag("restricted") || spec.hasTag("hide_in_codex") || spec.hasTag("dummy") || spec.hasTag("station")) continue;
-
-
-
                     ShipVariantAPI var = spec.getVariant();
-
                     if (var == null) continue;
-
                     ShipHullSpecAPI hSpec = var.getHullSpec();
-
                     if (hSpec == null) continue;
-
                     String sprite = hSpec.getSpriteName();
-
                     if (sprite == null || sprite.isEmpty()) continue;
 
-
-
                     // Verify that the texture actually loads and is valid!
-
                     try {
-
                         Global.getSettings().loadTexture(sprite);
-
                         SpriteAPI test = Global.getSettings().getSprite(sprite);
-
                         if (!isValidSprite(test)) continue;
-
                     } catch (Throwable t) {
-
                         continue;
 
                     }
-
-
 
                     cachedFighterWings.add(id);
 
@@ -9654,45 +6765,27 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
             }
 
         } catch (Throwable t) {}
-
         if (cachedFighterWings.isEmpty()) {
-
             cachedFighterWings.add("broadsword_wing");
-
             cachedFighterWings.add("talon_wing");
-
             cachedFighterWings.add("dagger_wing");
-
             cachedFighterWings.add("thunder_wing");
-
             cachedFighterWings.add("gladius_wing");
-
             cachedFighterWings.add("warthog_wing");
 
         }
 
     }
 
-
-
     public String pickRandomFighterWing() {
-
         initFighterPool();
-
         if (cachedFighterWings != null && !cachedFighterWings.isEmpty()) {
-
             for (int attempts = 0; attempts < 6; attempts++) {
-
                 String candidate = cachedFighterWings.get(random.nextInt(cachedFighterWings.size()));
-
                 try {
-
                     FighterWingSpecAPI spec = Global.getSettings().getFighterWingSpec(candidate);
-
                     if (spec != null && spec.getVariant() != null && spec.getVariant().getHullSpec() != null) {
-
                         String s = spec.getVariant().getHullSpec().getSpriteName();
-
                         if (s != null && !s.isEmpty()) return candidate;
 
                     }
@@ -9707,122 +6800,68 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     }
 
-
-
     public CombatEntityAPI spawnDerelictAtLocation(float spawnX, float spawnY, float vx, float vy) {
-
         initDerelictPool();
-
         String chosenVariant = pickRandomDerelictVariant();
-
-
-
         try {
-
             ShipVariantAPI variant = null;
-
             try {
-
                 variant = Global.getSettings().getVariant(chosenVariant);
-
             } catch (Throwable t) {}
-
-
-
             ShipHullSpecAPI spec = (variant != null) ? variant.getHullSpec() : null;
-
             if (spec == null) {
-
                 try {
-
                     spec = Global.getSettings().getHullSpec(chosenVariant);
-
                 } catch (Throwable t) {}
 
             }
 
             if (spec == null) {
-
                 spec = Global.getSettings().getHullSpec("hound_d");
 
             }
 
-
-
             String spritePath = (spec != null && spec.getSpriteName() != null) ? spec.getSpriteName() : "graphics/ships/hound/hound_substandard.png";
-
             String hullName = (spec != null) ? spec.getHullNameWithDashClass() : null;
-
             if (hullName == null || hullName.isEmpty()) {
-
                 hullName = (spec != null) ? spec.getHullName() : (IS_RUSSIAN ? "Заброшенный корабль" : "Derelict Ship");
 
             }
 
-
-
             float radius = (spec != null) ? Math.max(35f, spec.getCollisionRadius()) : 50f;
-
             float baseHp = (spec != null) ? spec.getHitpoints() : 2000f;
 
             // Softened mass for derelicts so collisions gently nudge rather than pulverize friendly ships
             float mass = Math.max(60f, baseHp * 0.08f);
-
             float hp = Math.max(3200f, baseHp * 2.2f);
-
-
-
             try {
-
                 Global.getSettings().loadTexture(spritePath);
-
             } catch (Throwable t) {}
-
-
-
             CombatEntityAPI entity = engine.spawnAsteroid(spritePath, spawnX, spawnY, vx, vy, false);
-
             if (entity != null) {
-
                 entity.setFacing(random.nextFloat() * 360f);
-
                 entity.setAngularVelocity((random.nextFloat() - 0.5f) * 16f);
-
                 entity.setMass(mass);
-
                 entity.setHitpoints(hp);
-
                 float dispW = radius * 2.0f;
                 float dispH = radius * 2.0f;
-
                 if (entity instanceof CombatAsteroidAPI) {
-
                     try {
-
                         CombatAsteroidAPI ast = (CombatAsteroidAPI) entity;
-
                         SpriteAPI s = ast.getSpriteAPI();
-
                         if (s != null && isValidSprite(s)) {
-
                             float maxDim = Math.max(s.getTextureWidth(), s.getTextureHeight());
-
                             if (maxDim > 0f) {
-
                                 float scale = (radius * 2.25f) / maxDim;
-
                                 dispW = s.getTextureWidth() * scale;
                                 dispH = s.getTextureHeight() * scale;
                                 s.setSize(dispW, dispH);
-
                             } else {
-
                                 s.setSize(radius * 2.25f, radius * 2.25f);
 
                             }
 
                             s.setColor(new Color(230, 230, 240, 255));
-
                             s.setAlphaMult(1.0f);
 
                         }
@@ -9837,87 +6876,44 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                 float maxDimD = Math.max(dispW, dispH);
                 float tightRadius = Math.max(25f, Math.min(minDim * 0.46f, maxDimD * 0.30f));
                 entity.setCollisionRadius(tightRadius);
-
-
-
                 entity.setCustomData("IS_EASTER_EGG", Boolean.TRUE);
-
                 entity.setCustomData(TRACKED_KEY, Boolean.TRUE);
-
                 entity.setCustomData("EASTER_EGG_TYPE", "DERELICT");
-
                 entity.setCustomData("DERELICT_VARIANT_ID", chosenVariant);
-
                 entity.setCustomData("DERELICT_NAME", hullName);
-
                 entity.setCustomData("DERELICT_HULL_SIZE", (spec != null && spec.getHullSize() != null) ? spec.getHullSize().name() : "FRIGATE");
-
                 entity.setCustomData("DERELICT_HOLD_TIMER", Float.valueOf(0f));
-
                 entity.setCustomData("DERELICT_RESCUED", Boolean.FALSE);
-
                 entity.setCustomData("DERELICT_PLAYER_ENGAGED", Boolean.FALSE);
-
                 entity.setCustomData("DA_NO_MAINTAIN_VELOCITY", Boolean.TRUE);
-
                 try {
-
                     queueDetectionSoundBurst();
-
                 } catch (Throwable t) {}
-
-
-
                 entity.setCustomData(BASE_VX_KEY, Float.valueOf(vx));
-
                 entity.setCustomData(BASE_VY_KEY, Float.valueOf(vy));
-
-
-
                 activeDerelictEntity = entity;
-
                 activeEasterEggEntities.add(entity);
-
-
-
                 return entity;
 
             }
 
         } catch (Throwable t) {}
-
         return null;
 
     }
 
-
-
     private void spawnDerelictEasterEgg(float spawnX, float spawnY, float vx, float vy) {
-
         battleDerelictSpawned = true;
-
         CombatEntityAPI entity = spawnDerelictAtLocation(spawnX, spawnY, vx, vy);
-
         if (entity != null) {
-
             String hullName = (String) entity.getCustomData().get("DERELICT_NAME");
-
             try {
-
                 Global.getSoundPlayer().playUISound("ui_rep_raise", 1.0f, 1.0f);
-
             } catch (Throwable t) {}
-
-
-
             if (engine.getCombatUI() != null && !isTitleScreen) {
-
                 String alert = IS_RUSSIAN ?
-
                     ("СЕНСОРЫ: В потоке астероидов замечен дрейфующий остов корабля (" + hullName + ")!") :
-
                     ("SENSORS: Derelict ship detected drifting in the asteroid belt (" + hullName + ")!");
-
                 engine.getCombatUI().addMessage(1, alert, new Color(255, 215, 60));
 
             }
@@ -9926,87 +6922,48 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     }
 
-
-
     public CombatEntityAPI spawnOtherEasterEggAtLocation(float spawnX, float spawnY, float vx, float vy, String specificType) {
-
         activeOtherEasterEggs++;
-
-
-
         String spritePath = "graphics/stations/large_cache.png";
-
         String eggType = "CACHE";
-
         float radius = 40f;
-
         float mass = 160f;
-
         float hp = 2000f;
-
         float spin = 18f;
-
         String fighterWingId = null;
-
         String fighterWingName = null;
-
-
-
         if ("CACHE".equals(specificType)) {
-
             spritePath = "graphics/stations/large_cache.png";
-
             eggType = "CACHE";
-
             radius = 42f; mass = 180f; hp = 2200f; spin = 15f;
-
         } else if ("PROBE".equals(specificType)) {
-
             spritePath = "graphics/stations/survey_probe.png";
-
             eggType = "PROBE";
-
             radius = 36f; mass = 120f; hp = 1500f; spin = 20f;
-
         } else if ("CRYO_POD".equals(specificType)) {
-
             spritePath = "graphics/stations/probe.png";
-
             eggType = "CRYO_POD";
-
             radius = 34f; mass = 100f; hp = 1200f; spin = 12f;
-
         } else if ("NAV_BUOY".equals(specificType)) {
-
             spritePath = "graphics/ships/nav_buoy.png";
-
             eggType = "NAV_BUOY";
-
             radius = 38f; mass = 160f; hp = 1800f; spin = 10f;
-
         } else if ("DEBRIS_LRG".equals(specificType)) {
-
             String[] lrg = new String[] { "graphics/debris/debris_lrg0.png", "graphics/debris/debris_lrg1.png" };
             spritePath = lrg[random.nextInt(lrg.length)];
             eggType = "DEBRIS";
             radius = 48f; mass = 220f; hp = 1800f; spin = 12f;
-
         } else if ("DEBRIS_MED".equals(specificType)) {
-
             String[] med = new String[] { "graphics/debris/debris_med0.png", "graphics/debris/debris_med1.png", "graphics/debris/debris_med2.png" };
             spritePath = med[random.nextInt(med.length)];
             eggType = "DEBRIS";
             radius = 32f; mass = 120f; hp = 1200f; spin = 16f;
-
         } else if ("DEBRIS_SML".equals(specificType)) {
-
             String[] sml = new String[] { "graphics/debris/debris_sml0.png", "graphics/debris/debris_sml1.png", "graphics/debris/debris_sml2.png", "graphics/debris/debris_sml3.png" };
             spritePath = sml[random.nextInt(sml.length)];
             eggType = "DEBRIS";
             radius = 20f; mass = 50f; hp = 600f; spin = 22f;
-
         } else if ("MOTHERSHIP_POD".equals(specificType)) {
-
             String[] pods = new String[] {
                 "graphics/ships/derelict/derelict_mothership_pod_m_left.png",
                 "graphics/ships/derelict/derelict_mothership_pod_m_right.png",
@@ -10016,45 +6973,25 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
             spritePath = pods[random.nextInt(pods.length)];
             eggType = "DEBRIS";
             radius = 52f; mass = 260f; hp = 2400f; spin = 10f;
-
         } else if ("MOTHERSHIP_ENGINE".equals(specificType) || "DEBRIS".equals(specificType)) {
-
             spritePath = "graphics/ships/derelict/derelict_mothership_pod_engine_left.png";
-
             eggType = "MOTHERSHIP_ENGINE";
-
             radius = 58f; mass = 300f; hp = 2600f; spin = 14f;
-
         } else if ("EXPLOSIVE_TANK".equals(specificType)) {
-
             spritePath = "graphics/icons/cargo/fuel.png";
-
             eggType = "EXPLOSIVE_TANK";
-
             radius = 32f; mass = 80f; hp = 600f; spin = 15f;
-
         } else if ("FIGHTER".equals(specificType)) {
-
             initFighterPool();
-
             fighterWingId = pickRandomFighterWing();
-
             FighterWingSpecAPI fSpec = null;
-
             try {
-
                 fSpec = Global.getSettings().getFighterWingSpec(fighterWingId);
-
             } catch (Throwable t) {}
-
             if (fSpec != null) {
-
                 fighterWingName = fSpec.getWingName();
-
                 if (fSpec.getVariant() != null && fSpec.getVariant().getHullSpec() != null) {
-
                     spritePath = fSpec.getVariant().getHullSpec().getSpriteName();
-
                     radius = Math.max(22f, fSpec.getVariant().getHullSpec().getCollisionRadius());
 
                 }
@@ -10062,101 +6999,60 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
             }
 
             eggType = "FIGHTER";
-
             mass = 65f;
-
             hp = 750f;
-
             spin = 12f;
-
         } else {
-
             int roll = random.nextInt(7);
-
             switch (roll) {
-
                 case 0:
 
                     spritePath = "graphics/stations/large_cache.png";
-
                     eggType = "CACHE";
-
                     radius = 42f; mass = 180f; hp = 2200f; spin = 15f;
-
                     break;
-
                 case 1:
 
                     spritePath = "graphics/stations/survey_probe.png";
-
                     eggType = "PROBE";
-
                     radius = 36f; mass = 120f; hp = 1500f; spin = 20f;
-
                     break;
-
                 case 2:
 
                     spritePath = "graphics/stations/probe.png";
-
                     eggType = "CRYO_POD";
-
                     radius = 34f; mass = 100f; hp = 1200f; spin = 12f;
-
                     break;
-
                 case 3:
 
                     spritePath = "graphics/ships/nav_buoy.png";
-
                     eggType = "NAV_BUOY";
-
                     radius = 38f; mass = 160f; hp = 1800f; spin = 10f;
-
                     break;
-
                 case 4:
 
                     spritePath = "graphics/icons/cargo/fuel.png";
-
                     eggType = "EXPLOSIVE_TANK";
-
                     radius = 32f; mass = 80f; hp = 600f; spin = 15f;
-
                     break;
-
                 case 5:
 
                     spritePath = "graphics/ships/derelict/derelict_mothership_pod_engine_left.png";
-
                     eggType = "MOTHERSHIP_ENGINE";
-
                     radius = 58f; mass = 300f; hp = 2600f; spin = 14f;
-
                     break;
-
                 default:
 
                     initFighterPool();
-
                     fighterWingId = pickRandomFighterWing();
-
                     FighterWingSpecAPI fSpec = null;
-
                     try {
-
                         fSpec = Global.getSettings().getFighterWingSpec(fighterWingId);
-
                     } catch (Throwable t) {}
-
                     if (fSpec != null) {
-
                         fighterWingName = fSpec.getWingName();
-
                         if (fSpec.getVariant() != null && fSpec.getVariant().getHullSpec() != null) {
-
                             spritePath = fSpec.getVariant().getHullSpec().getSpriteName();
-
                             radius = Math.max(22f, fSpec.getVariant().getHullSpec().getCollisionRadius());
 
                         }
@@ -10164,73 +7060,41 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                     }
 
                     eggType = "FIGHTER";
-
                     mass = 65f;
-
                     hp = 750f;
-
                     spin = 12f;
-
                     break;
 
             }
 
         }
 
-
-
         try {
-
             Global.getSettings().loadTexture(spritePath);
-
         } catch (Throwable t) {}
-
-
-
         try {
-
             CombatEntityAPI entity = engine.spawnAsteroid(spritePath, spawnX, spawnY, vx, vy, false);
-
             if (entity != null) {
-
                 entity.setFacing(random.nextFloat() * 360f);
-
                 entity.setAngularVelocity((random.nextFloat() - 0.5f) * spin);
-
                 entity.setCollisionRadius(radius);
-
                 entity.setMass(mass);
-
                 entity.setHitpoints(hp);
-
-
-
                 if (entity instanceof CombatAsteroidAPI) {
-
                     try {
-
                         CombatAsteroidAPI ast = (CombatAsteroidAPI) entity;
-
                         SpriteAPI s = ast.getSpriteAPI();
-
                         if (s != null && isValidSprite(s)) {
-
                             float maxDim = Math.max(s.getTextureWidth(), s.getTextureHeight());
-
                             if (maxDim > 0f) {
-
                                 float scale = (radius * 2.2f) / maxDim;
-
                                 s.setSize(s.getTextureWidth() * scale, s.getTextureHeight() * scale);
-
                             } else {
-
                                 s.setSize(radius * 2.2f, radius * 2.2f);
 
                             }
 
                             s.setColor(Color.WHITE);
-
                             s.setAlphaMult(1.0f);
 
                         }
@@ -10239,40 +7103,22 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
                 }
 
-
-
                 entity.setCustomData("IS_EASTER_EGG", Boolean.TRUE);
-
                 entity.setCustomData(TRACKED_KEY, Boolean.TRUE);
-
                 entity.setCustomData("EASTER_EGG_TYPE", eggType);
-
                 entity.setCustomData("DA_NO_MAINTAIN_VELOCITY", Boolean.TRUE);
-
                 if ("FIGHTER".equals(eggType) && fighterWingId != null) {
-
                     entity.setCustomData("FIGHTER_WING_ID", fighterWingId);
-
                     entity.setCustomData("FIGHTER_WING_NAME", (fighterWingName != null ? fighterWingName : fighterWingId));
 
                 }
 
                 entity.setCustomData(BASE_VX_KEY, Float.valueOf(vx));
-
                 entity.setCustomData(BASE_VY_KEY, Float.valueOf(vy));
-
-
-
                 activeEasterEggEntities.add(entity);
-
-
-
                 if ("FIGHTER".equals(eggType)) {
-
                     try {
-
                         Global.getSoundPlayer().playUISound("ui_radar_detect_vessel", 1.1f, 0.9f);
-
                     } catch (Throwable t) {}
 
                     // Silenced: only derelict ships show sensor alerts
@@ -10285,20 +7131,20 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
             }
 
         } catch (Throwable t) {}
-
         return null;
 
     }
-
-
-
 
     // =========================================================================
     // PLAYER ASTEROID KILL REWARD SYSTEM (Easter Egg & Fighter Drops)
     // =========================================================================
 
-    private void checkPlayerDestroyedAsteroids() {
+    private void checkPlayerDestroyedAsteroids(float amount) {
         if (engine == null || isTitleScreen) return;
+        asteroidCheckTimer += amount;
+        if (asteroidCheckTimer < ASTEROID_CHECK_INTERVAL) return;
+        asteroidCheckTimer = 0f;
+
         ShipAPI playerShip = getPlayerShipSafely();
         if (playerShip == null || !playerShip.isAlive()) return;
 
@@ -10311,14 +7157,12 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                 if (!proj.didDamage()) continue;
                 if (proj.getCustomData().containsKey("DA_HIT_PROCESSED")) continue;
                 proj.getCustomData().put("DA_HIT_PROCESSED", Boolean.TRUE);
-
                 ShipAPI sourceShip = extractShipFromSource(proj);
                 if (!isPlayerOrPlayerFighter(sourceShip, playerShip)) continue;
-
                 CombatEntityAPI target = proj.getDamageTarget();
                 if (isValidAsteroidTarget(target)) {
                     target.getCustomData().put("DA_LAST_PLAYER_HIT_TIME", totalCombatTime);
-                    if (target.getHitpoints() <= 0f || target.isExpired()) {
+                    if (target.getHitpoints() <= 0f) {
                         processPlayerAsteroidKill(target, playerShip);
                     }
                 }
@@ -10334,14 +7178,12 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                 if (!m.didDamage()) continue;
                 if (m.getCustomData().containsKey("DA_HIT_PROCESSED")) continue;
                 m.getCustomData().put("DA_HIT_PROCESSED", Boolean.TRUE);
-
                 ShipAPI sourceShip = extractShipFromSource(m);
                 if (!isPlayerOrPlayerFighter(sourceShip, playerShip)) continue;
-
                 CombatEntityAPI target = m.getDamageTarget();
                 if (isValidAsteroidTarget(target)) {
                     target.getCustomData().put("DA_LAST_PLAYER_HIT_TIME", totalCombatTime);
-                    if (target.getHitpoints() <= 0f || target.isExpired()) {
+                    if (target.getHitpoints() <= 0f) {
                         processPlayerAsteroidKill(target, playerShip);
                     }
                 }
@@ -10355,14 +7197,12 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                 BeamAPI beam = beams.get(i);
                 if (beam == null) continue;
                 if (!beam.didDamageThisFrame()) continue;
-
                 ShipAPI sourceShip = beam.getSource();
                 if (!isPlayerOrPlayerFighter(sourceShip, playerShip)) continue;
-
                 CombatEntityAPI target = beam.getDamageTarget();
                 if (isValidAsteroidTarget(target)) {
                     target.getCustomData().put("DA_LAST_PLAYER_HIT_TIME", totalCombatTime);
-                    if (target.getHitpoints() <= 0f || target.isExpired()) {
+                    if (target.getHitpoints() <= 0f) {
                         processPlayerAsteroidKill(target, playerShip);
                     }
                 }
@@ -10370,10 +7210,13 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         }
     }
 
+    // Restored fleet-wide credit: in Starsector, mining and kills by allied player fleet ships (owner == 0)
+    // belong to the player's fleet faction and award cargo salvage.
     private boolean isPlayerOrPlayerFighter(ShipAPI ship, ShipAPI playerShip) {
         if (ship == null || playerShip == null) return false;
         if (ship == playerShip) return true;
-        if (ship.isFighter() && ship.getWing() != null && ship.getWing().getSourceShip() == playerShip) {
+        if (ship.getOwner() == 0 && playerShip.getOwner() == 0) return true;
+        if (ship.isFighter() && ship.getWing() != null && ship.getWing().getSourceShip() != null && ship.getWing().getSourceShip().getOwner() == 0) {
             return true;
         }
         return false;
@@ -10392,15 +7235,18 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         if (target == null) return;
         if (target.getCustomData().containsKey("DA_KILL_LOOT_PROCESSED")) return;
         target.getCustomData().put("DA_KILL_LOOT_PROCESSED", Boolean.TRUE);
-
         Vector2f loc = target.getLocation();
         if (loc == null) return;
-
         Vector2f vel = target.getVelocity();
         float vx = vel != null ? vel.x * 0.7f : 0f;
         float vy = vel != null ? vel.y * 0.7f : 0f;
-
         boolean isMegalith = target.getCustomData().containsKey("DA_IS_MEGALITH");
+
+        // Small asteroid drop rate limit: strictly not more often than once every 60 seconds!
+        if (!isMegalith && (totalCombatTime - lastSmallAsteroidDropTime < SMALL_ASTEROID_DROP_COOLDOWN)) {
+            return;
+        }
+
         float derelictChance = isMegalith ? megalithDerelictDropChance : 0f;
         float fighterChance = isMegalith ? 0.015f : playerKillFighterDropChance;
         float resourceChance = isMegalith ? 0.200f : playerKillResourceDropChance;
@@ -10443,6 +7289,10 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                     engine.getCombatUI().addMessage(1, alert, new Color(100, 240, 255));
                 }
                 engine.addFloatingText(egg.getLocation(), IS_RUSSIAN ? ("ИСТРЕБИТЕЛЬ: " + fName) : ("FIGHTER: " + fName), 22f, new Color(100, 240, 255), egg, 0.3f, 3.5f);
+                if (!isMegalith) {
+                    lastSmallAsteroidDropTime = totalCombatTime;
+                }
+                return;
             }
         }
 
@@ -10453,12 +7303,14 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
             String specificType = resPool[random.nextInt(resPool.length)];
             CombatEntityAPI egg = spawnOtherEasterEggAtLocation(loc.x + (random.nextFloat() - 0.5f) * 60f, loc.y + (random.nextFloat() - 0.5f) * 60f, vx, vy, specificType);
             if (egg != null) {
+                if (!isMegalith) {
+                    lastSmallAsteroidDropTime = totalCombatTime;
+                }
                 String nameRu = "Тайник Домена";
                 String nameEn = "Domain Cache";
                 if ("PROBE".equals(specificType)) { nameRu = "Зонд Домена"; nameEn = "Survey Probe"; }
                 else if ("CRYO_POD".equals(specificType)) { nameRu = "Криокапсула"; nameEn = "Cryo Pod"; }
                 else if ("NAV_BUOY".equals(specificType)) { nameRu = "Навигационный буй"; nameEn = "Nav Buoy"; }
-
                 String alert = IS_RUSSIAN ?
                     ("ИЗ ОБЛОМКОВ АСТЕРОИДА: Выбит ценный контейнер (" + nameRu + ")!") :
                     ("FROM ASTEROID DEBRIS: Valuable salvage container dropped (" + nameEn + ")!");
@@ -10471,22 +7323,15 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
     }
 
     private void spawnOtherEasterEgg(float spawnX, float spawnY, float vx, float vy, boolean isResource) {
-
         String specificType = null;
-
         if (isResource) {
-
             String[] resourcePool = new String[] { "CACHE", "PROBE", "CRYO_POD", "NAV_BUOY", "FIGHTER" };
-
             specificType = resourcePool[random.nextInt(resourcePool.length)];
-
         } else {
-
             String[] debrisPool = new String[] {
                 "DEBRIS_LRG", "DEBRIS_MED", "DEBRIS_SML",
                 "MOTHERSHIP_POD", "MOTHERSHIP_ENGINE", "DEBRIS", "EXPLOSIVE_TANK"
             };
-
             specificType = debrisPool[random.nextInt(debrisPool.length)];
 
         }
@@ -10495,43 +7340,30 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     }
 
-
-
     private void spawnOtherEasterEgg(float spawnX, float spawnY, float vx, float vy) {
-
         spawnOtherEasterEgg(spawnX, spawnY, vx, vy, random.nextFloat() < 0.35f);
 
     }
 
-
-
     public void removeEasterEggEntity(CombatEntityAPI entity) {
-
         if (entity == null) return;
-
         entity.getCustomData().put("DA_EXPIRED", Boolean.TRUE);
-
         if (activeEasterEggEntities != null) {
-
             activeEasterEggEntities.remove(entity);
 
         }
 
         if (entity == activeDerelictEntity) {
-
             activeDerelictEntity = null;
 
         }
 
         if (engine != null) {
-
             engine.removeEntity(entity);
 
         }
 
     }
-
-
 
     // =========================================================================
     // STATION DEFLECTION DOME: LAMINAR FLOW & VISUAL DEFLECTOR BARRIER
@@ -10578,7 +7410,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         for (int i = 0; i < ships.size(); i++) {
             ShipAPI ship = ships.get(i);
             if (ship == null || !ship.isAlive()) continue;
-
             if (ship.isStation() && ship.getParentStation() == null) {
                 StationDomeData dome = null;
                 for (int d = 0; d < activeStationDomes.size(); d++) {
@@ -10593,7 +7424,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                     activeStationDomes.add(dome);
                 }
                 dome.center.set(ship.getLocation());
-
                 float maxModuleDist = ship.getCollisionRadius();
                 List<ShipAPI> childModules = ship.getChildModulesCopy();
                 if (childModules != null) {
@@ -10613,7 +7443,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         for (int i = 0; i < activeStationDomes.size(); i++) {
             StationDomeData dome = activeStationDomes.get(i);
             if (dome.stationCore == null || !dome.stationCore.isAlive()) continue;
-
             boolean hasNewSectionFailure = false;
             ShipAPI failedSection = null;
 
@@ -10625,7 +7454,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                 failedSection = dome.stationCore;
             }
             dome.coreFailureActive = coreFailing;
-
             List<ShipAPI> failingSections = new ArrayList<ShipAPI>();
             List<ShipAPI> childModules = dome.stationCore.getChildModulesCopy();
             if (childModules != null) {
@@ -10643,7 +7471,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
             }
             dome.failedSections.clear();
             dome.failedSections.addAll(failingSections);
-
             if (hasNewSectionFailure) {
                 // Any new break/overload/vent cycle restarts the full one-minute outage.
                 dome.offlineTimer = STATION_DOME_OFFLINE_DURATION;
@@ -10718,22 +7545,17 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         Vector2f aLoc = ast.getLocation();
         Vector2f aVel = ast.getVelocity();
         if (aLoc == null || aVel == null) return;
-
         float aSpeed = aVel.length();
         if (aSpeed < 1.0f) return;
-
         float astRadius = ast.getCollisionRadius();
-
         for (int i = 0; i < activeStationDomes.size(); i++) {
             StationDomeData dome = activeStationDomes.get(i);
             if (dome.isOffline) continue; // Section failure: dome offline, asteroids penetrate!
             float dx = aLoc.x - dome.center.x;
             float dy = aLoc.y - dome.center.y;
             float distSq = dx * dx + dy * dy;
-
             float influenceDist = dome.domeRadius + astRadius + 350f;
             if (distSq > influenceDist * influenceDist || distSq < 1f) continue;
-
             float dist = (float) Math.sqrt(distSq);
             float nx = dx / dist;
             float ny = dy / dist;
@@ -10793,26 +7615,20 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
         Vector2f aLoc = ast.getLocation();
         Vector2f aVel = ast.getVelocity();
         if (aLoc == null || aVel == null) return;
-
         float aSpeed = aVel.length();
         if (aSpeed < 1.0f) return;
-
         float astRadius = ast.getCollisionRadius();
-
         for (int i = 0; i < activeShipDomes.size(); i++) {
             ShipAPI ship = activeShipDomes.get(i);
             if (ship == null || !ship.isAlive() || ship.getLocation() == null) continue;
-
             Vector2f sLoc = ship.getLocation();
             float dx = aLoc.x - sLoc.x;
             float dy = aLoc.y - sLoc.y;
             float distSq = dx * dx + dy * dy;
-
             float fieldRadius = ship.getCollisionRadius() * 1.15f + 15f;
             float influenceMargin = Math.max(70f, fieldRadius * 0.5f);
             float influenceDist = fieldRadius + astRadius + influenceMargin;
             if (distSq > influenceDist * influenceDist || distSq < 1f) continue;
-
             float dist = (float) Math.sqrt(distSq);
             float nx = dx / dist;
             float ny = dy / dist;
@@ -10846,7 +7662,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                 float pushForce = (surfaceDist - dist) * 8.5f * amount;
                 aVel.x += nx * pushForce;
                 aVel.y += ny * pushForce;
-
                 if (ast.getCustomData().containsKey("DA_IS_MEGALITH")) {
                     ast.getCustomData().put("DA_NO_MAINTAIN_VELOCITY", Boolean.TRUE);
                 }
@@ -10886,7 +7701,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
     @Override
     public void renderInWorldCoords(ViewportAPI viewport) {
         if (engine == null || viewport == null) return;
-
         float totalTime = engine.getTotalElapsedTime(false);
 
         // 1. Station Deflection Domes
@@ -10898,9 +7712,7 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
                 float cx = dome.center.x;
                 float cy = dome.center.y;
-
                 if (!viewport.isNearViewport(dome.center, dome.domeRadius + 250f)) continue;
-
                 float diameter = dome.domeRadius * 2.0f;
                 float pulse = (float) (0.5 + 0.5 * Math.sin(totalTime * 1.8f));
                 float alpha = 0.22f + 0.08f * pulse;
@@ -10942,15 +7754,12 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
             SpriteAPI shipRing = getCachedSprite(null, null, "graphics/fx/shields256ring.png");
             SpriteAPI shipRing2 = getCachedSprite(null, null, "graphics/fx/shields256ringb.png");
             SpriteAPI shipDisc = getCachedSprite(null, null, "graphics/fx/shields256.png");
-
             for (int i = 0; i < activeShipDomes.size(); i++) {
                 ShipAPI ship = activeShipDomes.get(i);
                 if (ship == null || !ship.isAlive() || ship.getLocation() == null) continue;
-
                 Vector2f loc = ship.getLocation();
                 float fieldRadius = ship.getCollisionRadius() * 1.15f + 15f;
                 if (!viewport.isNearViewport(loc, fieldRadius + 150f)) continue;
-
                 Float spawnTime = shipSpawnTimes.get(ship);
                 if (spawnTime == null) {
                     Object sData = ship.getCustomData().get("DA_SPAWN_TIME");
@@ -10959,7 +7768,6 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                 float timeSinceSpawn = (spawnTime != null) ? (totalCombatTime - spawnTime.floatValue()) : 0f;
                 float timeRemaining = deploymentSafetyDuration - timeSinceSpawn;
                 if (timeRemaining <= 0f) continue;
-
                 float fadeFactor = 1.0f;
                 if (timeRemaining < 1.2f) {
                     fadeFactor = Math.max(0.0f, timeRemaining / 1.2f);
@@ -11001,137 +7809,66 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
 
     @Override
     public void renderInUICoords(ViewportAPI viewport) {
-
         if (engine == null || viewport == null) return;
-
         if (activeEasterEggEntities == null || activeEasterEggEntities.isEmpty()) return;
-
-
-
         float sw = Global.getSettings().getScreenWidthPixels();
-
         float sh = Global.getSettings().getScreenHeightPixels();
-
         float cx = sw * 0.5f;
-
         float cy = sh * 0.5f;
-
         float totalTime = engine.getTotalElapsedTime(false);
-
         float pulse = (float) (0.5 + 0.5 * Math.sin(totalTime * 4.5));
-
-
-
         boolean isTacticalMap = engine.getCombatUI() != null && engine.getCombatUI().isShowingCommandUI();
-
-
-
         for (int i = activeEasterEggEntities.size() - 1; i >= 0; i--) {
-
             try {
-
                 CombatEntityAPI entity = activeEasterEggEntities.get(i);
-
                 if (entity == null || entity.isExpired() || (entity.getCustomData() != null && entity.getCustomData().containsKey("DA_EXPIRED")) || !engine.isEntityInPlay(entity)) {
-
                     activeEasterEggEntities.remove(i);
-
                     continue;
 
                 }
 
-
-
                 Vector2f loc = entity.getLocation();
-
                 if (loc == null) continue;
-
-
-
                 float sx = viewport.convertWorldXtoScreenX(loc.x);
-
                 float sy = viewport.convertWorldYtoScreenY(loc.y);
-
-
-
                 String eggType = (String) entity.getCustomData().get("EASTER_EGG_TYPE");
-
                 if (eggType == null) eggType = "DEBRIS";
-
-
-
                 float padX = 55f;
-
                 float padY = 55f;
-
                 boolean onScreen = (sx >= padX && sx <= sw - padX && sy >= padY && sy <= sh - padY);
-
-
-
                 if ("DERELICT".equals(eggType)) {
-
                     Boolean rescued = (Boolean) entity.getCustomData().get("DERELICT_RESCUED");
-
                     boolean isRescued = (rescued != null && rescued.booleanValue());
-
                     Color themeCol = isRescued ? new Color(60, 255, 140) : new Color(255, 215, 60);
-
-
-
                     String hullSizeStr = (String) entity.getCustomData().get("DERELICT_HULL_SIZE");
-
                     float sizeScale = 1.0f;
-
                     if ("CAPITAL_SHIP".equals(hullSizeStr)) {
-
                         sizeScale = 1.35f;
-
                     } else if ("CRUISER".equals(hullSizeStr)) {
-
                         sizeScale = 1.20f;
-
                     } else if ("DESTROYER".equals(hullSizeStr)) {
-
                         sizeScale = 1.08f;
-
                     } else {
-
                         sizeScale = 0.95f;
 
                     }
 
-
-
                     if (onScreen) {
-
                         SpriteAPI ring = getCachedSprite("systemMap", "radar_circle", "graphics/icons/radar_circle.png");
-
                         if (ring != null && isValidSprite(ring)) {
-
                             float ringSize = (isTacticalMap ? 26f : 44f + 18f * pulse) * sizeScale;
-
                             ring.setSize(ringSize, ringSize);
-
                             ring.setColor(new Color(themeCol.getRed(), themeCol.getGreen(), themeCol.getBlue(), (int)(isTacticalMap ? 220 : 150 + 95 * pulse)));
-
                             ring.setAdditiveBlend();
-
                             ring.renderAtCenter(sx, sy);
 
                         }
 
-
-
                         SpriteAPI icon = getCachedSprite("systemMap", "icon_derelict", "graphics/icons/derelict.png");
-
                         if (icon != null && isValidSprite(icon)) {
-
                             float iconSize = (isTacticalMap ? 20f : 28f) * sizeScale;
-
                             icon.setSize(iconSize, iconSize);
-
                             icon.setColor(new Color(themeCol.getRed(), themeCol.getGreen(), themeCol.getBlue(), 245));
-
                             icon.renderAtCenter(sx, sy);
 
                         }
@@ -11139,75 +7876,39 @@ Number nMinRocks = getLunaNumber("da_minFieldRocks");
                     } else {
 
                         // Derelict is high-value: KEEP off-screen HUD arrows so player never loses track of the ship!
-
                         float dx = sx - cx;
-
                         float dy = sy - cy;
-
                         if (Math.abs(dx) > 0.001f || Math.abs(dy) > 0.001f) {
-
                             float tX = Float.MAX_VALUE;
-
                             float tY = Float.MAX_VALUE;
-
                             if (dx > 0) tX = (sw - padX - cx) / dx;
-
                             else if (dx < 0) tX = (padX - cx) / dx;
-
                             if (dy > 0) tY = (sh - padY - cy) / dy;
-
                             else if (dy < 0) tY = (padY - cy) / dy;
-
                             float t = Math.min(tX, tY);
-
                             float edgeX = cx + dx * t;
-
                             float edgeY = cy + dy * t;
-
                             float angleDeg = (float) Math.toDegrees(Math.atan2(dy, dx));
-
-
-
                             SpriteAPI arrow = getCachedSprite("systemMap", "sensor_contact", "graphics/icons/fleet_triangle.png");
-
                             if (arrow != null && isValidSprite(arrow)) {
-
                                 float arrowSize = isTacticalMap ? 18f : (26f + 4f * pulse);
-
                                 arrow.setSize(arrowSize, arrowSize);
-
                                 arrow.setAngle(angleDeg - 90f);
-
                                 arrow.setColor(new Color(themeCol.getRed(), themeCol.getGreen(), themeCol.getBlue(), (int)(180 + 75 * pulse)));
-
                                 arrow.setAdditiveBlend();
-
                                 arrow.renderAtCenter(edgeX, edgeY);
 
                             }
 
-
-
                             float len = (float) Math.sqrt(dx * dx + dy * dy);
-
                             float inwardOffset = isTacticalMap ? 20f : 28f;
-
                             float inwardX = edgeX - (dx / len) * inwardOffset;
-
                             float inwardY = edgeY - (dy / len) * inwardOffset;
-
-
-
                             SpriteAPI icon = getCachedSprite("systemMap", "icon_derelict", "graphics/icons/derelict.png");
-
                             if (icon != null && isValidSprite(icon)) {
-
                                 float iconSize = isTacticalMap ? 16f : 22f;
-
                                 icon.setSize(iconSize, iconSize);
-
                                 icon.setColor(new Color(themeCol.getRed(), themeCol.getGreen(), themeCol.getBlue(), 230));
-
                                 icon.renderAtCenter(inwardX, inwardY);
 
                             }

@@ -1,6 +1,6 @@
 modID,fieldID,fieldName,fieldType,defaultValue,secondaryValue,fieldDescription,minValue,maxValue,tab
 dynamic_asteroids,da_header_sim,Пресеты и Симуляция,Header,Параметры потока и режимы,,,,,Asteroid Stream
-dynamic_asteroids,da_activePreset,Активный профиль,Int,2,,"0=Свой (все ползунки вручную); 1=Кинематографичный (70-280 камней / 400 ск / 0.5 проц остов / 1.0 проц лут / 80 ск мегалита); 2=Сбалансированный [По умолчанию] (140-560 камней / 600 ск / 1.5 проц остов / 2.0 проц лут / 90 ск мегалита, диапазон 60-120); 3=Шторм (210-700 камней / 1200 ск / 3.5 проц остов / 4.0 проц лут / 220 ск мегалита); 4=Хаос [Высокий риск / Высокая награда] (350-700 камней / 3000 ск / 7.0 проц остов / 8.0 проц лут / 420 ск мегалита)",0,4,Asteroid Stream
+dynamic_asteroids,da_activePreset,Активный профиль,Int,2,,"0=Свой (все ползунки вручную); 1=Кинематографичный (70-280 камней / 400 ск / 0.5 проц остов / 1.0 проц лут / 40 ск мегалита); 2=Сбалансированный [По умолчанию] (140-560 камней / 600 ск / 1.5 проц остов / 2.0 проц лут / 45 ск мегалита, диапазон 30-60); 3=Шторм (210-700 камней / 1200 ск / 3.5 проц остов / 4.0 проц лут / 110 ск мегалита); 4=Хаос [Высокий риск / Высокая награда] (350-700 камней / 3000 ск / 7.0 проц остов / 8.0 проц лут / 210 ск мегалита)",0,4,Asteroid Stream
 dynamic_asteroids,da_enableInSimulation,Включать в симуляторе,Boolean,true,,Активность потока астероидов в тестах симулятора ([/] переключение; Shift +/- лимит; Ctrl +/- скорость; [L] мегалит),,,Asteroid Stream
 dynamic_asteroids,da_header_field,Плотность и Кинетика,Header,Параметры поля (применяются при Профиле 0: Свой),,,,,Asteroid Stream
 dynamic_asteroids,da_minFieldRocks,Мин. число камней в поясе,Int,140,,Минимальный лимит астероидов в потоке (при Профиле 0),50,1000,Asteroid Stream
@@ -12,9 +12,9 @@ dynamic_asteroids,da_asteroidLifespan,Время жизни астероидов
 dynamic_asteroids,da_header_megaliths,Одиночные Мегалиты,Header,Колоссальные глыбы и прямой полет,,,,,Asteroid Stream
 dynamic_asteroids,da_enableMegalithBoulders,Включить одиночные мегалиты,Boolean,true,,Спавн колоссальных астероидов-мегалитов (как на скриншоте),,,Asteroid Stream
 dynamic_asteroids,da_maxMegaliths,Макс. число мегалитов в бою,Int,25,,Максимальное число одновременно присутствующих гигантских глыб на поле боя (по умолчанию 25),1,60,Asteroid Stream
-dynamic_asteroids,da_megalithMinSpeed,Мин. скорость мегалита,Double,90.0,,Нижняя граница скорости движения гигантских глыб (по умолчанию 90 ед/сек),30.0,300.0,Asteroid Stream
-dynamic_asteroids,da_megalithMaxSpeed,Макс. скорость мегалита,Double,140.0,,Верхняя граница скорости движения гигантских глыб (по умолчанию 140 ед/сек),50.0,500.0,Asteroid Stream
-dynamic_asteroids,da_megalithSpeed,Базовая скорость мегалита,Double,120.0,,Базовая скорость гигантской глыбы (в баланс-режиме 120 ед/сек; кино 80; шторм 220; хаос 420),30.0,600.0,Asteroid Stream
+dynamic_asteroids,da_megalithMinSpeed,Мин. скорость мегалита,Double,45.0,,Нижняя граница скорости движения гигантских глыб (по умолчанию 45 ед/сек),15.0,300.0,Asteroid Stream
+dynamic_asteroids,da_megalithMaxSpeed,Макс. скорость мегалита,Double,70.0,,Верхняя граница скорости движения гигантских глыб (по умолчанию 70 ед/сек),25.0,500.0,Asteroid Stream
+dynamic_asteroids,da_megalithSpeed,Базовая скорость мегалита,Double,60.0,,Базовая скорость гигантской глыбы (в баланс-режиме 60 ед/сек; кино 40; шторм 110; хаос 210),15.0,600.0,Asteroid Stream
 dynamic_asteroids,da_megalithSpawnInterval,Интервал мегалитов (сек),Double,42.0,,Средняя пауза между пролетом гигантских глыб (30-60 сек),15.0,180.0,Asteroid Stream
 dynamic_asteroids,da_megalithMinRadius,Мин. радиус мегалита,Double,125.0,,Минимальный радиус глыбы (ед). Для сравнения: крейсер имеет радиус около 120-140,60.0,300.0,Asteroid Stream
 dynamic_asteroids,da_megalithMaxRadius,Макс. радиус мегалита,Double,550.0,,Максимальный радиус глыбы (ед). Колоссальный планетоид размером с космическую станцию (диаметр до 1100 ед),200.0,800.0,Asteroid Stream
@@ -23,8 +23,8 @@ dynamic_asteroids,da_deploymentSafetyDuration,Длительность защи�
 dynamic_asteroids,da_shieldMagnetToggleKey,Клавиша магнита щита,Keycode,20,,Горячая клавиша для переключения притяжения ценных находок щитом (ВКЛ/ВЫКЛ. По умолчанию: T),,,Asteroid Stream
 dynamic_asteroids,da_megalithDerelictDropChance,Шанс остова из мегалита,Double,0.001,,"Шанс обнаружить замурованный остов корабля при личном разрушении мегалита игроком (0.001 = 0.1 проц, 1 на 1000)",0.0,0.05,Asteroid Stream
 dynamic_asteroids,da_header_easter_eggs,Пасхалки и Заброшенные объекты,Header,Секретные находки в потоке метеоров,,,,,Asteroid Stream
-dynamic_asteroids,da_playerKillResourceDropChance,Шанс ресурсов при сбитии камня,Double,0.005,,Шанс выпадения тайника Домена или зонда при личном уничтожении астероида кораблем игрока (0.005 = 0.5 проц; макс 0.05 = 5 проц),0.0,0.05,Asteroid Stream
-dynamic_asteroids,da_playerKillFighterDropChance,Шанс истребителя при сбитии камня,Double,0.001,,Шанс обнаружения законсервированного истребителя при личном уничтожении астероида кораблем игрока (0.001 = 0.1 проц; макс 0.02 = 2 проц),0.0,0.02,Asteroid Stream
+dynamic_asteroids,da_playerKillResourceDropChance,Шанс ресурсов при сбитии камня,Double,0.002,,Шанс выпадения тайника Домена или зонда при личном уничтожении астероида кораблем игрока (0.002 = 0.2 проц; кулдаун 60с; макс 0.05 = 5 проц),0.0,0.05,Asteroid Stream
+dynamic_asteroids,da_playerKillFighterDropChance,Шанс истребителя при сбитии камня,Double,0.0005,,Шанс обнаружения законсервированного истребителя при личном уничтожении астероида кораблем игрока (0.0005 = 0.05 проц; кулдаун 60с; макс 0.02 = 2 проц),0.0,0.02,Asteroid Stream
 dynamic_asteroids,da_derelictSpawnChance,Шанс корабля-остова,Double,0.015,,Шанс спавна дрейфующего остова на волну (0.015 = 1.5 проц; макс 0.15 = 15 проц для сохранения атмосферы. В профилях 1-4 выставляется автоматически),0.0,0.15,Asteroid Stream
 dynamic_asteroids,da_debrisEasterEggChance,Шанс обломков и цистерн,Double,0.04,,Шанс спавна древних двигателей и взрывоопасных цистерн (0.04 = 4.0 проц; макс 0.40 = 40 проц),0.0,0.40,Asteroid Stream
 dynamic_asteroids,da_resourceEasterEggChance,Шанс ценных контейнеров,Double,0.02,,"Шанс спавна зондов Домена, тайников, криокапсул и чипов истребителей (0.02 = 2.0 проц; макс 0.15 = 15 проц)",0.0,0.15,Asteroid Stream

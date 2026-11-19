@@ -1,10 +1,10 @@
 {
   "id": "dynamic_asteroids",
-  "name": "Dynamic Asteroids 2.0.75 [RU]",
+  "name": "Dynamic Asteroids 2.1.0",
   "author": "keltuze",
   "utility": "true",
-  "version": "2.0.75",
-  "description": "Dynamic Asteroids 2.0.75: Живые астероидные пояса, кинетический таранный урон, колоссальные мегалиты с прямыми курсами, усиленная защита ПРО (x8), горячая клавиша магнита щита [T].",
+  "version": "2.1.0",
+  "description": "Dynamic Asteroids 2.1.0: Living asteroid belts, kinetic ramming damage, colossal megalith rebalance (-50% speed), zero-allocation architecture overhaul, and improved shield magnet on [T].",
   "gameVersion": "0.98.5a-RC4",
   "jars": [
     "jars/DynamicAsteroids.jar"

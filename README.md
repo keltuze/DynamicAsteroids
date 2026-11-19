@@ -26,29 +26,29 @@ Direct download links for the latest version. Both editions contain all 5 live p
 
 ## 🚀 What's New in v2.1.0
 
-### 🧹 1. Архитектурная чистота и Zero-Allocation / Architecture Cleanup
-* **3,600+ строк мертвого кода удалено:** Полный аудит кодовой базы, устранение дублирующей логики и неиспользуемых процедур.
-* **Zero-Allocation в цикле боя (`advance`):** Устранены покадровые аллокации промежуточных списков и объектов — минимальная нагрузка на сборщик мусора Java (GC) и стабильный FPS в затяжных боях.
+### 🧹 1. Architectural Cleanup & Zero-Allocation Combat Loop
+* **3,600+ Lines of Dead Code Removed:** Full codebase overhaul removing legacy duplicates, obsolete helper branches, and unreferenced routines.
+* **Zero-Allocation Advance Loop:** Transient per-frame list allocations and iterators during combat have been eliminated, minimizing Java Garbage Collection (GC) pressure and guaranteeing rock-solid FPS even in prolonged, heavy engagements.
 
-### 🪨 2. Ребаланс колоссальных мегалитов (-50% скорости) / Megalith Rebalance
-* **Кинематографичная скорость:** Средняя скорость мегалитов снижена на 50% (в сбалансированном режиме — с 90 до 45 ед/с). Колоссальные глыбы ощущаются по-настоящему массивными, а у игрока и флота есть время среагировать на угрозу тарана.
-* **Драйв обычных потоков сохранен:** Скорости основных астероидных рек, штормовых формаций и находок остались прежними (400–3000 ед/с) — экшен поясов никуда не пропал.
+### 🪨 2. Colossal Megaliths Speed Rebalance (-50% Speed)
+* **Cinematic & Tactical Pacing:** Colossal megalith boulders now cruise at 50% reduced velocity (in Balanced preset: reduced from 90 to 45 u/s). Megaliths now feel genuinely colossal, heavy, and majestic, providing player ships and fleet AI ample reaction time to execute evasive burns or brace shields.
+* **High-Speed Debris Stream Drive Preserved:** Standard asteroid river speeds, storm avalanche bursts, and fast-moving drift formations remain at full speed (400–3,000 u/s), preserving dense asteroid belt kinetic adrenaline.
 
-### 🚫 3. Дисциплина огня ПРО / Disciplined Point Defense
-* **ПРО не отвлекается на мегалиты:** Орудия точечной защиты (Вулканы, Флаки, лазеры ПРО) больше не выбирают гигантские монолиты в качестве целей, не сливают в них боезапас и не забивают флакс. ПРО сфокусировано на ракетах, бомбардировщиках и мелких сбиваемых камнях.
-* **Главный калибр по-прежнему эффективен:** Обычные орудия и ручной огонь игрока могут раскалывать мегалиты, как и прежде.
+### 🚫 3. Disciplined Point Defense (PD) Fire Protocol
+* **Point Defense Whitelist & Threat Hierarchy:** Point defense weapons (Vulcan batteries, Flak cannons, PD lasers) will no longer waste ammo, time, and flux firing at colossal Megaliths which they cannot crack. PD mounts strictly prioritize incoming missiles, strike craft, and destructible small-to-medium asteroid hazards.
+* **Heavy Weapon Fire Retained:** Main fleet batteries, player-targeted fire, plasma lances, and heavy ordnance can still shatter Megaliths as intended.
 
-### 🧲 4. Плавное поглощение лута щит-магнитом [T] / Smooth Shield Magnet
-* **Плавный сбор:** Полезные контейнеры (тайники, зонды, криокапсулы, чипы истребителей, металл) беспрепятственно втягиваются внутрь контура щита и подбираются корпусом без зависания у кромки поля.
-* **Безопасность остовов:** Заброшенные корабли (`DERELICT`) по-прежнему бережно швартуются у кромки щита на безопасной дистанции без риска повреждения корпуса.
+### 🧲 4. Smooth Shield Magnet Ingestion [T]
+* **Seamless Pickup Flow:** Valuable cargo pods, Domain survey probes, cryopods, fighter LPC chips, and metals are now reeled cleanly through the shield barrier directly into the ship's hull for instant collection, preventing awkward stalls at the shield perimeter.
+* **Safe Derelict Vessel Mooring:** Derelict ships (`DERELICT`) continue to moor safely outside the shield perimeter at a protected standoff distance (+45 units) without colliding into friendly hulls.
 
-### 🎁 5. Баланс наград и кулдаун дропа / Asteroid Loot Balancing
-* **Кулдаун 60 секунд:** Уничтожение мелких астероидов теперь дает дроп не чаще одного раза в 60 секунд.
-* **Оптимизация проверки снарядов:** Опрос снарядов игрока ограничен до 5 раз в секунду (вместо 60), снижая нагрузку на движок на 92%. Мегалиты по-прежнему дают щедрый независимый лут при разрушении.
+### 🎁 5. Asteroid Kill Loot Rebalance & 60-Second Cooldown
+* **Paced Resource Rewards:** Added a strict 60-second cooldown on item drops from destroying small asteroids, preventing excessive loot flood during rapid mining sweeps.
+* **92% Performance Optimization:** Projectile, missile, and beam scanning for asteroid hits is now throttled to 5 Hz (0.20s intervals) instead of running on every combat frame, eliminating unnecessary engine list allocations. Megaliths retain their rare, independent loot rolls upon destruction.
 
-### 🛡️ 6. Защита омни-щитами и синхронизация LunaLib
-* **Удержание щитов ИИ:** Исправлен таймер удержания щитов союзного и вражеского ИИ при сближении с колоссальными глыбами.
-* **Полная синхронизация LunaLib:** Описания пресетов и параметров в интерфейсе настроек согласованы с актуальной физикой.
+### 🛡️ 6. AI Omni-Shield Hold & Full LunaLib Sync
+* **Omni-Shield Threat Hold:** Fixed the AI shield hold timer during close passes with colossal Megaliths, ensuring allied and enemy ships maintain forward shield coverage throughout the entire transit.
+* **Synchronized Configuration:** Updated preset descriptions, default sliders, and LunaLib menus to match the new physics balance and cooldown metrics.
 
 ---
 
